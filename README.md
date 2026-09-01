@@ -17,11 +17,17 @@ The application targets Android and iOS and shares both business logic and user 
 
 ## Project status
 
-TillFailure is currently in the architecture and project-foundation phase.
+Milestone 1, the verified project foundation, is implemented for review. The repository contains a dedicated Android application (`androidApp`), a native Xcode host (`iosApp`), and an Android-KMP shared library (`shared`). Both hosts render the same temporary `Foundation Home -> Foundation Details -> Back` Compose flow.
+
+This flow proves typed Navigation 3, destination-scoped Koin ViewModels, lifecycle-aware state/effect collection, MVI state changes, transient effects, and destination disposal. It is technical demonstration code under `shared/.../foundation` and is explicitly intended for replacement as later product milestones establish the real application shell.
+
+No Firebase SDK, backend, authentication, role selector, product feature, deployment, or production resource is implemented. See [`docs/milestones/milestone-1-report.md`](docs/milestones/milestone-1-report.md) for fresh evidence and limitations.
+
+The Android technical flow was exercised during implementation, and the interactive iOS navigation/scoping/lifecycle flow was subsequently passed manually by the user on an iPhone 16e simulator. Process-death and durable restoration remain unverified and out of scope.
 
 The complete Client and Trainer experiences have been designed in Pencil. The approved `.pen` design is the visual source of truth for implementation.
 
-Production features should not be implemented until the initial architecture, Firebase model, security strategy, and MVP plan are reviewed.
+Product features and Firebase work require their own explicit milestone approval.
 
 ## User roles
 
@@ -73,6 +79,26 @@ The intended technology stack is:
 
 Dependency coordinates, versions, target support, and API compatibility must be verified before they are added to the project.
 
+## Verified foundation commands
+
+Prerequisites used for the fresh Milestone 1 checks are JDK 21, Android SDK 36, an Android emulator, and Xcode 26.2 on Apple silicon. Gradle uses the checked-in wrapper.
+
+```text
+# Shared metadata, Android-host tests, and Android debug application
+./gradlew :shared:compileCommonMainKotlinMetadata :shared:testAndroidHostTest :androidApp:assembleDebug --console=plain
+
+# Shared iOS simulator compilation and shared tests
+./gradlew :shared:compileKotlinIosSimulatorArm64 :shared:iosSimulatorArm64Test --console=plain
+
+# Discover the native Xcode scheme
+xcodebuild -list -json -project iosApp/iosApp.xcodeproj
+
+# Build the native host for an available simulator (substitute its UDID)
+xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug -destination 'platform=iOS Simulator,id=<SIMULATOR_UDID>' CODE_SIGNING_ALLOWED=NO build
+```
+
+The Xcode project currently has an application scheme but no test target. Kotlin/Native tests run through Gradle; do not replace the Xcode `build` command above with `test` unless an Xcode test target is added and verified.
+
 ## Architecture
 
 TillFailure follows unidirectional data flow using MVI.
@@ -108,7 +134,7 @@ https://github.com/Meet-Miyani/compose-skill
 
 Contributors and coding agents working on Compose code must read and follow that skill before making architectural or implementation changes.
 
-## Project structure
+## Planned project structure
 
 ```text
 TillFailure/
@@ -171,8 +197,10 @@ shared/src/
 ├── commonMain/
 ├── commonTest/
 ├── androidMain/
-├── androidUnitTest/
-└── iosMain/
+├── androidHostTest/
+├── androidDeviceTest/  # planned when device tests are configured
+├── iosMain/
+└── iosTest/
 ```
 
 `commonMain` contains:
@@ -256,6 +284,7 @@ docs/
 ├── firestore-security.md
 ├── offline-sync.md
 ├── navigation.md
+├── dependency-verification.md
 ├── testing-strategy.md
 ├── implementation-plan.md
 └── open-questions.md
@@ -346,21 +375,21 @@ An additional local database must not be introduced merely to duplicate Firestor
 
 ## Development environments
 
-The project uses separate Firebase projects for:
+The project plans separate Firebase projects for:
 
 - development
 - production
 
 Firebase configuration files and secrets must not be committed unless they are explicitly safe and intended for source control.
 
+Android and Apple Firebase configuration files are currently tracked at the paths below, but Firebase dependencies and initialization are not present. Their existence is not evidence that an integration or deployment works; ownership, environment and source-control policy must be reviewed before implementation.
+
 Expected local files include:
 
 ```text
 androidApp/google-services.json
-iosApp/iosApp/GoogleService-Info.plist
+iosApp/GoogleService-Info.plist
 ```
-
-Exact locations may be adjusted during project scaffolding to match the generated Android and Xcode structures.
 
 The Firebase Local Emulator Suite should be used for:
 
@@ -372,24 +401,9 @@ The Firebase Local Emulator Suite should be used for:
 
 ## Getting started
 
-Project scaffolding and verified dependency versions have not yet been finalized.
+Use the verified foundation commands above for shared metadata, Android-host tests/assembly, shared iOS tests, and the native Xcode host build. Fresh command results, runtime attribution, warnings, and unavailable checks are recorded in the [Milestone 1 report](docs/milestones/milestone-1-report.md).
 
-After the foundation is created, this section must document:
-
-1. required JDK version
-2. supported Android Studio version
-3. supported Xcode version
-4. Firebase CLI requirements
-5. Node.js requirements for Cloud Functions
-6. Android Firebase configuration
-7. iOS Firebase configuration
-8. emulator startup
-9. Android build and run commands
-10. iOS build and run instructions
-11. test commands
-12. code-quality commands
-
-Do not add guessed version requirements or commands before they are verified against the generated project.
+Open `iosApp/iosApp.xcodeproj` in Xcode to run the native host application. The Firebase CLI/backend tree is not part of Milestone 1, so emulator/backend commands are not yet available.
 
 ## Development rules
 
@@ -458,35 +472,3 @@ Documentation must describe the implemented system. Do not leave architectural d
 ## License
 
 License has not yet been selected.
-
-This is a Kotlin Multiplatform project targeting Android, iOS.
-
-* [/iosApp](./iosApp/iosApp) contains an iOS application. Even if you’re sharing your UI with Compose Multiplatform,
-  you need this entry point for your iOS app. This is also where you should add SwiftUI code for your project.
-
-* [/shared](./shared/src) is for code that will be shared across your Compose Multiplatform applications.
-  It contains several subfolders:
-  - [commonMain](./shared/src/commonMain/kotlin) is for code that’s common for all targets.
-  - Other folders are for Kotlin code that will be compiled for only the platform indicated in the folder name.
-    For example, if you want to use Apple’s CoreCrypto for the iOS part of your Kotlin app,
-    the [iosMain](./shared/src/iosMain/kotlin) folder would be the right place for such calls.
-    Similarly, if you want to edit the Desktop (JVM) specific part, the [jvmMain](./shared/src/jvmMain/kotlin)
-    folder is the appropriate location.
-
-### Running the apps
-
-Use the run configurations provided by the run widget in your IDE's toolbar. You can also use these commands and options:
-
-- Android app: `./gradlew :androidApp:assembleDebug`
-- iOS app: open the [/iosApp](./iosApp) directory in Xcode and run it from there.
-
-### Running tests
-
-Use the run button in your IDE's editor gutter, or run tests using Gradle tasks:
-
-- Android tests: `./gradlew :shared:testAndroidHostTest`
-- iOS tests: `./gradlew :shared:iosSimulatorArm64Test`
-
----
-
-Learn more about [Kotlin Multiplatform](https://www.jetbrains.com/help/kotlin-multiplatform-dev/get-started.html)…
