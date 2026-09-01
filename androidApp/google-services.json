@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "446548570217",
+    "project_id": "tillfailure-7a489",
+    "storage_bucket": "tillfailure-7a489.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:446548570217:android:888452482e3d09e0a9b2f8",
+        "android_client_info": {
+          "package_name": "com.delminiusapps.tillfailure"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDQQICWa_H2HhN1l8ZNq8NRuKOqlKiY66Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
