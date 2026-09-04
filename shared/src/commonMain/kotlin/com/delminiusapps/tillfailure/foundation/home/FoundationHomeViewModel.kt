@@ -26,6 +26,9 @@ class FoundationHomeViewModel : ViewModel() {
             FoundationHomeEvent.OnOpenDetailsClick -> {
                 deliverEffect(effectChannel, FoundationHomeEffect.NavigateToDetails)
             }
+            FoundationHomeEvent.OnOpenDesignCatalogClick -> {
+                deliverEffect(effectChannel, FoundationHomeEffect.NavigateToDesignCatalog)
+            }
             FoundationHomeEvent.OnShowMessageClick -> {
                 deliverEffect(
                     effectChannel,

@@ -1,7 +1,7 @@
 # Implementation roadmap
 
-Status: **Milestone 1 implemented for review; Milestones 2-12 remain proposals requiring explicit approval**
-Review date: **2026-09-11** (documentation-only assigned-snapshot correction)
+Status: **Milestones 1-2 implemented for review; Milestones 3-12 remain proposals requiring explicit approval**
+Review date: **2026-09-13**
 
 Milestones are ordered, reviewable changes. Foundation work may be horizontal; feature milestones must demonstrate an end-to-end user outcome with authorization and recovery, not just screens or repositories. “Commands” are planned verification and may require files that do not exist yet.
 
@@ -19,11 +19,13 @@ Implementation status (2026-09-01): **implemented and verified with recorded too
 
 ## 2. Shared design system and preview fixtures
 
+Implementation status (verified through 2026-09-13): **implemented; acceptance pending screen-reader checks**. Central tokens/components, five deterministic compositions, responsive previews, debug-only catalog access, Android/iOS visual checks, and large-text evidence are recorded in [`milestones/milestone-2-report.md`](milestones/milestone-2-report.md). PR #2 review corrections include responsive five-item navigation and detail tabs; typed appointment, dashboard, workout, and progress presentation; explicit fixture callbacks; contrasting loading indicators; one active-destination snackbar host above bottom bars and safe areas; and four visually and semantically distinct filter-chip states. A focused audit also removed remaining duplicated sample-business values across all five fixtures, with common regression tests for derived labels, fractions, selection, initials, counts, invalid-state normalization, snackbar ownership, and disabled chips. No Firebase, production feature, dependency, deployment, or Milestone 3 work was added.
+
 - **User outcome:** Approved TillFailure components render consistently in shared previews without Firebase.
 - **Affected areas:** `shared/core/designsystem`, shared resources, preview fixtures; canonical auth/client/trainer sample screens only as nonfunctional fixtures.
 - **Domain/data:** Typed semantic UI models only; no feature persistence.
 - **Firebase/security:** None.
-- **Tests/commands:** Shared compile/tests plus component screenshots; TalkBack/VoiceOver semantics review, 200% font and 48 dp effective target checks.
+- **Tests/commands:** Shared compile/tests plus component screenshots; Android 200% and iPhone accessibility-large responsive checks; 48 dp effective target checks. TalkBack and VoiceOver traversal remain pending and are not claimed.
 - **Acceptance:** Dark surfaces, lime accent, typography, spacing/radii and 30 master-state language map to centralized tokens/components; focus/error/loading/disabled states pass; no repeated hardcoded feature tokens or unapproved design change.
 - **Dependencies/risks:** Font licensing/bundling, 44 visual vs 48 effective touch target, localization/reduced-motion evidence.
 

@@ -13,6 +13,8 @@ import org.koin.compose.viewmodel.koinViewModel
 @Composable
 fun FoundationHomeRoute(
     onNavigateToDetails: () -> Unit,
+    showDevelopmentCatalog: Boolean,
+    onNavigateToDesignCatalog: () -> Unit,
     onShowMessage: suspend (String) -> Unit,
     viewModel: FoundationHomeViewModel = koinViewModel(),
 ) {
@@ -24,6 +26,7 @@ fun FoundationHomeRoute(
             viewModel.effect.collect { effect ->
                 when (effect) {
                     FoundationHomeEffect.NavigateToDetails -> onNavigateToDetails()
+                    FoundationHomeEffect.NavigateToDesignCatalog -> onNavigateToDesignCatalog()
                     is FoundationHomeEffect.ShowMessage -> launch {
                         onShowMessage(effect.message)
                     }
@@ -35,5 +38,6 @@ fun FoundationHomeRoute(
     FoundationHomeScreen(
         state = state,
         onEvent = viewModel::onEvent,
+        showDevelopmentCatalog = showDevelopmentCatalog,
     )
 }

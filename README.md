@@ -17,11 +17,15 @@ The application targets Android and iOS and shares both business logic and user 
 
 ## Project status
 
-Milestone 1, the verified project foundation, is implemented for review. The repository contains a dedicated Android application (`androidApp`), a native Xcode host (`iosApp`), and an Android-KMP shared library (`shared`). Both hosts render the same temporary `Foundation Home -> Foundation Details -> Back` Compose flow.
+Milestone 1, the verified project foundation, is complete. Milestone 2, the shared design system and representative visual fixtures, is implemented for review on `feature/milestone-2-design-system`; its Android/iOS catalog walkthrough, PR #2 P2 corrections (including destination-owned snackbar placement and disabled filter-chip states), and a five-screen typed-model consistency audit were verified through 2026-09-13. Acceptance remains pending the screen-reader checks listed in [`docs/milestones/milestone-2-report.md`](docs/milestones/milestone-2-report.md).
+
+The repository contains a dedicated Android application (`androidApp`), a native Xcode host (`iosApp`), and an Android-KMP shared library (`shared`). Both hosts render the same temporary `Foundation Home -> Foundation Details -> Back` Compose flow.
 
 This flow proves typed Navigation 3, destination-scoped Koin ViewModels, lifecycle-aware state/effect collection, MVI state changes, transient effects, and destination disposal. It is technical demonstration code under `shared/.../foundation` and is explicitly intended for replacement as later product milestones establish the real application shell.
 
 No Firebase SDK, backend, authentication, role selector, product feature, deployment, or production resource is implemented. See [`docs/milestones/milestone-1-report.md`](docs/milestones/milestone-1-report.md) for fresh evidence and limitations.
+
+Debug builds expose **Open development UI catalog** on Foundation Home. The catalog contains centralized TillFailure foundations/components and five deterministic, nonfunctional visual compositions. Android uses `BuildConfig.DEBUG`; iOS uses `_isDebugAssertConfiguration()`, so the entry is not supplied to release hosts. The fixtures do not authenticate, persist data, or bypass a production shell.
 
 The Android technical flow was exercised during implementation, and the interactive iOS navigation/scoping/lifecycle flow was subsequently passed manually by the user on an iPhone 16e simulator. Process-death and durable restoration remain unverified and out of scope.
 

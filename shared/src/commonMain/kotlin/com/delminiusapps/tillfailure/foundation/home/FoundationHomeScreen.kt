@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -25,11 +26,13 @@ import com.delminiusapps.tillfailure.foundation.ui.TillFailureFoundationTheme
 fun FoundationHomeScreen(
     state: FoundationHomeState,
     onEvent: (FoundationHomeEvent) -> Unit,
+    showDevelopmentCatalog: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Column(
         modifier = modifier
             .fillMaxSize()
+            .safeDrawingPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp, vertical = 32.dp),
         verticalArrangement = Arrangement.Center,
@@ -55,6 +58,14 @@ fun FoundationHomeScreen(
             onClick = { onEvent(FoundationHomeEvent.OnOpenDetailsClick) },
         ) {
             Text("Open foundation details")
+        }
+        if (showDevelopmentCatalog) {
+            OutlinedButton(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = { onEvent(FoundationHomeEvent.OnOpenDesignCatalogClick) },
+            ) {
+                Text("Open development UI catalog")
+            }
         }
         TextButton(
             modifier = Modifier.fillMaxWidth(),

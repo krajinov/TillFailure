@@ -37,6 +37,19 @@ class FoundationHomeViewModelTest {
     }
 
     @Test
+    fun openCatalogEventEmitsOneNavigationEffect() = runTest {
+        val viewModel = FoundationHomeViewModel()
+
+        viewModel.effect.test {
+            viewModel.onEvent(FoundationHomeEvent.OnOpenDesignCatalogClick)
+
+            assertEquals(FoundationHomeEffect.NavigateToDesignCatalog, awaitItem())
+            expectNoEvents()
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
     fun messageEventEmitsTransientMessage() = runTest {
         val viewModel = FoundationHomeViewModel()
 
