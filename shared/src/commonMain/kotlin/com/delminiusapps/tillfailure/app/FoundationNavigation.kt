@@ -69,7 +69,11 @@ internal fun FoundationNavigation() {
             entryProvider = entryProvider {
                 entry<FoundationHome> {
                     FoundationHomeRoute(
-                        onNavigateToDetails = { backStack.add(FoundationDetails) },
+                        onNavigateToDetails = {
+                            if (backStack.lastOrNull() != FoundationDetails) {
+                                backStack.add(FoundationDetails)
+                            }
+                        },
                         onShowMessage = snackbarHostState::showSnackbar,
                     )
                 }

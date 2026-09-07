@@ -7,6 +7,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.launch
 import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
@@ -23,7 +24,9 @@ fun FoundationHomeRoute(
             viewModel.effect.collect { effect ->
                 when (effect) {
                     FoundationHomeEffect.NavigateToDetails -> onNavigateToDetails()
-                    is FoundationHomeEffect.ShowMessage -> onShowMessage(effect.message)
+                    is FoundationHomeEffect.ShowMessage -> launch {
+                        onShowMessage(effect.message)
+                    }
                 }
             }
         }
