@@ -4,6 +4,8 @@ All images are local Android/iOS simulator captures of the temporary technical f
 
 | File | Evidence |
 |---|---|
+| `android-light-system-bars.png` | Rebuilt Android APK under light system appearance; light status-bar and gesture-navigation controls remain legible over the fixed dark app theme. |
+| `android-dark-system-bars.png` | Rebuilt Android APK under dark system appearance; light status-bar and gesture-navigation controls remain legible over the fixed dark app theme. |
 | `android-home-final.png` | Final rebuilt Android APK cold-launched to Foundation Home. |
 | `android-details-final.png` | Reopened Details showing ViewModel `#2` and `Previously released: 1`. |
 | `android-one-shot-effect.png` | Snackbar produced by the Home one-shot MVI effect. |
@@ -14,6 +16,8 @@ All images are local Android/iOS simulator captures of the temporary technical f
 | `ios-resumed.png` | iOS app returned after a Settings background/foreground transition. |
 
 Screenshots support runtime observations; they do not substitute for automated assertions or prove process-death restoration.
+
+The light/dark system-bar captures were produced by Codex on 2026-09-08 using the `Pixel_4_API_34` emulator after applying the PR #1 system-bar review fix. They contain only the technical foundation UI and emulator chrome.
 
 ## User-attributed iOS verification
 

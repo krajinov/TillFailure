@@ -2,23 +2,26 @@
 
 Date: **2026-09-01**
 
-Branch: **`foundation/milestone-1`** (local only)
+Review follow-up: **2026-09-08**
+
+Branch: **`foundation/milestone-1`** (PR #1)
 
 Baseline commit: **`fdf897a49fbbacc37e6e2aa8e4e26ca1658db57d`**
 
-Result: **implementation complete; interactive iOS navigation/scoping manually verified by the user**
+Result: **implementation complete; Android system-bar review fix verified by Codex; interactive iOS navigation/scoping manually verified by the user**
 
 ## Scope and safeguards
 
 Milestone 1 replaces the generated demo with a small technical `Foundation Home -> Foundation Details -> Back` flow. It proves the client foundation without introducing a product role selector, authentication bypass, Firebase, persistence, backend code, production features, or deployments.
 
-The initial worktree already contained a modified README and untracked planning documents. They were preserved and updated in place. No `AGENTS.md` or additional repository rules were present. A local `foundation/milestone-1` branch was created because that name did not already exist; nothing was committed, pushed, deployed, or submitted as a pull request.
+The initial worktree already contained a modified README and untracked planning documents. They were preserved and updated in place. No `AGENTS.md` or additional repository rules were present. A local `foundation/milestone-1` branch was created because that name did not already exist. That initial pass did not commit, push, deploy, or submit a pull request; the branch was subsequently committed and opened as PR #1.
 
 The installed `compose-skill` was used. The reviewed revision was `982c240e47718b3b0525c5bbe85bf19ff0bb7bec` (2026-04-06). The complete `SKILL.md`, mandatory `references/mvi.md`, and routed navigation, Navigation 3 DI, Koin, Gradle/build, testing, architecture, accessibility, and iOS interop references were read. The resulting code follows its Route/Screen, immutable MVI, lifecycle collection, destination ViewModel scope, DI bootstrap, previewability, and testing boundaries.
 
 ## Implemented foundation
 
 - `androidApp` remains the Android application. `TillFailureApplication` initializes Koin once at process startup; `MainActivity` remains the Compose entry point and depends on `shared`.
+- `MainActivity` keeps edge-to-edge enabled and explicitly applies `SystemBarStyle.dark(Color.TRANSPARENT)` to both system bars, matching the fixed dark Compose theme and keeping light system icons legible regardless of device appearance.
 - `iosApp` remains a native Xcode/SwiftUI application. Its Swift `App` initializes Koin before hosting `MainViewController` from the shared framework.
 - `shared` remains one KMP library using `com.android.kotlin.multiplatform.library`; no `composeApp`, `sharedLogic`, `sharedUI`, or feature Gradle modules were introduced.
 - `FoundationHome` and `FoundationDetails` are typed serializable Navigation 3 keys. `rememberNavBackStack`, an explicit iOS-compatible `SavedStateConfiguration`, saveable-state decoration, and ViewModel-store decoration own the technical back stack.
@@ -102,6 +105,10 @@ Primary version/API evidence is recorded in [`../dependency-verification.md`](..
 | `adb install -r .../androidApp-debug.apk` and `am start -W .../.MainActivity` | `0`; install successful, cold launch `Status: ok`, `TotalTime: 1305 ms` on final run |
 | `xcrun simctl install ...TillFailure.app` and `simctl launch --terminate-running-process ...` | `0`; final cold launch PID `78399` |
 | final iOS Settings/background then app foreground | `0`; resumed the same TillFailure PID `78399` |
+| `./gradlew :androidApp:assembleDebug :shared:testAndroidHostTest --console=plain` after the system-bar fix | `0`; **BUILD SUCCESSFUL in 18s**, 71 actionable: 9 executed, 62 up-to-date |
+| `./gradlew :shared:testAndroidHostTest --rerun-tasks --console=plain` after the system-bar fix | `0`; **BUILD SUCCESSFUL in 6s**, all 32 actionable tasks executed |
+| Android light appearance: `cmd uimode night no`, force-stop, and `am start -W .../.MainActivity` | `0`; cold launch `Status: ok`, `TotalTime: 1367 ms` |
+| Android dark appearance: `cmd uimode night yes`, force-stop, and `am start -W .../.MainActivity` | `0`; cold launch `Status: ok`, `TotalTime: 1469 ms` |
 
 The first aggregate metadata attempt used `:shared:compileKotlinMetadata`; Gradle marked that aggregate task `SKIPPED`, although downstream Android compilation passed. The final evidence therefore calls and executes `:shared:compileCommonMainKotlinMetadata` directly.
 
@@ -137,6 +144,22 @@ The final APK installed and cold-launched on `Pixel_4_API_34`. The flow was exer
 
 Koin initialization is in `Application.onCreate`, outside composition, so recomposition does not recreate the container.
 
+#### Codex-performed PR #1 review follow-up — passed
+
+Date: **2026-09-08**
+
+Device: **`Pixel_4_API_34` emulator**, API 34, gesture navigation
+
+Codex rebuilt, installed, and manually exercised the Android application after the system-bar fix:
+
+- Under light system appearance (`Night mode: no`), the status-bar time/icons and gesture-navigation control were visibly light and readable over the dark application background.
+- Under dark system appearance (`Night mode: yes`), the same controls remained visibly light and readable.
+- In both appearances, the application background continued behind the transparent system bars while all interactive content remained within safe bounds; no overlap or inset regression was observed.
+- Triggering the snackbar and immediately opening Details rendered Details while the snackbar remained visible, confirming snackbar display did not delay navigation.
+- Three concurrent Open Details taps produced one visible Details destination; one system Back returned directly to Home.
+
+These are Codex-performed manual emulator observations, not automated UI assertions and not user-attributed verification. Sanitized light/dark captures are indexed in [`evidence/README.md`](evidence/README.md).
+
 ### iOS
 
 The actual Xcode project and scheme built, installed, and launched on the iPhone 17 Pro simulator. The shared Foundation Home rendered. Launching Settings moved the app to the background; relaunching returned the same app process and rendered the shell without a crash or an additional visible collector effect.
@@ -169,6 +192,7 @@ Navigation keys/back-stack serialization and saveable-state/ViewModel-store deco
 - The Android command-line tools emitted an SDK XML version 4 versus supported version 3 warning. Build/launch passed; align Android Studio/command-line tools separately without coupling it to this milestone.
 - Interactive iOS navigation/scoping is manually user-verified but was not independently automated by Codex.
 - There is no Xcode test target, Android device-test execution, CI run, physical-device check, signing change, or production device check.
+- The 2026-09-08 system-bar and navigation regression checks were manual Codex emulator checks; no automated Android UI test was added, and physical-device/three-button-navigation behavior remains unverified.
 - Foundation counters and navigation state are intentionally memory/back-stack scoped, not durable.
 - Existing unresolved product/security policies—offline eligibility, revoked-data handling, shared-device persistence, invitation binding, trainer provisioning, and Apple Firebase bridging—remain open and were not finalized.
 
