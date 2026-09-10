@@ -1,7 +1,7 @@
 # Offline, synchronization, concurrency, and recovery
 
 Status: **proposed policy with explicit Firebase-spike gates**
-Review date: **2026-09-01**
+Review date: **2026-09-10** (booking/catalog consistency clarification)
 
 This is the canonical document for offline access, local mutation durability, workout-download completeness, and sign-out/account isolation. Navigation, security, testing, and milestones reference this policy rather than redefining it.
 
@@ -26,6 +26,8 @@ Do not collapse these into one Firestore `syncState` field:
 ## Offline identity and membership policy
 
 Server-side Firestore/Storage Rules and Functions always authorize requests from current server data. The local policy below only decides whether the app may render previously downloaded content while disconnected; it never authorizes a server request.
+
+Global catalog online reads additionally require the active account and fixed `users/{uid}/authorizations/systemCatalog` entitlement defined in [security](firestore-security.md#global-catalog-rules-check). A cached entitlement is display data only: it cannot grant workspace access, authorize local writes, extend offline eligibility, or bypass online Rules. Already downloaded exercise content may appear only within the existing restricted workout policy; catalog refresh requires current online authorization. Workspace membership remains authoritative for workout access and synchronization.
 
 | Situation | Required behavior |
 |---|---|
@@ -153,8 +155,9 @@ If the process terminates mid-switch, the durable `SwitchingOut` marker is read 
 
 - Store authoritative start/end instants plus originating IANA `timeZoneId`, duration, and explicit pre/post buffers.
 - Expand availability in the rule’s zone/effective dates; validate daylight-saving gaps/overlaps server-side. Ambiguous local time requires an explicit resolved instant.
-- A server transaction rechecks membership, blocks, appointments and buffers at commit. The client displays `Submitting` until the trusted operation returns a committed appointment.
-- Timeout is an unknown outcome; query by idempotency key before retrying. Store the confirmed instant and original local/zone metadata because time-zone rules can change.
+- The trusted transaction uses the fixed quantum and deterministic buffered UTC bucket set from [schema](firestore-schema.md#deterministic-bucket-coverage-and-bounds). It revalidates accounts/memberships, booking window, availability/blocks and policy revision, then atomically commits locks, appointment and command receipt. A cached slot or empty appointment query grants no reservation. The client displays `Submitting` until commit is acknowledged.
+- Reschedule acquires the new lock set and releases old-only locks atomically; cancellation transitions status and releases its locks atomically. Neither operation queues as a direct mobile appointment/lock write.
+- Timeout is an unknown outcome; use the trusted caller-scoped command-receipt lookup/retry with the same key, not direct receipt reads or a new booking ID. A repeated successful command returns its original result without new locks; read current appointment state separately after later changes. Store the confirmed instant and original local/zone metadata because time-zone rules can change.
 
 ## Required acceptance scenarios
 

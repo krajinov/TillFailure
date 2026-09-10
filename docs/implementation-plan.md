@@ -1,7 +1,7 @@
 # Implementation roadmap
 
 Status: **Milestone 1 implemented for review; Milestones 2-12 remain proposals requiring explicit approval**
-Review date: **2026-09-01**
+Review date: **2026-09-10** (documentation-only Firestore planning correction)
 
 Milestones are ordered, reviewable changes. Foundation work may be horizontal; feature milestones must demonstrate an end-to-end user outcome with authorization and recovery, not just screens or repositories. “Commands” are planned verification and may require files that do not exist yet.
 
@@ -34,6 +34,7 @@ Implementation status (2026-09-01): **implemented and verified with recorded too
 - **Domain/data:** Project-owned repositories plus narrow Apple bridge contracts; Android adapter; Swift implementation and `iosMain` wrapper; stable error/cancellation types; prototypes for offline grant, manifest, mutation journal, upload registry and switch marker.
 - **Firebase/security:** Emulator-only baseline, deny-by-default rules, Node 22 Functions build, environment/project naming. Do not create/deploy resources without separate authorization.
 - **Tests/commands:** Gradle wrapper tests; native Swift/Xcode integration tests; full Android/iOS build and launch; emulator rules/backend commands after their files exist. Run the seven-case parity matrix from ADR-001/testing, including rejected writes, cancellation, pending-write wait, termination/clear, account epoch and process recovery.
+- **Architecture proof gate:** In the separately authorized Milestone 3 emulator work, prove deterministic empty-range booking contention and fixed-path catalog entitlement Rules/atomic lifecycle primitives from [testing-strategy.md](testing-strategy.md#planned-booking-contention-tests). Verify actual SDK transaction/write budgets. This planning correction executes no backend proof; complete scheduling implementation remains Milestone 10.
 - **Acceptance:** Conditional ADR-001 is accepted or replaced based on direct official-vs-GitLive API evidence; Android and actual Swift implementations satisfy the same Auth/listener/write/error/disposal contract; persistence APIs match official semantics; the chosen journal/manifest storage survives restart; emulator suite starts clean; no Swift bridge claim relies on `iosSimulatorArm64Test`.
 - **Dependencies/risks:** Swift/Kotlin bridge feasibility, exact mutation-journal storage, Firebase CLI/TypeScript, emulator gaps, shared-device cache policy. Product features 4 onward do not start until the relevant adapter/authorization gate passes.
 
@@ -42,9 +43,10 @@ Implementation status (2026-09-01): **implemented and verified with recorded too
 - **User outcome:** A user signs in/restores a session, accepts a valid invitation, completes necessary onboarding and reaches the correct client/trainer shell; expired/revoked access fails safely.
 - **Affected areas:** `auth`, `onboarding`, `app/session`, navigation, native links/push registration.
 - **Domain/data:** User/workspace/membership/profile/invitation models; session and invitation use cases; account-scoped DI/listeners.
-- **Firebase/security:** Auth; user/workspace/membership/profile rules; Admin-only internal invitation plus trainer-readable summary projection; trusted create/resend/revoke/accept; token rotation/hash/expiry/account binding/idempotency.
+- **Firebase/security:** Auth; user/workspace/membership/profile rules; fixed `users/{uid}/authorizations/systemCatalog` with trusted atomic contribution/count lifecycle; Admin-only internal invitation plus trainer-readable summary projection; trusted create/resend/revoke/accept; token rotation/hash/expiry/account binding/idempotency.
 - **Tests/commands:** Domain/MVI plus Auth/Firestore/Functions emulator tests; internal invitation denial/summary allowlist; signed-out/signed-in links; resend old-token failure; role forgery/replay/revocation; offline eligibility; restricted recovery; Android/iOS deep-link smoke.
 - **Acceptance:** No cached role authorizes a server request; online restoration verifies membership; bounded offline restoration is restricted; invitation internal fields never reach trainers; consumption is atomic/single-use; reconnect after revocation preserves unsynchronized data; sign-out/switch follows `offline-sync.md`; no sensitive token logging.
+- **Entitlement acceptance:** Pass [catalog lifecycle tests](testing-strategy.md#planned-system-catalog-authorization-tests) for multi-workspace retries, first/final contribution, workspace suspension/restoration, and account disable/deletion. Enforce bounded lifecycle fan-out from [security](firestore-security.md#system-catalog-entitlement-lifecycle); a delayed trigger/claim is insufficient. Workspace memberships remain role authority.
 - **Dependencies/risks:** Approved invitation account/email binding, trainer provisioning, offline eligibility duration/recovery-discard policy, email delivery provider. These decisions block this milestone, not Milestone 1.
 
 ## 5. Client management
@@ -62,7 +64,7 @@ Implementation status (2026-09-01): **implemented and verified with recorded too
 - **User outcome:** Trainer browses system/custom exercises and creates/version-publishes a program template.
 - **Affected areas:** `exercises`, `programs` builder/detail.
 - **Domain/data:** Exercise source/type, template draft, immutable published version, ordered workout/exercise items, meaningful publish validation.
-- **Firebase/security:** System catalog read-only; trainer custom exercise/template/version rules; publication transaction/Function only if cross-document invariant proves necessary.
+- **Firebase/security:** Global catalog is read-only for active accounts with the fixed trusted catalog entitlement, and only `published` entries are readable/queryable; trainer custom exercise/template/version rules remain workspace-scoped. Publication transaction/Function only if cross-document invariant proves necessary.
 - **Tests/commands:** Domain builder/version tests, MVI input tests, mapping and emulator permission/index tests, builder screenshot/accessibility checks.
 - **Acceptance:** Published versions cannot mutate; large content uses child docs, not unbounded arrays; custom exercises are tenant-isolated; retries do not create duplicate versions.
 - **Dependencies/risks:** Draft storage model, exercise search requirements, catalog/media ownership and licensing.
@@ -99,13 +101,13 @@ Implementation status (2026-09-01): **implemented and verified with recorded too
 
 ## 10. Scheduling
 
-- **User outcome:** Trainer publishes availability; client books/reschedules/cancels an individual appointment and sees confirmation only after server verification.
+- **User outcome:** Trainer publishes availability; client books/reschedules/cancels an individual appointment and sees confirmation only after the lock/appointment/receipt transaction commits.
 - **Affected areas:** `scheduling`, calendar UI, trusted booking gateway.
-- **Domain/data:** Availability/block rules, appointment state machine, instant/time-zone/local display, duration/buffers, idempotency.
-- **Firebase/security:** Availability/blocked rules; direct appointment writes denied; transactional Functions for booking changes; reminder index foundation.
-- **Tests/commands:** DST/buffer/range domain tests; emulator concurrent bookings/retries/auth/revocation; Android/iOS calendar/link smoke.
-- **Acceptance:** Two contenders cannot both confirm; ambiguous/invalid local times are handled; retries return original outcome; cancellation/reschedule transitions are audited and participant-only.
-- **Dependencies/risks:** Booking window/cancellation policy, recurring-rule semantics, trainer versus client booking rights, external calendars deferred.
+- **Domain/data:** Availability/block rules, appointment state machine, UTC/time-zone conversion, bounded duration/buffers, fixed slot quantum and deterministic bucket coverage defined in [schema](firestore-schema.md#deterministic-bucket-coverage-and-bounds); command receipts and stored lock ranges.
+- **Firebase/security:** Scheduling policy revision guards availability/block changes; direct appointment/lock/receipt mutations denied; trusted Functions use the [atomic acquisition/change/release protocol](firestore-security.md#booking-transaction-protocol); reminder index foundation.
+- **Tests/commands:** Complete the [planned booking contention suite](testing-strategy.md#planned-booking-contention-tests), including empty intervals, overlapping buffers, retry, reschedule/cancel races, bounds and repair; Android/iOS calendar/link smoke.
+- **Acceptance:** At most one overlapping booking confirms; ambiguous/invalid local times fail or require explicit resolution; receipt retries acquire no duplicate locks; reschedule/cancel release locks atomically; failed transactions and cleanup preserve the invariant.
+- **Dependencies/risks:** Select quantum/product durations/buffers/windows/cutoffs within the schema's validated budgets; approve outward-rounding conservatism. Milestone 3 must prove the primitive; full scheduling proof is still required here. External calendars remain deferred.
 
 ## 11. Messaging and notifications
 

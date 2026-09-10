@@ -30,12 +30,12 @@ Designed post-MVP controls stay absent or clearly unavailable through product co
 
 ## Product rules that drive architecture
 
-- Every server request requires a current server-authorized membership. A previously verified account may perform only the proposed bounded, restricted local workout recovery described in `offline-sync.md`; an offline device cannot immediately discover revocation, and a cached role/grant never authorizes backend access.
+- Workspace-scoped access requires current server account/workspace/membership authorization. Global system-catalog reads use the active account and fixed trusted entitlement defined in [firestore-security.md](firestore-security.md#global-catalog-rules-check); this grants no workspace role. A previously verified account may perform only the bounded, restricted local workout recovery proposed in [offline-sync.md](offline-sync.md); cached roles/entitlements never authorize backend access.
 - A template edit creates a new template version. It never mutates assigned snapshots or completed workout history.
 - A planned workout describes intent; a workout session and its logged sets describe what actually occurred.
 - Workout completion and other critical saved outcomes are durable records, not transient navigation/snackbar effects.
 - Private trainer notes have a separate protected document boundary.
-- A booking is not confirmed until trusted server code has checked availability transactionally.
+- A booking is confirmed only after trusted server code commits the appointment, deterministic buffered slot locks, and command receipt together, following the [booking protocol](firestore-security.md#booking-transaction-protocol).
 - Firestore cache is not a guarantee that an unseen workout is available offline. The application explicitly preloads and verifies the next assigned workout.
 - Health notes, progress data/photos, messages, tokens, and private media are sensitive. Analytics and logs contain identifiers/status codes only, never payload content.
 

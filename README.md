@@ -349,6 +349,8 @@ The implementation must enforce:
 - immutable ownership identifiers
 - protection from privilege escalation
 - server-authoritative appointment conflict checks
+- deterministic buffered UTC booking locks committed with the appointment and command receipt
+- global system-catalog reads gated by an active account and trusted fixed-path entitlement
 - validated conversation participants
 - secure account deletion
 
@@ -369,7 +371,7 @@ The UI must distinguish:
 - retrying
 - conflict detected
 
-Appointment booking is server-authoritative and must not display a successful booking until conflict checking completes.
+Appointment booking is server-authoritative and must not display success until the appointment, deterministic slot locks, and idempotency receipt commit together. The proposed contention and catalog-entitlement mechanisms are defined in [schema](docs/firestore-schema.md) and [security](docs/firestore-security.md); neither has a Firebase implementation or runtime proof yet. Cached catalog entitlement never authorizes a write or bypasses online Rules.
 
 An additional local database must not be introduced merely to duplicate Firestore offline persistence. Any additional persistence technology requires a documented architectural reason.
 

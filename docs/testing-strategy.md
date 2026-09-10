@@ -1,7 +1,7 @@
 # Testing and observability strategy
 
 Status: **Milestone 1 foundation checks implemented; later feature/Firebase strategy remains planned**
-Review date: **2026-09-01**
+Review date: **2026-09-10** (planned booking and entitlement coverage)
 
 ## Test layers
 
@@ -28,12 +28,40 @@ Minimum release scenarios:
 - Download completeness rechecks every required cached child/revision. Partial download, stale manifest, cache eviction/missing child and never-cached workout cannot start offline; optional media absence is represented separately.
 - A resumable active workout survives planned-content eviction and process death from its account-owned recovery snapshot/journal.
 - Logged-set mutation survives restart before send, while pending, and after stale-revision rejection. Conflict UI receives durable local plus server payload, records explicit resolution, and retries without duplicate session/set.
-- Concurrent booking returns one confirmed appointment; retrying the winner’s idempotency key returns the same result.
+- Concurrent overlapping first bookings with different IDs/keys share deterministic bucket documents and produce at most one confirmed appointment; retrying the winner's key returns the original result without acquiring locks again.
 - DST gaps/overlaps, duration, buffers, blocked periods, reschedule, and cancellation follow server authority.
 - Revoked client and cross-workspace trainer cannot read/write protected documents or media.
 - Client cannot read private trainer notes; nonparticipants cannot enumerate/read a conversation or attachment.
 - Sign-out/account switch freezes edits and handles pending writes/uploads before Auth change. Offline, sync failure, cleanup failure, process death, and late callbacks cannot expose or mutate the next account; explicit discard is tested as destructive.
 - Notification/deep link rechecks access before navigation and does not reveal private content in payload/error.
+
+## Planned booking contention tests
+
+These are required future proofs of the [bucket schema](firestore-schema.md#deterministic-bucket-coverage-and-bounds) and [trusted transaction protocol](firestore-security.md#booking-transaction-protocol). No Firebase Rules, Functions, or emulator implementation exists for these checks today. Milestone 3 proves the contention primitive with isolated fixtures; Milestone 10 must pass the complete scheduling suite.
+
+- Property/domain tests for every supported quantum: any positive overlap between buffered UTC intervals intersects their bucket sets; test first/last boundaries, unaligned starts/buffers rounded outward, midnight/day boundaries, and conservative rejection within a shared bucket. Different trainer/workspace namespaces are independent.
+- Run two concurrent first bookings into an empty range with different appointment IDs and idempotency keys. Assert at most one confirms, every confirmed appointment owns its full lock set, and the loser leaves no appointment/locks/receipt. Repeat with overlap caused only by pre/post buffers.
+- Retry the winning key concurrently and after timeout; one immutable receipt/appointment results, with no duplicate locks. Changed payload/kind with the same key fails. Replay after cancellation returns the original receipt without recreating locks or misrepresenting current appointment state.
+- Reschedule atomically acquires new and releases old-only buckets; retained shared buckets keep the same owner. Race it against another booking/reschedule, including disjoint and partially intersecting ranges. Rejection preserves the entire old appointment/lock set.
+- Cancellation/completion atomically changes status and releases only owned locks; race cancel/retry with new booking of released capacity. Failed/aborted transactions and exhausted retries leave no partial state and never report success before commit.
+- Validate DST gaps/ambiguous local times, resolved UTC instants, availability, blocked periods, booking window, participant account/workspace/membership, and trainer relationship. Race rule edits and first block creation against booking; `scheduleRevision` must force revalidation.
+- Reject unsupported quantum, live quantum changes, excessive durations/buffers/horizon/query size, bucket counts over 90, or complete old/new write/index budgets beyond configured limits. Check preflight rejection and revalidation after policy changes. Measure chosen SDK write accounting in Milestone 3; transaction budgets are a proposal until that proof.
+- Rules deny all mobile appointment, lock, and receipt mutations, including offline-queued attempts; availability/block mutations lacking the atomic policy revision update fail.
+- Cleanup cannot delete locks owned by a confirmed appointment, including past start/end times. Race repair against cancel/reschedule/reuse; a changed owner survives. Missing/inconsistent locks cause safe failure and an audited repair path.
+
+## Planned system catalog authorization tests
+
+Use the actual Rules read/list checks and trusted lifecycle transactions against isolated Auth/Firestore/Functions emulators, not Admin reads masquerading as client permission tests. Milestone 3 proves the fixed entitlement primitive; Milestones 4 and 6 integrate lifecycle and catalog behavior respectively.
+
+- Unauthenticated reads/lists fail; authenticated accounts with absent/inactive entitlement or count zero fail. Missing/non-active user documents and malformed entitlement count/schema fail closed.
+- An active account with active membership contribution and entitlement can read/query `published` system exercises. `draft`/`archived` point reads and unfiltered catalog queries fail.
+- Clients cannot create, edit, delete, or self-increment entitlement documents or alter protected membership contributions/role/status and workspace revisions. Client reads/writes to lifecycle receipts fail.
+- Account bootstrap has no entitlement grant. First membership activation (trainer bootstrap/invitation acceptance) grants it; final revocation removes it; removing one of multiple workspace memberships retains it.
+- Repeated/concurrent activation, revocation, restoration, and role changes preserve exact counts. Retry identical receipts, changed payloads, stale expected revisions, and old commands after an intervening restore; none may underflow, overcount, or revoke another remaining contribution.
+- Suspend/archive/delete and restore a workspace while members have other workspaces; its status and all affected contributions/entitlements change atomically. Race new membership activation against the lifecycle scan. Reject exceeding configured roster/account/transaction budgets without partial changes.
+- Disable/delete an account through the trusted workflow: account and entitlement deny catalog access in the same commit, including requests using a still-valid old ID token. Fail/retry the subsequent Auth deletion step; access stays denied. Restoration cannot grant a zero-count account access; membership cleanup preserves the tombstone/count invariant.
+- Inject lifecycle transaction failure: neither membership/source nor entitlement nor successful receipt partially commits. Missing/corrupt entitlement remains denied during repair; retries and concurrent cross-workspace updates retain correct counts.
+- A catalog entitlement grants no access to unrelated workspace data or trainer roles. Existing workspace/cross-client denial cases remain unchanged, and cached entitlement/custom claims neither authorize local writes nor bypass online Rules.
 
 ## MVI test shape
 
