@@ -1,0 +1,193 @@
+# Firebase authorization and security plan
+
+Status: **proposal; rules and resources do not yet exist**
+Review date: **2026-09-11** (assigned-program authorization correction)
+
+## Authorization model
+
+Authentication answers who the caller is; the active membership document answers what the caller may do in a workspace. Protected workspace data requires an active account, active workspace, and `workspaces/{workspaceId}/memberships/{request.auth.uid}.status == "active"`, plus the path's role/ownership checks. Global `systemExercises` instead uses the fixed account entitlement described below; it grants no workspace role or access. A locally cached role/entitlement, navigation shell, custom claim, or hidden UI is never authorization.
+
+Roles for MVP:
+
+- `trainer`: manages the single-trainer workspace, clients, programming, availability, review, and trainer-only notes.
+- `client`: accesses only their membership/profile, assigned content, own sessions/progress, their appointments, and conversations they participate in.
+- Trusted backend: uses Admin SDK only after repeating authentication, resource-specific authorization, role/ownership, input, and idempotency checks. Workspace operations require membership; global catalog operations require the account entitlement. Admin SDK bypasses Firestore rules.
+
+Membership role/status/tenant IDs and immutable owner IDs are protected by field allowlists. Role creation, role changes, ownership transfer, and revocation are trusted operations. Revocation takes effect for server requests as soon as current Rules/Functions evaluate it. An offline device cannot discover a remote revocation immediately and may render previously downloaded content under the bounded local eligibility policy in [offline-sync.md](offline-sync.md); that local grant never authorizes a server request. On reconnect, denied pending writes remain recoverable through the account-owned mutation journal rather than being silently deleted.
+
+## Firestore permission matrix
+
+`Own` means the authenticated UID matches the immutable owner/client field. `Participant` means the conversation/appointment contains the UID and the membership is active.
+
+| Path | Read | Create | Update | Delete/archive | Required validation |
+|---|---|---|---|---|---|
+| `users/{uid}` | Own | Trusted account bootstrap | Own safe fields; status/email linkage/lifecycleRevision trusted | Trusted lifecycle | Exact UID; field allowlist; bounded strings/enums |
+| `users/{uid}/authorizations/systemCatalog` | Own active account, for display only; Rules may point-read | Trusted bootstrap/lifecycle | Trusted lifecycle only | Trusted lifecycle/retention | Count/status/revision/audit entirely server-owned; no client create/update/delete |
+| `lifecycleCommands/{id}` | Trusted only | Trusted lifecycle transaction | Immutable receipt | Trusted retention | Scoped caller/target/key, request hash, committed result; no mobile access |
+| `users/{uid}/deviceTokens/{id}` | Own; trusted sender | Own | Own safe token metadata; trusted invalidation | Own/trusted | UID, platform, installation ownership; token never publicly readable |
+| `users/{uid}/notifications/{id}` | Own | Trusted fan-out | Own `readAt`/archive only | Own/trusted retention | Recipient immutable; safe destination/type payload |
+| `workspaces/{wid}` | Active member | Trusted owner creation | Trainer safe metadata; ownership/status/membershipRevision trusted | Trusted | Active account/workspace/membership; lifecycle entitlement updates atomic |
+| `.../memberships/{uid}` | Self or active trainer | Trusted bootstrap/invitation acceptance | Trusted role/status/contribution/revision; self may only safe preferences if any | Trusted lifecycle | UID/tenant/role protected; no role escalation; entitlement delta atomic |
+| `.../trainerProfiles/{uid}` | Active members | Own active trainer | Own safe fields | Trusted/archive own if allowed | Active trainer membership and matching UID |
+| `.../clientProfiles/{uid}` | Own client or active trainer | Trusted onboarding/acceptance | Own client-safe or trainer-safe field sets | Trusted | Matching client membership; trainer relationship; health-field bounds |
+| `invitations/{id}` | **Admin SDK/trusted endpoint only; no mobile read** | Trusted | Trusted create/resend/revoke/accept/expire | Trusted retention | Internal email binding and token hash/version; expiry, single-use and idempotency |
+| `workspaces/{wid}/invitationSummaries/{id}` | Active workspace trainer | Trusted projection only | Trusted projection only | Trusted retention | Allowlists masked email, role, status and timestamps; contains no token/hash/internal email key |
+| `systemExercises/{id}` | Authenticated active account with active `users/{uid}/authorizations/systemCatalog` | Admin only | Admin only | Admin only | Positive bounded membership count, `status == "published"`; archived/draft entries denied; no client writes |
+| `.../exercises/{id}` | Active member | Trainer | Trainer | Trainer archive | Immutable tenant/owner; bounded normalized fields/media refs |
+| `.../programTemplates/{id}` and every version/workout/item descendant | Active workspace trainer only; no client get/list, even for assigned sources | Trainer | Trainer drafts/metadata; published versions immutable | Trainer archive; trusted cleanup | No broad member-read match may also allow these paths; source IDs are not grants |
+| `workspaces/{wid}/assignedPrograms/{id}` and `.../plannedWorkouts/{id}` | Active workspace trainer only (discovery indexes) | Trusted assignment lifecycle | Trusted assignment lifecycle | Trusted lifecycle/retention | Not client data paths or authorization records |
+| `users/{uid}/workspaces/{wid}/assignedPrograms/{aid}` | Own active account and active client membership/workspace; safe header only. Active workspace trainer may also read | Trusted assignment lifecycle | Trusted lifecycle only | Trusted lifecycle/retention | Path-bound identity/source fields, revision, readiness and eligibility entirely server-owned; safe terminal header remains readable to its eligible owner |
+| Same assignment's `snapshots/content`, workout/item descendants, `plannedWorkouts/{id}`, `manifests/download` | Own client only through the direct assignment gate below; active workspace trainer for audit under separate checks | Trusted materializer | Snapshot immutable; planning/inventory trusted lifecycle only | Trusted lifecycle/retention | Fixed snapshot identity, matching path tuple; no mobile writes or field redaction; default deny other descendants |
+| `.../workoutSessions/{id}` | Matching client or trainer; retained history has separate ownership/retention policy | Matching client; assigned sessions require current assignment gate | Client legal business-status fields under current assignment gate; trainer review fields in disjoint allowlist | Archive by policy | Immutable participants/assignment/plan refs; derive account-owned plan path from authenticated owner and validated IDs, never source version as grant; monotonic status/revision/operation ID |
+| `.../loggedSets/{id}` | Session client/trainer | Session client with current assignment gate for assigned sessions | Session client under edit policy and current assignment gate | Client tombstone under same policy/gate | Parent ownership; position/value bounds; Rules compare base/next revision and operation ID. Budget composed session/plan/assignment checks separately from the four-read snapshot gate |
+| `.../feedback/{id}` | Session client/trainer | Trainer | Authoring trainer | Trainer archive | Visibility fixed to client; trainer/session relationship |
+| `.../progressEntries/{id}` | Matching client/trainer | Matching client | Matching client; trainer comment only if separate rule | Client archive | Immutable client; type-specific allowed fields and numeric bounds; media ownership |
+| `.../privateTrainerNotes/{id}` | Authoring active trainer only | Trainer | Authoring trainer | Authoring trainer/archive | Never client-readable; subject must be trainer’s active client |
+| `.../schedulingPolicies/{trainerId}` | Active member | Trusted setup | Trainer may advance scheduleRevision atomically with availability/block edit; all policy values trusted | Trusted; no removal while bookings exist | Validated bounded policy; quantum immutable after scheduling enablement |
+| `.../availabilityRules/{id}` | Active workspace participants as needed for booking | Trainer | Trainer | Trainer archive | Trainer owner, valid local intervals/zone/effective dates; atomic scheduleRevision advance |
+| `.../blockedPeriods/{id}` | Trainer; clients receive derived available slots, not reasons | Trainer | Trainer | Trainer archive | Valid intervals; reason not exposed to clients; atomic scheduleRevision advance |
+| `.../appointments/{id}` | Participant | Trusted booking | Trusted reschedule/cancel/completion | Trusted archive/retention | Account/workspace/membership, availability, deterministic buffered bucket locks, legal transition and receipt commit together; every direct mobile mutation denied |
+| `.../bookingSlots/{trainerId}_{utcBucket}` | Trusted only | Trusted booking transaction | Trusted appointment transaction | Trusted release/repair transaction only | Immutable tenant/trainer/bucket identity; appointment owner checked; no mobile mutations or independent expiry |
+| `.../bookingCommands/{id}` | Trusted endpoint only | Trusted appointment transaction | Immutable receipt | Trusted retention | Caller/key/request hash binding; committed original result; no mobile access |
+| `.../conversations/{id}` | Participant | Trusted or trainer-client validated create | Participant safe metadata only | Participant-specific archive/trusted | Exact permitted pair; participant IDs immutable and bounded |
+| `.../messages/{id}` | Participant | Participant | Sender within edit policy | Sender tombstone/trusted retention | Parent participation; sender UID; bounded content; owned attachments; immutable owner fields |
+
+Rules will use explicit allowed-key and affected-key checks, type/length/range validation, immutable field comparisons, and parent-document checks. They will not rely on client-supplied denormalized role fields.
+
+### Assigned-program authorization and lifecycle
+
+**Decision:** clients read materialized account-owned assignment content, never trainer source templates/versions/items. **Proof status:** path/model and lifecycle below are selected documentation decisions; actual Rules, query budgets, Functions and failure behavior require the [planned emulator suite](testing-strategy.md#planned-assigned-program-snapshot-tests), first as Milestone 3 primitives and then complete Milestone 7 integration. No Firebase implementation exists yet.
+
+#### Direct client authorization
+
+Let `A = users/{uid}/workspaces/{wid}/assignedPrograms/{aid}`, with all three IDs bound from the requested path. Header get/list requires `request.auth != null`, `request.auth.uid == uid`, an active `users/{uid}` account, active `workspaces/{wid}`, and `workspaces/{wid}/memberships/{uid}` with matching `userId`, `role == client` and `status == active`. Only client-safe lifecycle/provenance/scheduling metadata belongs in that readable header, even when terminal; no workout content or internal audit fields.
+
+For the fixed snapshot `A/snapshots/content`, its explicitly matched workout/exercise descendants, `A/plannedWorkouts/{pid}` and `A/manifests/download`, require the same checks plus a direct `get(A)` showing:
+
+- supported schema, `clientId == uid`, `workspaceId == wid`, `assignmentId == aid`, `snapshotId == content`;
+- `lifecycleState == ready`, `accessStatus == active`, and a valid Timestamp `accessExpiresAt > request.time`.
+
+There are **four distinct direct document reads** for a descendant: account, workspace, membership, assignment header (three for the header itself). The requested content's identity tuple must match the path/header and fixed snapshot; all copies are trusted-written, with no client ownership setters. Missing/malformed records fail closed. Source template/version IDs and hashes never enter the permission predicate, and Rules never query `assignedPrograms` or scan any collection. Direct checks follow the documented [Rules access-call model](https://firebase.google.com/docs/firestore/security/rules-conditions#access_other_documents); measure composed rule calls rather than assuming cache reuse removes their cost.
+
+Clients list headers only in their exact UID/workspace collection. Child queries stay inside one known assignment and constrain repeated `clientId`, `workspaceId`, `assignmentId`, `snapshotId` to those path values when required by the integrity predicates; planned queries add status/date ordering. Do not issue a multi-assignment `getAll` as if it had this single-read budget; issue separately authorized reads. No client collection-group enumeration, arbitrary recursive read grants under `users`, or template/version list/get is allowed. [Rules are not filters](https://firebase.google.com/docs/firestore/security/rules-query); a broad query must fail rather than return a redacted subset. Test get and list independently.
+
+Trainer reads have a separate predicate: active requesting account, active path workspace, matching active trainer membership, and trusted target identity consistent with that workspace. This permits retained snapshot audit but never crosses workspace boundaries; client eligibility cannot confer trainer authority. All assignment/index/snapshot/manifest writes from mobile SDKs, including a trainer SDK, are denied. Trusted handlers repeat authorization because Admin bypasses Rules.
+
+#### Trusted assignment transaction
+
+1. Authenticate the trainer, validate the client relationship, accounts, workspace and memberships, and select an exact published immutable source version in that workspace. Derive account/workspace/owner fields from those server records; reject caller-supplied mismatches. Validate source template/version ownership, publication and content hash. Copy an explicit client-safe allowlist, including required exercise text/prescriptions, never a whole source DTO or trainer notes/private media URLs.
+2. Bind a stable assignment ID to the command before entering a retriable callback. Use the existing deterministic `lifecycleCommands/{commandId}` receipt scheme (caller, target, key); include source IDs/hash, target UID/workspace, schedule, expiry, and expected revision in `requestHash`. Validate current caller authority before receipt replay. A matching receipt returns its original IDs/revision without rewriting anything; changed payload/key reuse fails, and a retry never reports current eligibility from an old success receipt.
+3. Read the receipt, authorization sources, immutable source children, any existing target/indexes and predecessor assignment before writes. Preflight and recheck finite caps for total source items, planned horizon, reads, writes and document/index bytes. Initial publication includes the **entire client-safe program snapshot**, not a partially copied source; only planned date instances use a bounded horizon. Count all snapshot workout/item docs, assignment header, planned instances, server `manifests/download`, trainer discovery indexes, receipt and any audit writes. Stay within the [schema transaction budgets](firestore-schema.md#deterministic-bucket-coverage-and-bounds) and actual SDK limits. Reject oversized programs/replacements atomically; chunked publication or lazy source reads are not an implicit fallback. Exact product caps remain open.
+4. In one transaction create the header with ready/active eligibility, all immutable snapshot descendants, initial planned-workout instances and trainer indexes, complete bounded server inventory, and immutable successful receipt. Replacement additionally marks the predecessor `accessStatus=replaced` and updates its discovery index in this same commit. New IDs never overwrite existing content. No mobile read can observe a committed active assignment whose required publication writes were only queued for later fan-out.
+5. Return success only after commit. An abort changes none of the records; timeout is an unknown outcome resolved by authorized receipt lookup/retry with the **same** key. A process crash before commit leaves no publication; after commit, retry returns the receipt. External notification delivery runs from committed state and cannot determine eligibility. Transactions obey [read-before-write and retry semantics](https://firebase.google.com/docs/firestore/manage-data/transactions#updating_data_with_transactions).
+
+#### Updates, denial, restoration and cleanup
+
+- **Source edits/archive:** publishing v4 or archiving a template does not mutate or implicitly revoke an assigned v3 copy. The original source remains trainer-only. Client content changes/customization or transfer to another client require a new assignment/snapshot, preserving old source metadata and history; no in-place snapshot edits.
+- **Schedule/horizon:** trusted revision-checked transactions update only planning records, affected trainer indexes, header revision and server inventory together. App local manifests then require revalidation. Exceeding caps rejects the whole change; no partially extended horizon is marked complete.
+- **Cancel/revoke/archive/replace:** set terminal `accessStatus` (`cancelled`, `revoked`, `archived`, `replaced`) with header revision, discovery index and receipt atomically. The parent denies all content descendants immediately even if their older status/inventory remains physically present; client queries are denied, not filtered. Completion archives the assignment under this safe default; completed session history is a separately authorized record, not a route back to snapshot/source content. Trainer retention rights and exact retention periods remain policy-gated.
+- **Expiry:** server `request.time` denies content at `accessExpiresAt` without waiting for TTL or cleanup. An expired/terminal assignment cannot be reactivated in place; extension after expiry/restoration after revocation requires a new trusted assignment/snapshot. Fresh source authorization and materialization are required, not an old receipt replay.
+- **Account/membership/workspace loss:** current direct account/workspace/membership checks deny every assignment without per-assignment fan-out. Account deletion first uses the existing account-status denial before Auth removal. Restoring a suspended account/workspace/membership can restore only still-active, unexpired assignments after current authorization is reverified; it never overrides a terminal assignment or grants offline eligibility by itself. Account deletion cannot be undone mid-cleanup by flipping an account flag.
+- **Interrupted cleanup/repair:** keep terminal parent tombstones and replay protection while a trusted resumable worker deletes authorized snapshot children, planned instances, inventories and trainer indexes under retention policy. Parent deletion is not recursive. Persist a server-only cleanup cursor separately from immutable success receipts; retry checks parent identity/revision/status, and workers never touch new replacement IDs. No TTL deletes a live authorization parent. If repair/import detects incomplete or inconsistent published content, transactionally change `lifecycleState` to `blocked` with revision/index/receipt before cleanup; never backfill readable active content. Restore service through a fresh validated assignment, not reopening an incomplete/terminal parent. Operational backups must retain denial/tombstone state before content is served; restoring older active headers over later revocations is forbidden.
+- **Cached data:** online denial cannot erase content already downloaded to a disconnected device. Follow [offline-sync.md](offline-sync.md#assigned-snapshot-eligibility): known assignment loss/expiry locks that snapshot and recovery partition; unknown remote loss is bounded by approved offline eligibility and the last verified assignment expiry. No cached header/source identifier authorizes a server read or another account.
+
+### Global catalog Rules check
+
+For both single reads and queries, require `request.auth != null`, `users/{request.auth.uid}.accountStatus == "active"`, and `users/{request.auth.uid}/authorizations/systemCatalog.status == "active"` with a positive integer count within the deployed bound and supported schema version. Rules and trusted backend use the same versioned membership-cap configuration, never a client-supplied limit. The exercise must have `status == "published"`; `draft` and `archived` are distinct denied statuses, not display-only flags. Queries must constrain published status because Rules do not filter results. Missing account/entitlement or invalid data denies access. These two fixed document reads fit the [Rules document-access model](https://firebase.google.com/docs/firestore/security/rules-conditions#access_other_documents); the planned tests must confirm the actual access-call budget.
+
+Rules cannot search a membership collection group for any active membership. A trusted backend may perform bounded membership queries for lifecycle maintenance, but Rules use only the fixed UID paths above. Custom claims, client-maintained flags, cached roles, and UI visibility are not substitutes. Catalog entitlement never satisfies a workspace membership or role check.
+
+### System catalog entitlement lifecycle
+
+The source/entitlement/receipt shapes are owned by [firestore-schema.md](firestore-schema.md#identity-and-tenancy). Bootstrap an account and its inactive, zero-count entitlement together before adding memberships. All lifecycle entry points, including administrative tooling, use the following transaction protocol; an asynchronous membership trigger is not the authorization mechanism.
+
+1. Verify caller authority. Read the deterministic lifecycle receipt, current account/workspace, affected membership(s), and entitlement(s) before any writes. A matching successful receipt returns the recorded result before checking a new transition's expected source revision; changed payload with the same key or a stale new command fails. A revoked caller is not reauthorized by an old receipt.
+2. For each affected membership compute `delta = newCatalogContributionActive - oldCatalogContributionActive` (booleans mapped to 1/0), from current membership and workspace statuses. Apply it once to the UID's current count, rejecting underflow, overflow, malformed or inconsistent state. Never blindly increment/decrement on event delivery. Concurrent changes in different workspaces read/write the same UID entitlement and therefore retry on conflict. All membership transitions write the entitlement revision even when delta is zero.
+3. Atomically write membership status/contribution/revision, the count and derived entitlement status, workspace `membershipRevision`, and the successful command receipt. First activation (including trainer bootstrap/invitation acceptance) grants catalog access; final contribution removal revokes it; removing one of several leaves it active. Restoration adds the contribution exactly once. A role-only change does not add a membership. A failed transaction changes none of these records.
+4. Workspace suspend/archive/delete or restore reads the bounded set of memberships with `status == "active"`, adjusts every affected contribution/entitlement, and changes workspace status in **one transaction**. All membership writers also advance the same workspace revision, preventing an activation from escaping a concurrent lifecycle scan. Suspended-workspace memberships can keep their relationship status for restoration, but contribute zero. Do not report deactivation complete after merely queuing fan-out.
+5. Account disable/deletion first atomically sets `users/{uid}.accountStatus` non-active and entitlement status inactive; retain the count until membership cleanup updates it transactionally. Commit this Firestore denial before disabling/deleting Firebase Auth, whose API cannot participate in the Firestore transaction. Old ID tokens then cannot read the catalog. Keep tombstones through cleanup; retry failed Auth/retention steps without reopening access. Restoration enables Auth first, then transactionally activates the Firestore account and recalculates entitlement status from the maintained count. Raw Auth-console changes alone are not this lifecycle and must not be advertised as immediate Rules revocation.
+
+**Bounded lifecycle contract:** trusted configuration must supply finite `maxMembershipsPerAccount` and `maxMembershipsPerWorkspace`, covering memberships whose relationship status is active even in a suspended workspace. Both activation and restoration enforce these limits; count remains within the account bound. Concurrent per-account membership scans serialize through its entitlement revision; workspace scans serialize through `membershipRevision`. Configure caps so a full workspace transition's `2 * affectedMemberships + 2 + A` writes (membership/entitlement pairs, workspace, receipt, optional audit writes `A`) and all document/index bytes fit the [schema transaction budgets](firestore-schema.md#deterministic-bucket-coverage-and-bounds). Bound account reconciliation reads as well. Preflight limits and recheck inside the transaction; never truncate a scan or split the authorization change into eventual batches. Cap values remain product/operational decisions, but an uncapped deployment is unsupported.
+
+Missing/malformed entitlements deny catalog access and block related lifecycle mutations pending audited, bounded reconciliation of current sources. A detected source/count mismatch requires trusted deactivation of the entitlement before repair; Rules cannot discover a plausible but stale count by searching memberships. Repair must serialize with those same lifecycle records. No independent TTL deletes entitlements or contributing memberships. Milestone 3 must prove these invariants before the lifecycle is implemented in Milestone 4. If required workspace size exceeds the atomic budget or a lifecycle path cannot maintain it, this proposal is blocked: explicitly approve another catalog policy/layout before enabling that path, rather than claiming arbitrary Rules lookup or delayed projection is equivalent.
+
+## Storage permission matrix
+
+Metadata must include immutable `workspaceId`, `ownerUid`, asset purpose, content type, byte size, and related document ID. Upload paths use random asset IDs, not user-provided filenames. Rules validate size and a narrow MIME allowlist; post-upload processing may verify actual content before publication.
+
+| Storage path | Read | Write/delete | Notes |
+|---|---|---|---|
+| `avatars/{uid}/{assetId}` | Authenticated users allowed to view the profile | Owner; trusted lifecycle | Public-to-members profile asset only; no sensitive metadata |
+| `workspaces/{wid}/clients/{clientUid}/progress/{entryId}/{assetId}` | Matching client and active trainer | Matching client; trusted cleanup | Private health/progress media; never use permanent public URLs |
+| `workspaces/{wid}/exercises/{exerciseId}/{assetId}` | Active workspace members | Trainer | Custom exercise media; system catalog uses separately managed assets |
+| `workspaces/{wid}/conversations/{conversationId}/{messageId}/{assetId}` | Conversation participant | Uploading participant; trusted cleanup | Validate conversation participation and message association |
+| `workspaces/{wid}/exports/{uid}/{assetId}` | Requesting user only | Trusted server only | Time-limited export/download workflow if implemented |
+
+## Trusted server operations
+
+Cloud Functions are justified for operations that require secrets, cross-document invariants, transactions, fan-out, or privileged cleanup:
+
+1. Create/resend/revoke/accept invitation: own the Admin-only internal record and trainer-readable summary projection; rotate/consume token hash, verify expiry and authenticated email/account binding, and atomically create membership/profile and maintain catalog entitlement on acceptance. The display projection contains no secret fields.
+2. Activate/change/revoke/restore membership, transfer ownership, or change workspace lifecycle: enforce role/last-owner and bounded-roster constraints; atomically maintain catalog entitlement as specified above.
+3. Book/reschedule/cancel appointment: execute the deterministic lock and receipt protocol below; `confirmed` is returned only after commit.
+4. Send reminders/notification fan-out: read current authorization, minimize push payload, handle invalid tokens, and make retries idempotent.
+5. Account export/deletion: reauthenticate where required; disable/deletion follows atomic account/entitlement denial before Auth and retention cleanup; membership cleanup maintains count deltas. Apply retention/pseudonymization policy and audit completion.
+6. Derived summaries that clients cannot safely update atomically, such as accepted-message conversation summaries.
+7. Assign/replace/revoke/archive a program or change its schedule/horizon: own the account-scoped snapshot, planned instances, inventory and trainer indexes using the atomic lifecycle above. Direct trainer/client assignment writes are not ordinary CRUD.
+
+Ordinary authorized CRUD—profiles, exercise drafts, program drafts, set logs, progress values, and messages—uses Firestore/Storage directly behind repositories. It is not routed through Functions without a demonstrated invariant.
+
+### Booking transaction protocol
+
+The [schema](firestore-schema.md#deterministic-bucket-coverage-and-bounds) owns UTC bucket calculation, policy bounds, lock paths, appointment range descriptors, and receipt IDs. Availability is advisory until this protocol commits. An appointment-range query, even inside a transaction, is not the shared contention mechanism.
+
+1. Authenticate the request and preflight bounded input, explicit local-time/DST resolution, duration/buffers, and total transaction cost. Generate a stable appointment ID outside the retriable callback. Inside the transaction read the caller and participants' accounts, active workspace/memberships, trainer identity/relationship, policy, and deterministic `bookingCommands` receipt. Recheck authorization, ownership, and authoritative bounds; for matching successful retries return the original result without touching locks. Reject key reuse with a different command/payload. A receipt records the original outcome, not the appointment's current status after later cancellation/rescheduling; fetch current authorized state for display.
+2. For booking/reschedule, read all required availability rules and blocked periods and validate booking window, rule expansion, and buffered interval. For changes, read the existing appointment/revision and stored old lock range and enforce expected revision and legal transition. Cancellation checks its authorization/cutoff policy without requiring the old interval to remain bookable. Every published availability/block mutation must atomically advance the trainer's `scheduleRevision`; Rules require its next revision via `getAfter`, including for new or deleted records. This makes concurrent policy changes invalidate a booking's read set even if its earlier range query was empty.
+3. Point-read **every** required deterministic bucket, including missing documents, before writing. For reschedule read the union of old and new sets; for cancellation read the old set. Reject any new bucket owned by another active appointment. Treat unexplained occupied/missing old locks as inconsistency requiring repair, never silently steal them. A reschedule may retain buckets already owned by the same appointment.
+4. In that same transaction acquire/write new locks, retain shared locks, release only old-only locks on reschedule (all old locks on cancellation), write the appointment and new revision, and create the immutable successful receipt. Cancel transitions status and releases locks atomically. Completion or any other transition releasing capacity uses the same rule. No direct mobile appointment/lock create, update, delete, or queued offline write is allowed.
+5. Return `confirmed` only after a successful booking commit. Failed/aborted transactions leave no newly confirmed appointment or orphaned locks; a failed reschedule/cancel leaves the prior appointment and locks intact. Retriable callbacks have no external side effects; reminders/fan-out start from committed state. A timeout is unknown until the authorized receipt lookup/retry resolves it. Old successful keys never reacquire locks, including after later cancellation.
+
+Overlapping requests share bucket documents regardless of different appointment IDs or idempotency keys, including the first bookings in an empty range. Transaction conflict/retry makes a later contender observe occupied buckets and fail; **at most** one overlapping booking confirms (both may fail for other reasons). Disjoint trainers/workspaces use distinct lock namespaces.
+
+Cleanup/repair must read the current appointment and affected locks in one transaction with owner/revision checks. Never independently expire/delete locks of a `confirmed` appointment, infer release merely from elapsed wall time, or use TTL to unlock. Terminal appointments may release leftover locks only after validating current ownership; a concurrently reused bucket must survive. Missing locks on confirmed appointments stop booking/trigger audited repair; a repair encountering another owner reports a conflict rather than overwriting. This protocol relies on [Firestore atomic writes, read-before-write ordering, and retried transactions](https://firebase.google.com/docs/firestore/manage-data/transactions#updating_data_with_transactions), but its TillFailure implementation remains unproven.
+
+## Server-side authorization checklist
+
+Every callable/HTTP/task handler must:
+
+- verify Firebase ID token/App Check policy as applicable; never trust UID/body claims alone;
+- load current account and resource-specific authority: active workspace/membership/ownership for workspace operations, fixed entitlement for any global catalog endpoint;
+- check role and permitted state transition;
+- validate immutable fields, bounds, tenant IDs, time zone, and referenced resources;
+- use transaction/precondition and an idempotency record for retried commands;
+- return the existing result for a repeated idempotency key;
+- emit a privacy-safe audit event and structured diagnostic correlation ID;
+- avoid logging credentials, ID tokens, invitation tokens, device tokens, health notes, messages, trainer notes, or private media links.
+
+## Revocation, account switching, and cached data
+
+- Membership listeners drive online UI freshness but do not replace server enforcement. Offline staleness is unavoidable; the proposed seven-day maximum eligibility and restricted-recovery behavior are proposals, not approved authorization semantics.
+- Sign-out/account switching follows the freeze → inspect/synchronize-or-discard → cancel listeners/jobs → terminate/cleanup → dispose scopes protocol in `offline-sync.md`. A new Koin scope does not isolate persistent Firebase caches, and `terminate` does not cancel pending writes. Another account is not initialized while cleanup is incomplete.
+- `clearPersistence` removes cached documents and pending writes but is not secure erasure. It is called only after acknowledgement or explicit discard and after Firestore termination. App-owned journal/manifests/uploads require their own account-scoped cleanup policy.
+- Known revocation closes protected navigation but preserves unsynchronized account-owned workout data in locked recovery. Retention/export/discard requires product/privacy approval; it is not an automatic deletion side effect.
+- Custom claims, if later used for coarse routing, are hints only because propagation is delayed. Membership documents remain authoritative for workspace roles/data; the atomically maintained account entitlement is authoritative only for global catalog reads alongside active account status.
+
+## Rule and abuse tests required before release
+
+- Cross-workspace reads/writes and forged tenant/owner fields fail.
+- Client cannot promote itself, create membership, or edit trainer-only fields.
+- Revoked membership loses server read/write access even with stale local UI state; queued stale-revision/revoked writes fail Rules.
+- Offline unknown revocation can use only the bounded restricted shell; reconnect locks access and preserves rejected local journal data.
+- Direct reads of internal invitation records and client writes to invitation summaries fail; trusted resend/revoke/accept keeps summary status consistent and old tokens unusable.
+- Client cannot read private trainer notes, another client’s progress/media, or nonparticipant conversations.
+- Trainer cannot access another workspace or unrelated system administration.
+- Message sender and conversation participants cannot be forged.
+- Appointment/slot/receipt direct writes fail; overlapping first bookings with distinct keys contend on shared buckets and produce at most one confirmation; retry/reschedule/cancel/repair preserve the lock invariant.
+- Catalog read/list and atomic entitlement lifecycle denial/allowance tests are specified in [testing-strategy.md](testing-strategy.md#planned-system-catalog-authorization-tests); stale claims/cache never grant access.
+- Assignment snapshot ownership, source-enumeration denial, tampering, atomic publication/replay and interrupted cleanup tests are specified in [testing-strategy.md](testing-strategy.md#planned-assigned-program-snapshot-tests).
+- Storage rejects wrong path ownership, oversized/disallowed content, and mismatched metadata.
+- Admin-backed Functions deny unauthorized callers independently of Firestore rules.
+
+## Unresolved policy inputs
+
+Retention durations, regional/privacy obligations, trainer access after client revocation, message edit/delete windows, progress-photo launch scope, audit-log retention, App Check rollout, offline eligibility duration, revoked-data recovery/export/discard, and shared-device persistence requirements need legal/product decisions before rules are finalized.
