@@ -238,6 +238,7 @@ Cloud Functions are reserved for operations requiring trusted execution or trans
 
 - invitation handling
 - role and membership changes
+- trusted assigned-program snapshot materialization and lifecycle
 - double-booking prevention
 - scheduled reminders
 - push-notification fan-out
@@ -351,6 +352,7 @@ The implementation must enforce:
 - server-authoritative appointment conflict checks
 - deterministic buffered UTC booking locks committed with the appointment and command receipt
 - global system-catalog reads gated by an active account and trusted fixed-path entitlement
+- client program reads confined to account-owned assigned snapshots, never trainer templates/versions/items
 - validated conversation participants
 - secure account deletion
 
@@ -372,6 +374,8 @@ The UI must distinguish:
 - conflict detected
 
 Appointment booking is server-authoritative and must not display success until the appointment, deterministic slot locks, and idempotency receipt commit together. The proposed contention and catalog-entitlement mechanisms are defined in [schema](docs/firestore-schema.md) and [security](docs/firestore-security.md); neither has a Firebase implementation or runtime proof yet. Cached catalog entitlement never authorizes a write or bypasses online Rules.
+
+Assigned programs use the selected `users/{uid}/workspaces/{wid}/assignedPrograms/{aid}/snapshots/content` model: trusted publication atomically creates the immutable client-safe copy, planning records, inventory, trainer indexes and receipt. Client Rules derive account/workspace/membership and parent eligibility directly from that path; source template/version IDs are provenance only. New prescriptions/reassignment require a new copy, and revocation/archive/cancellation/expiry denies old content. Offline cached copies follow [bounded eligibility and locked recovery](docs/offline-sync.md#assigned-snapshot-eligibility), not an evergreen grant. This is a [documentation decision awaiting emulator proof](docs/testing-strategy.md#planned-assigned-program-snapshot-tests), not implemented Firebase behavior.
 
 An additional local database must not be introduced merely to duplicate Firestore offline persistence. Any additional persistence technology requires a documented architectural reason.
 

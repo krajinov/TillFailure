@@ -1,7 +1,7 @@
 # Offline, synchronization, concurrency, and recovery
 
 Status: **proposed policy with explicit Firebase-spike gates**
-Review date: **2026-09-10** (booking/catalog consistency clarification)
+Review date: **2026-09-11** (assigned-snapshot eligibility and completeness)
 
 This is the canonical document for offline access, local mutation durability, workout-download completeness, and sign-out/account isolation. Navigation, security, testing, and milestones reference this policy rather than redefining it.
 
@@ -38,11 +38,21 @@ Global catalog online reads additionally require the active account and fixed `u
 | Known revoked membership | Do not open protected content. Enter a restricted recovery state for unsynchronized data; do not silently delete it. |
 | Revocation that has not reached an offline device | The device cannot discover it immediately and may continue restricted offline access until reconnect or offline eligibility expires. This limitation must be disclosed in the security model. Server requests are still denied by current Rules/Functions as soon as they reach the backend. |
 | Expired offline eligibility | Lock protected content pending online revalidation. Preserve unsynchronized recovery records; do not interpret expiry as proof of revocation or permission to erase them. |
-| Reconnect | Revalidate membership promptly. Active membership restores the normal shell and permits synchronization. Revoked/changed membership closes protected navigation; backend rejection is expected and the mutation journal preserves rejected workout edits for the restricted recovery flow. |
+| Reconnect | Revalidate account/workspace/membership and the specific assignment before reopening its content or synchronizing assigned-workout edits. Active membership alone cannot override assignment loss/expiry. Denial closes protected navigation; the journal preserves rejected edits for restricted recovery. |
 
 **Proposed MVP bound:** allow restricted offline workout access for at most seven days after the last successful server membership verification. Seven days is a recommendation, not an approved product rule; product/security may choose a shorter duration. The `OfflineAccessGrant` should contain UID, workspace ID, role, membership revision/status, server-verified timestamp, proposed expiry, and local schema version in OS-protected app storage. It is a local eligibility record, not a credential or membership authority.
 
 When access is lost with unsynchronized workout data, the simplest safe MVP behavior is a locked recovery screen that shows non-sensitive counts/timestamps and offers: reconnect/retry under the same account, retain until policy resolution, or explicit destructive discard after warning. Export and support recovery are product/privacy decisions. A different account must never receive the payload.
+
+### Assigned-snapshot eligibility
+
+The selected [account-owned snapshot](firestore-schema.md#assigned-program-snapshot-identity) is the only client program-download source. Clients never fetch original trainer templates/versions/workout items, even when those IDs appear in audit metadata. The trusted assignment operation is online-only; a pending request or partially cached publication is not an assigned/downloaded workout. All required exercise text/prescriptions are copied into the snapshot; optional media remains independently authorized and never implies a template read grant.
+
+Alongside the account `OfflineAccessGrant`, retain the server-verified assignment identity/revision, ready/active status, snapshot hash, and `accessExpiresAt`. Restricted offline start/resume requires both grants, the same UID/workspace, no locally known revocation/cancellation/replacement/archive, and current completeness (or the active-session recovery snapshot). Local eligibility ends at the **earlier** of the approved account offline bound and last verified assignment expiry. Offline clock-integrity handling is spike-gated: rollback or inability to establish eligibility locks content pending online verification, rather than extending it.
+
+Remote revocation may remain unknown while disconnected; this is not immediate remote erasure. Once known, or once local eligibility expires, lock snapshot viewing and new/resumed workout content, invalidate its local download manifest, and retain unsynchronized journal/recovery data only in Locked Recovery. Reconnect fetches current account/workspace/membership and assignment; old source IDs, success receipts and cached headers cannot restore access. Replacement needs a new download under the new assignment ID; no automatic migration of pending edits from the old program. Authorized completed-session history remains separate from program-content eligibility.
+
+Account deletion and switching apply to snapshot cache entries, local manifests, recovery snapshots and upload references as well as other account data. Follow the persisted switch marker/UID-epoch protocol below; cleanup failure blocks the next account. Revalidating a restored account does not reactivate a terminal assignment. Expired/revoked content is not made readable merely because its bytes survive cleanup or retention.
 
 ## Operation classification and write primitive
 
@@ -56,6 +66,7 @@ When access is lost with unsynchronized workout data, the simplest safe MVP beha
 | Text message | Offline, queued | Append-only ordinary write with stable message ID; server timestamp reconciles ordering |
 | Media upload | Transfer requires connectivity | App-owned upload record/file plus native Storage task; attach asset ID only after server acceptance |
 | Template publish | Online | Online transaction or trusted operation if immutable version creation/current pointer cannot be safely enforced as a bounded batch |
+| Assign/replace/revoke/archive program; update planned horizon/schedule | Online/server-authoritative | Trusted assignment transaction creates/changes header, client snapshot/plans, server inventory, trainer indexes and receipt; no queued mobile lifecycle writes |
 | Book/reschedule/cancel, invitation acceptance, membership/role change, deletion | Online/server-authoritative | Purpose-specific trusted Function with transaction and idempotency key |
 
 Firestore mobile transactions are not the offline mutation mechanism. Batched writes may queue offline but do not solve stale-revision recovery by themselves. The Firebase spike must prove the exact callback and metadata behavior used by each adapter.
@@ -67,19 +78,21 @@ Firestore mobile transactions are not the offline mutation mechanism. Batched wr
 The download manifest is an **app-owned durable record scoped by Firebase UID + workspace + planned-workout ID**, not a Firestore business document and not a boolean in screen state. Its exact storage technology is spike-gated. It contains:
 
 - manifest schema version, account/workspace/planned-workout IDs;
-- assignment ID/revision and immutable template/program version ID;
-- every required Firestore document path/ID plus expected schema/revision or content hash: planned-workout header, workout snapshot, exercise items, prescriptions, and any required exercise definitions;
+- assignment ID/revision, fixed snapshot ID/hash, last server-verified access status/expiry, and source template/version IDs/hash as provenance only;
+- every required account-owned document path/ID plus expected schema/revision or content hash: assignment header, server inventory, planned-workout header, snapshot, workout/exercise items and copied prescriptions/definitions; never original trainer source paths;
 - download attempt/completion timestamps and the last successful server membership verification reference;
 - optional asset descriptors and per-asset availability; videos/images are optional offline unless product marks a specific asset required;
 - no Firebase SDK object, token, or private URL.
 
 ### Establishing and rechecking completeness
 
-1. While online, fetch each required document from the server, validate referential/schema integrity, then read it through the native cache path and compare the expected revision/hash.
+The server `users/{uid}/workspaces/{wid}/assignedPrograms/{aid}/manifests/download` is a bounded publication inventory created with the assignment, not this local manifest or proof of cached completeness. Validate its UID/workspace/assignment, header revision, snapshot hash and allowlisted relative descendant paths; reject traversal, different account/assignment, source-template paths and malformed references. Derive absolute paths under that exact assignment, never blindly follow a stored arbitrary path.
+
+1. While online, verify assignment eligibility and fetch each required document from the server using the inventory. Validate identity/schema/hash, then read it through the native cache path and compare. Re-read the header after the download: if revision/status/expiry changed, refuse completion and revalidate. This detects schedule/inventory changes racing the multi-read download without claiming permanent authorization.
 2. Persist the manifest only after all required items pass. A saved `complete=true` is never sufficient evidence on its own.
 3. Immediately before offline startup, issue cache-only point reads for every required item and compare identity/revision/hash. A query result alone may be incomplete, and Firestore can evict older cached documents when its configured threshold is exceeded.
 4. If any item is missing, mismatched, partially downloaded, or unparsable, mark the manifest incomplete and refuse a new offline start with a precise “download required” state. When online, repair only missing/stale items and revalidate the whole required set.
-5. Invalidate on assignment/version change, required-item revision/schema change, account/workspace change, app migration requiring a new snapshot shape, explicit cache cleanup, failed integrity check, or local eviction discovered by a cache probe. An age limit may prompt refresh but must not by itself claim that files are gone.
+5. Invalidate on assignment replacement, schedule/inventory revision change, known access loss/expiry, required-item revision/schema change, account/workspace change, app migration, explicit cache cleanup, integrity failure or discovered eviction. Publishing a later source version alone does not invalidate an immutable assigned copy. An age limit may prompt refresh but must not by itself claim that files are gone.
 
 A **downloaded workout** is a planned workout whose required cache probe passes. A **resumable active session** additionally has an app-owned recovery snapshot/journal containing the exact prescription and local edits needed to resume even if planned-workout cache entries are later evicted. **Optional offline media** is independently available and never determines resumability unless product explicitly makes it required.
 
@@ -166,6 +179,7 @@ If the process terminates mid-switch, the durable `SwitchingOut` marker is read 
 - Reconnect after server-side revocation that the device could not know offline; backend writes fail, navigation closes, and journal payloads remain in restricted recovery.
 - Known revocation/expired eligibility with unsynchronized workout data never silently deletes or exposes the payload to another account.
 - Partial download, stale manifest, missing/evicted child document, schema/revision mismatch, and offline restart all fail completeness safely; repair succeeds only after full revalidation.
+- Assignment publication/download interruption never produces a complete local manifest; retries revalidate the inventory and all required copies. Known assignment cancellation/revocation/archive/replacement or expiry locks cached content despite active membership; reconnect cannot follow source IDs or migrate rejected edits into a replacement assignment.
 - Logged-set write survives restart before send, while pending, and after stale-revision rejection; both local/server values reach conflict UI and explicit resolution retries correctly.
 - Sign-out/switch while online and clean, while offline with pending work, after sync failure, after cleanup failure, and across process death follows the protocol; late callbacks cannot mutate the next account.
 - Android and Apple adapters prove matching Auth observation, cache/source metadata, write acknowledgement/rejection, `waitForPendingWrites`, termination/clear behavior, listener cancellation, and account-scope disposal before Firebase-backed features begin.

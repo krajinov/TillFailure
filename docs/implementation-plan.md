@@ -1,7 +1,7 @@
 # Implementation roadmap
 
 Status: **Milestone 1 implemented for review; Milestones 2-12 remain proposals requiring explicit approval**
-Review date: **2026-09-10** (documentation-only Firestore planning correction)
+Review date: **2026-09-11** (documentation-only assigned-snapshot correction)
 
 Milestones are ordered, reviewable changes. Foundation work may be horizontal; feature milestones must demonstrate an end-to-end user outcome with authorization and recovery, not just screens or repositories. “Commands” are planned verification and may require files that do not exist yet.
 
@@ -35,6 +35,7 @@ Implementation status (2026-09-01): **implemented and verified with recorded too
 - **Firebase/security:** Emulator-only baseline, deny-by-default rules, Node 22 Functions build, environment/project naming. Do not create/deploy resources without separate authorization.
 - **Tests/commands:** Gradle wrapper tests; native Swift/Xcode integration tests; full Android/iOS build and launch; emulator rules/backend commands after their files exist. Run the seven-case parity matrix from ADR-001/testing, including rejected writes, cancellation, pending-write wait, termination/clear, account epoch and process recovery.
 - **Architecture proof gate:** In the separately authorized Milestone 3 emulator work, prove deterministic empty-range booking contention and fixed-path catalog entitlement Rules/atomic lifecycle primitives from [testing-strategy.md](testing-strategy.md#planned-booking-contention-tests). Verify actual SDK transaction/write budgets. This planning correction executes no backend proof; complete scheduling implementation remains Milestone 10.
+- **Assignment proof gate:** Prove [account-owned snapshot authorization](testing-strategy.md#planned-assigned-program-snapshot-tests), denied client source enumeration, direct-read/query budgets and atomic bounded publication/replay primitives. This is future emulator work, not started by this documentation correction; full assignment implementation remains Milestone 7.
 - **Acceptance:** Conditional ADR-001 is accepted or replaced based on direct official-vs-GitLive API evidence; Android and actual Swift implementations satisfy the same Auth/listener/write/error/disposal contract; persistence APIs match official semantics; the chosen journal/manifest storage survives restart; emulator suite starts clean; no Swift bridge claim relies on `iosSimulatorArm64Test`.
 - **Dependencies/risks:** Swift/Kotlin bridge feasibility, exact mutation-journal storage, Firebase CLI/TypeScript, emulator gaps, shared-device cache policy. Product features 4 onward do not start until the relevant adapter/authorization gate passes.
 
@@ -64,7 +65,7 @@ Implementation status (2026-09-01): **implemented and verified with recorded too
 - **User outcome:** Trainer browses system/custom exercises and creates/version-publishes a program template.
 - **Affected areas:** `exercises`, `programs` builder/detail.
 - **Domain/data:** Exercise source/type, template draft, immutable published version, ordered workout/exercise items, meaningful publish validation.
-- **Firebase/security:** Global catalog is read-only for active accounts with the fixed trusted catalog entitlement, and only `published` entries are readable/queryable; trainer custom exercise/template/version rules remain workspace-scoped. Publication transaction/Function only if cross-document invariant proves necessary.
+- **Firebase/security:** Global catalog is read-only for active accounts with the fixed trusted catalog entitlement, and only `published` entries are readable/queryable; source templates/versions and every workout/item descendant are trainer-only within the workspace. Client assignment never grants source reads. Publication transaction/Function only if cross-document invariant proves necessary.
 - **Tests/commands:** Domain builder/version tests, MVI input tests, mapping and emulator permission/index tests, builder screenshot/accessibility checks.
 - **Acceptance:** Published versions cannot mutate; large content uses child docs, not unbounded arrays; custom exercises are tenant-isolated; retries do not create duplicate versions.
 - **Dependencies/risks:** Draft storage model, exercise search requirements, catalog/media ownership and licensing.
@@ -73,11 +74,11 @@ Implementation status (2026-09-01): **implemented and verified with recorded too
 
 - **User outcome:** Trainer assigns an exact published version; client sees planned workouts without later template edits changing them.
 - **Affected areas:** `programs`, `workout` planning, client home/workouts.
-- **Domain/data:** Assignment and planned-workout materialization, version/snapshot refs, schedule/time-zone validation, app-owned preload manifest contract.
-- **Firebase/security:** Assignment/planned-workout rules and indexes; bounded transactional materialization if needed.
-- **Tests/commands:** Version immutability, assignment authorization, retry/idempotency, query/index and offline-prefetch contract tests.
-- **Acceptance:** Assignment pins a version; planned content is deterministic; client cannot enumerate unrelated templates; partial/stale/evicted downloads fail cache-only completeness recheck and optional media remains separate.
-- **Dependencies/risks:** Materialize-on-assign versus bounded lazy generation, schedule-edit semantics, horizon size, and successful Milestone-3 manifest persistence probe.
+- **Domain/data:** Canonical `users/{uid}/workspaces/{wid}/assignedPrograms/{aid}` header, fixed immutable `snapshots/content` copy, account-owned planned instances and server inventory; trainer-only discovery indexes; source IDs/version/hash are provenance, not permission. Local cache manifest remains distinct.
+- **Firebase/security:** Trusted [assignment lifecycle](firestore-security.md#assigned-program-authorization-and-lifecycle) atomically publishes all bounded content/plans/indexes/inventory/receipt, with revisioned scheduling and parent-gated revocation. Clients never read original templates/versions/items or write lifecycle fields.
+- **Tests/commands:** Complete [snapshot authorization/lifecycle tests](testing-strategy.md#planned-assigned-program-snapshot-tests): allow/deny lists and gets, ownership/source tampering, replay/partial failure, replacement, revocation/expiry, recursive cleanup and offline completeness.
+- **Acceptance:** Whole client-safe snapshot exists before activation; new content/reassignment creates new identity. Cancel/archive/revoke/expiry denies descendants; pending local data is preserved only in locked account recovery. Partial/stale/evicted downloads fail completeness; optional media remains separate.
+- **Dependencies/risks:** Exact source-size/transaction and planned-horizon caps, expiry/retention policy, clock-integrity handling, and successful Milestone-3 Rules/manifest persistence proof. Full snapshot materialization is selected; chunked publication or lazy source reads require an explicit revised design if bounds cannot fit.
 
 ## 8. Active workout, persistence, and recovery
 

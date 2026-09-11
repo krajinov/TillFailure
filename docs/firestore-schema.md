@@ -1,7 +1,7 @@
 # Firestore schema proposal
 
 Status: **proposal; no Firebase resources have been created**
-Review date: **2026-09-10** (booking contention and catalog entitlement proposal)
+Review date: **2026-09-11** (account-owned assigned-program snapshot proposal)
 
 ## Conventions
 
@@ -60,32 +60,49 @@ Create generates a high-entropy token, stores only its hash/version internally, 
 | `systemExercises/{exerciseId}` | Global catalog, server/admin-owned: `name`, `nameNormalized`, `muscleGroups`, `equipment`, `instructions`, `mediaRef?`, `status` (`draft`/`published`/`archived`) | Eligible authenticated accounts read only `published` entries; archive transitions status to `archived` and sets audit fields. No client writes; immutable ID. Retain referenced exercise snapshots. | Rules require active account plus the fixed `systemCatalog` entitlement. Queries include `status == "published"`; Rules do not filter unsafe results. Other search/filter indexes are product-dependent; cache is display-only. |
 | `workspaces/{workspaceId}/exercises/{exerciseId}` | Trainer custom exercise: `ownerUid`, same descriptive fields as system exercise, workspace `status` (`active`/`archived`) | Tenant/owner immutable; trainers create/update/archive. Never hard-delete while referenced. | `status,nameNormalized`; optional `equipment,status`. Offline create/edit queued; conflicts surface for simultaneous edits. |
 | `.../programTemplates/{templateId}` | Trainer-owned logical template: `ownerUid`, `title`, `description?`, `currentVersionId`, `status` | Identity/owner immutable; metadata/current pointer mutable. Archive without touching versions or assignments. | Trainer list: `ownerUid,status,updatedAt desc`. Offline draft editing allowed; publishing requires version transaction. |
-| `.../programTemplates/{templateId}/versions/{versionId}` | Immutable published snapshot: `versionNumber`, `title`, `weeksCount`, `publishedAt`, `publishedBy` | Published version content is immutable. Drafts may be separate mutable records or local builder state; decision recorded in open questions. | Read by assignment/reference. Exercises live in bounded workout/exercise subcollections, not one growing array. |
-| `.../programTemplates/{templateId}/versions/{versionId}/workouts/{workoutId}` and `/exercises/{itemId}` | Ordered immutable workout/exercise snapshot: title/day, `position`, exercise reference and copied display/prescription fields | Immutable once version published. Deletion only with unused draft/version cleanup. | Query by `position`; bounded per version but subcollections prevent document-size pressure. Explicit prefetch supports offline workouts. |
-| `.../assignedPrograms/{assignmentId}` | Client/trainer/tenant: `clientId`, `trainerId`, `templateId`, `templateVersionId`, `startDate`, `timeZoneId`, `status` | IDs/version immutable; scheduling/status mutable by trainer or trusted workflow. Archive on completion/replacement. | Client: `clientId,status,startDate`; trainer: `trainerId,status,updatedAt desc`. Offline read if prefetched; assignment changes use revision check. |
-| `.../plannedWorkouts/{plannedWorkoutId}` | Assignment instance: `assignmentId`, `clientId`, `trainerId`, `templateVersionId`, `scheduledLocalDate`, `timeZoneId`, immutable workout snapshot reference/content, `status`, `revision` | Identity and snapshot immutable after publication; date/status may change under explicit rules. Never rewrite due to template edits. | Client upcoming: `clientId,status,scheduledInstant`; trainer review: `trainerId,status,scheduledInstant`. Prefetch required documents; the app-owned manifest and cache recheck are defined in `offline-sync.md`. |
+| `.../programTemplates/{templateId}/versions/{versionId}` | Immutable published source: `versionNumber`, `title`, `weeksCount`, `publishedAt`, `publishedBy`, `contentHash` | Published content is immutable. Draft storage remains open. | Trainer/workspace-authorized only, including every descendant; clients cannot read even an assigned source version. Trusted assignment copies allowlisted content. |
+| `.../programTemplates/{templateId}/versions/{versionId}/workouts/{workoutId}` and `/exercises/{itemId}` | Ordered immutable source workout/exercise: title/day, `position`, exercise reference and display/prescription fields | Immutable once published. Deletion only with unused draft/version cleanup. | Trainer-only ordered queries. These are never client download paths. |
+| `users/{uid}/workspaces/{wid}/assignedPrograms/{aid}` | Account-owned, server-written assignment header: `clientId=uid`, `workspaceId=wid`, `assignmentId=aid`, `trainerId`, `sourceTemplateId`, `sourceVersionId`, `sourceVersionNumber`, `sourceContentHash`, `snapshotId=content`, `snapshotHash`, `revision`, `lifecycleState=ready`, `accessStatus`, `accessExpiresAt`, `startDate`, `timeZoneId` | Identity/source/content hash immutable; trusted revisioned scheduling and access transitions only. Header contains no prescriptions, notes or private audit payload. | Exact account/workspace collection lists safe headers; content requires the additional assignment gate below. Parent `users/{uid}/workspaces/{wid}` is path context, not a grant. |
+| `users/{uid}/workspaces/{wid}/assignedPrograms/{aid}/snapshots/content` and `/workouts/{workoutId}/exercises/{itemId}` (with workout header docs) | Client-safe immutable copy: identity tuple, `snapshotId`, `schemaVersion`, `contentHash`, source IDs/version/hash for provenance; title, ordered workouts, copied exercise names/instructions/prescriptions | Materialized only by trusted assignment operation; never edited after publication. Trainer-only notes, internal annotations and non-client-visible metadata excluded by allowlist, not field redaction. | Direct reads and bounded child queries under one assignment. No dependency on reading original templates, source items or required exercise definitions. |
+| `users/{uid}/workspaces/{wid}/assignedPrograms/{aid}/plannedWorkouts/{plannedWorkoutId}` | Identity tuple, `snapshotId=content`, `workoutId`, `scheduledLocalDate`, `scheduledInstant`, `timeZoneId`, `status`, `revision` | Trusted materializer owns all writes. Snapshot/workout refs immutable; schedule/status changes advance assignment revision with manifest. | Upcoming query within this assignment: `status,scheduledInstant`. References resolve only inside the same account/assignment snapshot. |
+| `users/{uid}/workspaces/{wid}/assignedPrograms/{aid}/manifests/download` | Server-owned bounded inventory: identity tuple, `assignmentRevision`, snapshot hash, exact required relative paths and hashes/revisions for snapshot items and current planned horizon | Trusted creation/update atomic with planning records; never client-authored or an authorization grant. | Client reads through assignment gate. Distinct from the app-owned local cache-completeness manifest in [offline-sync.md](offline-sync.md). |
+| `workspaces/{wid}/assignedPrograms/{aid}` and `workspaces/{wid}/plannedWorkouts/{plannedWorkoutId}` | Trainer-only discovery indexes: `workspaceId`, `clientId`, `trainerId`, `assignmentId`, canonical account-owned target IDs, lifecycle/schedule summary and revision | Trusted writes in the same assignment transaction; no duplicate authority and no client reads. IDs derived from assignment and workout occurrence for retry stability. | Trainer queries by `trainerId,status,updatedAt desc` or `trainerId,status,scheduledInstant`. Client discovery uses account-owned headers, never these indexes. |
 
-Example assigned program:
+### Assigned-program snapshot identity
+
+Selected architecture (not implemented): for assignment `asg_demo`, the canonical header is `users/uid_client/workspaces/ws_demo/assignedPrograms/asg_demo`, and its one immutable snapshot is `users/uid_client/workspaces/ws_demo/assignedPrograms/asg_demo/snapshots/content`. A workout item is `users/uid_client/workspaces/ws_demo/assignedPrograms/asg_demo/snapshots/content/workouts/day1/exercises/item_squat`. The assignment ID may remain random: every requested descendant already contains it, so Rules derive its parent directly without searching by template/version. New content or reassignment uses a new assignment ID and new fixed `content` snapshot; IDs are never reused.
+
+Example canonical assignment header (timestamp strings illustrate Firestore Timestamp fields):
 
 ```json
 {
   "schemaVersion": 1,
   "workspaceId": "ws_demo",
   "clientId": "uid_client",
+  "assignmentId": "asg_demo",
   "trainerId": "uid_trainer",
-  "templateId": "tpl_strength",
-  "templateVersionId": "v3",
+  "sourceTemplateId": "tpl_strength",
+  "sourceVersionId": "v3",
+  "sourceVersionNumber": 3,
+  "sourceContentHash": "sha256:source-example",
+  "snapshotId": "content",
+  "snapshotHash": "sha256:client-safe-example",
+  "revision": 1,
+  "lifecycleState": "ready",
+  "accessStatus": "active",
+  "accessExpiresAt": "2026-10-07T00:00:00Z",
   "startDate": "2026-09-07",
-  "timeZoneId": "Europe/Sarajevo",
-  "status": "active"
+  "timeZoneId": "Europe/Sarajevo"
 }
 ```
+
+Every snapshot/planned-workout/manifest document repeats the immutable `workspaceId`, `clientId`, `assignmentId`, and `snapshotId` tuple. Source identifiers are audit/reconciliation and request-hash inputs only; knowledge of them grants no source access. The [direct authorization checks and lifecycle](firestore-security.md#assigned-program-authorization-and-lifecycle) are canonical. Copy required exercise text/prescriptions; optional media is included only if independently authorized for the same client, never by copying a private trainer URL or treating a source ID as a Storage grant.
 
 ## Workout, progress, and private coaching data
 
 | Collection/path and ID | Ownership and required fields | Mutability and lifecycle | Queries, indexes, denormalization, offline behavior |
 |---|---|---|---|
-| `.../workoutSessions/{sessionId}` | Client-created server business record: `clientId`, `trainerId`, `plannedWorkoutId?`, immutable workout/version snapshot refs, `startedAtClient`, `status`, `revision`, `lastOperationId`, `completedAt?` | Tenant/client/plan refs immutable. Client requests legal monotonic transitions; trainer review fields are allowlisted. `completed` means server accepted, while local completion intent remains device-local. Archive per health-data retention policy. | Client history: `clientId,status,completedAt desc`; trainer queue: `trainerId,reviewStatus,completedAt desc`. There is no shared `syncState`; local transport is defined in `offline-sync.md`. |
+| `.../workoutSessions/{sessionId}` | Client-created server business record: `clientId`, `trainerId`, `assignmentId?`, `plannedWorkoutId?`, account-owned snapshot/workout IDs, `startedAtClient`, `status`, `revision`, `lastOperationId`, `completedAt?` | Tenant/client/plan refs immutable. Assigned-session creation and edits require the current assignment gate; retained completed history follows its separate ownership/retention policy, never granting snapshot/source access. `completed` means server accepted, while local completion intent remains device-local. | Client history: `clientId,status,completedAt desc`; trainer queue: `trainerId,reviewStatus,completedAt desc`. No shared `syncState`; local transport is defined in `offline-sync.md`. |
 | `.../workoutSessions/{sessionId}/loggedSets/{setId}` | Session/client: `exerciseItemId`, `setPosition`, raw values, normalized values, `completionStatus`, `clientEditedAt`, `revision`, `baseRevision`, `lastOperationId` | Owner refs and identity immutable; Rules verify revision transition and edit policy. Trainer feedback is separate/allowlisted. Tombstone deleted sets. | Ordered by `exercisePosition,setPosition`. High but bounded per session. Rejected payload survives in the app-owned mutation journal; Firestore stores only server-accepted business state. |
 | `.../workoutSessions/{sessionId}/feedback/{feedbackId}` | Trainer-to-client review: `trainerId`, `clientId`, `body`, `visibility=client` | Trainer creates/edits under audit; archive rather than silent removal after client viewed. | Ordered by `createdAt`; low growth. Explicitly distinct from private notes. |
 | `.../progressEntries/{entryId}` | Client: `clientId`, `type`, `recordedAt`, validated measurement payload, `note?`, `mediaAssetIds?` | Tenant/client immutable; client creates/edits; trainer may read and comment only if product permits. Use bounded media IDs or an asset subcollection. | `clientId,type,recordedAt desc`. Offline text/measurement queued; media separately pending. Conflicts preserve both versions for review. |
@@ -101,7 +118,9 @@ Example session and set:
     "clientId": "uid_client",
     "trainerId": "uid_trainer",
     "plannedWorkoutId": "pw_20260907",
-    "templateVersionId": "v3",
+    "assignmentId": "asg_demo",
+    "snapshotId": "content",
+    "workoutId": "day1",
     "status": "in_progress",
     "revision": 4
   },
@@ -187,8 +206,9 @@ Example message:
 
 ## Denormalization and update responsibility
 
-- Display summaries may be copied to cards, messages, and assignments so lists remain cheap. The source record remains authoritative; trusted fan-out or bounded client transactions update copies. Stale summaries are acceptable only where explicitly documented.
+- Display summaries may be copied to cards/messages so lists remain cheap; stale summaries are acceptable only where explicitly documented. Assignment headers, inventories and trainer indexes instead commit together through the trusted lifecycle; no delayed projection grants content access.
 - Template publishing atomically creates an immutable version and moves `currentVersionId`. Existing assignments, planned workouts, sessions, and history retain their version references/snapshots.
+- Assigned content is an immutable account-owned copy, not a client read-through of a source version. New prescriptions require new assignment/snapshot identity; scheduling, eligibility and the bounded server inventory advance atomically without rewriting content.
 - Appointment status and occupied deterministic buckets change atomically. Availability queries and notification summaries never replace the locks as contention authority.
 - The account's system-catalog entitlement is a trusted, synchronous authorization projection, maintained atomically with lifecycle source changes; unlike display summaries it must not lag. It grants no workspace permissions.
 - Conversation `lastMessage*` fields are derived from the accepted message; a trusted trigger is preferred if rules cannot make the multi-document update safe.
@@ -213,8 +233,8 @@ All examples also carry the audit/schema fields from Conventions. They are shape
 | `.../versions/v3` | `{ "versionNumber":3, "title":"Strength A", "weeksCount":4, "publishedBy":"uid_trainer", "publishedAt":"timestamp" }` |
 | `.../versions/v3/workouts/day1` | `{ "title":"Day 1", "dayOffset":0, "position":0 }` |
 | `.../workouts/day1/exercises/item_squat` | `{ "position":0, "exerciseSource":"system", "exerciseId":"ex_squat", "displayName":"Back squat", "sets":3, "repsText":"8" }` |
-| `.../assignedPrograms/asg_demo` | `{ "clientId":"uid_client", "trainerId":"uid_trainer", "templateVersionId":"v3", "startDate":"2026-09-07", "timeZoneId":"Europe/Sarajevo", "status":"active" }` |
-| `.../plannedWorkouts/pw_20260907` | `{ "assignmentId":"asg_demo", "clientId":"uid_client", "trainerId":"uid_trainer", "templateVersionId":"v3", "scheduledLocalDate":"2026-09-07", "scheduledInstant":"timestamp", "status":"planned" }` |
+| `users/uid_client/workspaces/ws_demo/assignedPrograms/asg_demo/snapshots/content` | `{ "workspaceId":"ws_demo", "clientId":"uid_client", "assignmentId":"asg_demo", "snapshotId":"content", "sourceTemplateId":"tpl_strength", "sourceVersionId":"v3", "sourceVersionNumber":3, "sourceContentHash":"sha256:source-example", "contentHash":"sha256:client-safe-example", "title":"Strength A", "weeksCount":4 }` |
+| `users/uid_client/workspaces/ws_demo/assignedPrograms/asg_demo/plannedWorkouts/pw_20260907` | `{ "workspaceId":"ws_demo", "assignmentId":"asg_demo", "clientId":"uid_client", "snapshotId":"content", "workoutId":"day1", "scheduledLocalDate":"2026-09-07", "scheduledInstant":"timestamp", "timeZoneId":"Europe/Sarajevo", "status":"planned", "revision":1 }` |
 | `.../workoutSessions/sess_demo` | `{ "clientId":"uid_client", "trainerId":"uid_trainer", "plannedWorkoutId":"pw_20260907", "status":"in_progress", "revision":4, "lastOperationId":"op_session_4" }` |
 | `.../loggedSets/set_1` | `{ "exerciseItemId":"item_squat", "setPosition":1, "weightText":"80", "weightKg":80.0, "repsText":"8", "reps":8, "completionStatus":"completed", "baseRevision":3, "revision":4, "lastOperationId":"op_set_4" }` |
 | `.../feedback/fb_demo` | `{ "trainerId":"uid_trainer", "clientId":"uid_client", "body":"Good control today.", "visibility":"client" }` |
@@ -235,7 +255,7 @@ All examples also carry the audit/schema fields from Conventions. They are shape
 | User/workspace/profile/membership/invitation | O(1) per identity/relationship; internal invitations and projections accumulate slowly | Revoke/archive first; trusted retention/TTL keeps internal/projection lifecycle consistent | Profile edits may queue; membership/invitation changes server-authoritative; cached summary/grant grants nothing |
 | Exercises | System catalog can be large; custom catalog grows per trainer | Archive referenced exercise, purge only when unreferenced/policy permits | Cached/paged reads; custom edit uses revision and surfaces same-document conflict |
 | Templates/versions/workout items | Templates grow slowly; immutable versions/items grow with each publish | Archive logical template; retain referenced versions/history | Draft may queue; publish is revision-checked; published snapshots never merge |
-| Assignments/planned workouts | O(clients × active programs × scheduled workouts) | Archive completed/replaced assignments; retain history per policy | Explicit prefetch; assignment conflicts reject stale revision |
+| Account-owned assignments/snapshots/plans/manifests and trainer indexes | O(clients × assigned snapshot size + planned horizon); finite transaction caps required | Revoke/cancel/replace/archive denies content first through the parent; expiry uses server time, not TTL. Trusted recursive cleanup retains terminal identity/receipt protection per policy. | Explicit prefetch of client copies only; revision conflicts reject; unknown offline revocation is bounded and known loss locks recovery |
 | Sessions/sets/feedback | Sessions grow indefinitely with training history; sets bounded per session | Time/retention partition via queries; archive sessions, preserve history/audit | Offline-first session/sets; stable-ID merge and explicit same-set conflict; feedback revisioned |
 | Progress entries/media | Time-series per client; media dominates storage | Retention/account workflow, asset cleanup only after reference audit | Measurement queues; conflicts preserve versions; media has separate pending upload state |
 | Private notes | Low-to-moderate per trainer/client | Trainer-only archive and approved retention after relationship/account changes | Default minimizes offline availability; revision conflict never last-write-wins silently |
@@ -254,8 +274,10 @@ The exact `firestore.indexes.json` will be generated only when implementation be
 - invitation summaries: `status,createdAt desc`;
 - client profiles: `trainerId, status, displayNameNormalized`;
 - program templates: `ownerUid, status, updatedAt desc`;
-- assigned programs: `clientId, status, startDate` and `trainerId, status, updatedAt desc`;
-- planned workouts: participant ID, status, scheduled instant;
+- account-owned assignment headers: exact UID/workspace collection, `startDate`; no client collection-group discovery;
+- trainer-only assignment/planned-workout indexes: `trainerId,status,updatedAt desc` and `trainerId,status,scheduledInstant`;
+- account-owned planned workouts: exact assignment collection, `status,scheduledInstant`; client aggregates a bounded set of its headers locally, not cross-assignment collection-group queries;
+- snapshot child/planned query indexes also include any repeated identity equality fields required by [Rules integrity predicates](firestore-security.md#assigned-program-authorization-and-lifecycle), plus `position` or schedule ordering; prove exact queries/indexes in the emulator before implementation acceptance;
 - workout sessions: `clientId,status,completedAt desc` and `trainerId,reviewStatus,completedAt desc`;
 - progress: `clientId,type,recordedAt desc`;
 - appointments: participant ID, status, startsAt; plus reminder scheduling;
@@ -267,5 +289,6 @@ The exact `firestore.indexes.json` will be generated only when implementation be
 
 - Readers tolerate known older `schemaVersion` values; writers emit the current version. Destructive migrations are server-run, resumable, audited, and idempotent.
 - Account deletion first atomically sets account status non-active and catalog entitlement inactive, then revokes memberships/tokens and runs trusted retention cleanup. Each membership removal updates its entitlement contribution in the same transaction; keep the user/entitlement tombstones until cleanup is complete. Shared messages/appointments may require pseudonymization; cancel/complete appointments and release locks transactionally before any permitted removal. Legal/product retention policy is unresolved.
+- That account denial also gates all account-owned assignment content immediately. Assignment cleanup is explicit and resumable across snapshot/workout/item/manifest descendants and workspace indexes: deleting a parent is not recursive deletion. Retain terminal assignment tombstones/receipts against replay; never restore an active parent over incomplete or revoked children. Follow the [assignment lifecycle](firestore-security.md#assigned-program-authorization-and-lifecycle).
 - Firestore TTL may remove expired invitations and operational notification records, but TTL is not used as authorization or as the only account-deletion mechanism.
 - Retention periods for health-related progress, workout history, messages, private notes, media, and audit events require legal/product approval before implementation.

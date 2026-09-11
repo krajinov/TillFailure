@@ -1,7 +1,7 @@
 # Testing and observability strategy
 
 Status: **Milestone 1 foundation checks implemented; later feature/Firebase strategy remains planned**
-Review date: **2026-09-10** (planned booking and entitlement coverage)
+Review date: **2026-09-11** (planned assigned-snapshot authorization/lifecycle coverage)
 
 ## Test layers
 
@@ -24,7 +24,7 @@ Minimum release scenarios:
 - Online session restoration routes only after a server membership lookup. Offline restart with a prior eligible UID and fully downloaded workout enters only the restricted workout shell; a first-time/unverified or expired account remains locked.
 - A device offline during remote revocation may remain locally eligible until reconnect/bound expiry; reconnect denies backend access, closes protected navigation, and preserves rejected unsynchronized workout data in Locked Recovery.
 - Invitation internal records are never client-readable; trainer summaries contain no secret/email-binding fields. Acceptance is single-use/account-email bound; resend invalidates the old token and revoke/accept updates summary status.
-- Template v2 does not change an assignment pinned to v1 or any completed session.
+- Template v2 does not change an account-owned assignment snapshot copied from v1 or any completed session; clients cannot directly read even the assigned source version.
 - Download completeness rechecks every required cached child/revision. Partial download, stale manifest, cache eviction/missing child and never-cached workout cannot start offline; optional media absence is represented separately.
 - A resumable active workout survives planned-content eviction and process death from its account-owned recovery snapshot/journal.
 - Logged-set mutation survives restart before send, while pending, and after stale-revision rejection. Conflict UI receives durable local plus server payload, records explicit resolution, and retries without duplicate session/set.
@@ -62,6 +62,22 @@ Use the actual Rules read/list checks and trusted lifecycle transactions against
 - Disable/delete an account through the trusted workflow: account and entitlement deny catalog access in the same commit, including requests using a still-valid old ID token. Fail/retry the subsequent Auth deletion step; access stays denied. Restoration cannot grant a zero-count account access; membership cleanup preserves the tombstone/count invariant.
 - Inject lifecycle transaction failure: neither membership/source nor entitlement nor successful receipt partially commits. Missing/corrupt entitlement remains denied during repair; retries and concurrent cross-workspace updates retain correct counts.
 - A catalog entitlement grants no access to unrelated workspace data or trainer roles. Existing workspace/cross-client denial cases remain unchanged, and cached entitlement/custom claims neither authorize local writes nor bypass online Rules.
+
+## Planned assigned-program snapshot tests
+
+These tests specify future proof, not results of this documentation correction. Milestone 3 must prove the [direct path authorization](firestore-security.md#assigned-program-authorization-and-lifecycle) and bounded transaction primitive with isolated fixtures; Milestones 7/8 implement complete lifecycle and native offline behavior. Use client SDK/Rules test contexts for allow/deny assertions, and Admin only to seed fixtures or exercise separately authorized trusted operations.
+
+- Active owning client can get its safe assignment header and ready/active/unexpired snapshot, workout/item children, planned instances and server inventory. Verify exact-collection header lists and identity-constrained descendant queries. Verify the four direct lookups and actual query/multi-read access-call budgets; do not rely on Rules queries or assumed call caching.
+- Unauthenticated, different UID/workspace/client, inactive/missing/malformed account/workspace/membership/assignment, wrong role, non-ready parent and expired/terminal parent fail content reads. An eligible owner may still read its own allowlisted terminal header, with no prescriptions or private notes. Snapshot-ID substitutions and unspecified descendant collections fail.
+- Every client template, version, workout and exercise-item get/list fails, including its own assigned source, unrelated published versions, guessed IDs, collection-group enumeration and broad recursive matches. Trainer source/index reads require the correct active workspace role. Client reads of workspace trainer indexes and other clients' account-owned data fail.
+- Tamper with `workspaceId`, client account UID/`clientId`, assignment ID, snapshot ID, source template/version ID, source revision/hash, trainer/owner fields, eligibility, inventory paths and revision. Deny all mobile assignment/snapshot/plan/inventory/index creates/updates/deletes, including trainer SDK writes. Trusted requests with forged ownership/source workspace/unpublished versions also fail independently of Rules; no Admin caller can bypass handler validation by supplying a plausible header.
+- Seed trainer-only notes/internal metadata/private URLs and confirm materialization allowlists exclude them from every readable document and inventory. Required exercise content is copied; optional media checks cannot become a source-template grant.
+- Successful assignment atomically creates one header, full immutable snapshot, planned horizon, trainer indexes, inventory and receipt. Concurrent identical retries/timeouts produce one result; changed request/key reuse, stale expected revisions and reused assignment IDs fail. Retry after revocation returns only the original receipt result and does not reactivate content.
+- Inject transaction failure/process termination before commit and after commit but before reply. Assert all-or-none publication; recovery reads/retries the same receipt, never creates a second assignment. Reject source-item/horizon/read/write/index-byte caps without partial publication; measure complete replacement cost including predecessor denial/index update.
+- Race source publication/archive, schedule changes, replacement and revocation with assignment commands. Source version is pinned; later edits never mutate the copy. Schedule/horizon/inventory/header/index revisions commit together. Replacement creates a new immutable copy and denies the old one in the same transaction; failed replacement preserves the old state. Expiry denies at server time without a worker/TTL.
+- Revoke/cancel/archive a parent while descendants still physically exist; all client content reads fail. Account/membership/workspace denial also gates content without fan-out. Restore a suspended relationship only for still-active/unexpired assignments; terminal/expired assignments need new identity. Account deletion denies before Auth cleanup; fail/retry cleanup without reopening access.
+- Interrupt recursive cleanup and resume its server-only cursor; remove only the terminal target's children/indexes, preserving tombstone/receipt replay protection and concurrent replacement IDs. Corrupt/missing published items trigger blocked-parent repair; restoration creates a new complete assignment, never enables an incomplete old header. Backup restore must preserve later denial records, not resurrect revoked access.
+- Native offline checks: partial download, changed header during download, stale/malicious inventory, missing/evicted child and mismatched hashes fail completeness. Source v2 does not invalidate the cached v1 copy. Known assignment loss/expiry locks content despite active membership; unknown remote loss lasts only through the approved bound/assignment expiry. Clock rollback fails closed. Pending edits survive in UID-isolated recovery, never migrate to another assignment/account. Crash during account switching/cleanup blocks the next account until isolation succeeds.
 
 ## MVI test shape
 
