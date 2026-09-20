@@ -68,6 +68,16 @@ export async function publishAssignment(db: Firestore, input: PublishAssignmentR
   const exerciseCount = input.workouts.reduce((sum, workout) => sum + workout.exercises.length, 0);
   const documentCount = 1 + 1 + workoutCount + exerciseCount + input.plans.length + 1 + 1 + 1 + (replaces ? 2 : 0);
   if (documentCount > input.maxWrites) throw new Error("write-budget-exceeded");
+  const snapshotWorkoutIds = new Set<string>();
+  for (const workout of input.workouts) {
+    if (typeof workout.id !== "string" || workout.id.trim().length === 0) throw new Error("snapshot-workout-id-invalid");
+    if (snapshotWorkoutIds.has(workout.id)) throw new Error("snapshot-workout-id-duplicated");
+    snapshotWorkoutIds.add(workout.id);
+  }
+  for (const plan of input.plans) {
+    if (typeof plan.workoutId !== "string" || plan.workoutId.trim().length === 0) throw new Error("plan-workout-reference-invalid");
+    if (!snapshotWorkoutIds.has(plan.workoutId)) throw new Error("plan-workout-reference-missing");
+  }
   const requiredPathSet = new Set<string>(["snapshots/content"]);
   input.workouts.forEach((workout) => {
     requiredPathSet.add(`snapshots/content/workouts/${workout.id}`);
@@ -182,13 +192,71 @@ export async function publishAssignment(db: Firestore, input: PublishAssignmentR
   });
 }
 
-export async function closeAssignment(db: Firestore, uid: string, workspaceId: string, assignmentId: string, status: "archived" | "cancelled" | "revoked"): Promise<void> {
-  const headerRef = db.doc(`users/${uid}/workspaces/${workspaceId}/assignedPrograms/${assignmentId}`);
-  const indexRef = db.doc(`workspaces/${workspaceId}/assignedPrograms/${assignmentId}`);
-  await db.runTransaction(async (transaction) => {
-    const header = await transaction.get(headerRef);
-    if (!header.exists || header.get("clientId") !== uid || header.get("workspaceId") !== workspaceId) throw new Error("assignment-missing");
-    transaction.update(headerRef, { accessStatus: status, lifecycleState: "terminal", revision: FieldValue.increment(1) });
-    transaction.update(indexRef, { status, revision: FieldValue.increment(1) });
+export type AssignmentCloseStatus = "archived" | "cancelled" | "revoked";
+
+export interface CloseAssignmentRequest {
+  readonly callerUid: string;
+  readonly idempotencyKey: string;
+  readonly uid: string;
+  readonly workspaceId: string;
+  readonly assignmentId: string;
+  readonly status: AssignmentCloseStatus;
+  readonly expectedRevision: number;
+}
+
+export interface CloseAssignmentResult {
+  readonly assignmentId: string;
+  readonly revision: number;
+  readonly status: AssignmentCloseStatus;
+  readonly replayed: boolean;
+}
+
+// Guarded live-to-terminal transition: an already replaced/archived/cancelled/revoked or
+// expired assignment is never rewritten, terminal reasons and replacement metadata are
+// immutable, and only the original caller-bound receipt replays a successful close.
+export async function closeAssignment(db: Firestore, input: CloseAssignmentRequest): Promise<CloseAssignmentResult> {
+  if (!Number.isInteger(input.expectedRevision) || input.expectedRevision < 1) throw new Error("expected-revision-invalid");
+  const requestHash = stableHash(input);
+  const receiptRef = db.doc(`assignmentCommands/${commandId(input.callerUid, input.idempotencyKey)}`);
+  const headerRef = db.doc(`users/${input.uid}/workspaces/${input.workspaceId}/assignedPrograms/${input.assignmentId}`);
+  const indexRef = db.doc(`workspaces/${input.workspaceId}/assignedPrograms/${input.assignmentId}`);
+  return db.runTransaction(async (transaction) => {
+    const documents = await transaction.getAll(receiptRef, headerRef, indexRef);
+    const receipt = documents[0]!;
+    const header = documents[1]!;
+    const index = documents[2]!;
+    if (receipt.exists) {
+      if (receipt.get("requestHash") !== requestHash) throw new Error("idempotency-key-reused");
+      return {
+        assignmentId: receipt.get("assignmentId") as string,
+        revision: receipt.get("revision") as number,
+        status: receipt.get("status") as AssignmentCloseStatus,
+        replayed: true
+      };
+    }
+    if (!header.exists) throw new Error("assignment-missing");
+    if (
+      header.get("clientId") !== input.uid ||
+      header.get("workspaceId") !== input.workspaceId ||
+      header.get("assignmentId") !== input.assignmentId
+    ) throw new Error("assignment-identity-mismatch");
+    if (header.get("revision") !== input.expectedRevision) throw new Error("assignment-stale-revision");
+    if (header.get("lifecycleState") !== "ready" || header.get("accessStatus") !== "active") throw new Error("assignment-not-live");
+    const expiresAt = header.get("accessExpiresAt");
+    if (!(expiresAt instanceof Timestamp) || expiresAt.valueOf() <= Timestamp.now().valueOf()) throw new Error("assignment-not-live");
+    if (!index.exists) throw new Error("assignment-index-missing");
+    if (
+      index.get("workspaceId") !== input.workspaceId ||
+      index.get("clientId") !== input.uid ||
+      index.get("assignmentId") !== input.assignmentId ||
+      index.get("trainerId") !== header.get("trainerId") ||
+      index.get("status") !== "active" ||
+      index.get("revision") !== input.expectedRevision
+    ) throw new Error("assignment-index-inconsistent");
+    const revision = input.expectedRevision + 1;
+    transaction.update(headerRef, { accessStatus: input.status, lifecycleState: "terminal", revision });
+    transaction.update(indexRef, { status: input.status, revision });
+    transaction.create(receiptRef, { schemaVersion: 1, requestHash, commandKind: "close-assignment", callerUid: input.callerUid, assignmentId: input.assignmentId, revision, status: input.status, committedAt: FieldValue.serverTimestamp() });
+    return { assignmentId: input.assignmentId, revision, status: input.status, replayed: false };
   });
 }

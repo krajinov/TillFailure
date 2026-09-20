@@ -6,6 +6,7 @@ import UIKit
 enum FirebaseSpikeHarness {
     private static var lifecycleProbe: LifecycleProbe?
     private static var stalledProbe: StalledPendingWriteProbe?
+    private static var registryProbe: RegistryLifecycleProbe?
 
     static func runIfRequested(bridge: FirebaseNativeBridge) {
         guard ProcessInfo.processInfo.environment["TILLFAILURE_FIREBASE_SPIKE"] == "1" else { return }
@@ -62,16 +63,20 @@ enum FirebaseSpikeHarness {
                     print("M3_FIREBASE_SPIKE cancellation=PASS")
                     operations.notify(queue: .main) {
                         bridge.cancel(token: listener)
-                        stalledProbe = StalledPendingWriteProbe(bridge: bridge, uid: uid, epoch: epoch) {
-                            stalledProbe = nil
-                            bridge.cancel(token: session)
-                            lifecycleProbe = LifecycleProbe(bridge: bridge, path: acceptedPath, epoch: epoch + 1) {
-                                bridge.terminateAndClear { clearResult in
-                                    print("M3_FIREBASE_SPIKE terminateAndClear=\(clearResult.failure == nil ? "PASS" : "FAIL")")
-                                    lifecycleProbe = nil
+                        registryProbe = RegistryLifecycleProbe(bridge: bridge, uid: uid, epoch: epoch) {
+                            registryProbe = nil
+                            stalledProbe = StalledPendingWriteProbe(bridge: bridge, uid: uid, epoch: epoch) {
+                                stalledProbe = nil
+                                bridge.cancel(token: session)
+                                lifecycleProbe = LifecycleProbe(bridge: bridge, path: acceptedPath, epoch: epoch + 1) {
+                                    bridge.terminateAndClear { clearResult in
+                                        print("M3_FIREBASE_SPIKE terminateAndClear=\(clearResult.failure == nil ? "PASS" : "FAIL")")
+                                        print("M3_FIREBASE_SPIKE oneShotRegistryTerminated=\(bridge.debugCancellationCount == 0 ? "PASS" : "FAIL")")
+                                        lifecycleProbe = nil
+                                    }
                                 }
+                                print("M3_FIREBASE_SPIKE awaitingBackgroundForeground=READY")
                             }
-                            print("M3_FIREBASE_SPIKE awaitingBackgroundForeground=READY")
                         }
                     }
                 }
@@ -268,6 +273,148 @@ enum FirebaseSpikeHarness {
                         self.completion()
                     }
                 }
+            }
+        }
+    }
+
+    private final class RegistryLifecycleProbe {
+        private let bridge: FirebaseNativeBridge
+        private let uid: String
+        private let path: String
+        private let epoch: Int64
+        private let completion: () -> Void
+        private let lock = NSLock()
+        private var deliveryCounts: [String: Int] = [:]
+        private var baseline = 0
+
+        init(bridge: FirebaseNativeBridge, uid: String, epoch: Int64, completion: @escaping () -> Void) {
+            self.bridge = bridge
+            self.uid = uid
+            self.path = "spikeEcho/\(uid)/documents/native-ios-registry"
+            self.epoch = epoch
+            self.completion = completion
+            start()
+        }
+
+        private func record(_ name: String) {
+            lock.lock()
+            deliveryCounts[name, default: 0] += 1
+            lock.unlock()
+        }
+
+        private func deliveries(_ name: String) -> Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return deliveryCounts[name] ?? 0
+        }
+
+        private func registrySize() -> Int {
+            bridge.debugCancellationCount
+        }
+
+        private func start() {
+            baseline = registrySize()
+            // A listener entry must remain registered until it is explicitly disposed.
+            let listenerToken = bridge.listenDocument(path: path, accountEpoch: epoch) { _ in }
+            print("M3_FIREBASE_SPIKE oneShotRegistryListenerRetention=\(registrySize() == baseline + 1 ? "PASS" : "FAIL")")
+            var firstGetToken = ""
+            _ = bridge.writeDocument(path: path, fields: ["ownerUid": uid, "value": "registry", "counter": "0"], accountEpoch: epoch) { [weak self] writeResult in
+                guard let self else { return }
+                self.record("write")
+                let writeClean = writeResult.failure == nil && self.registrySize() == self.baseline + 1
+                firstGetToken = self.bridge.getDocument(path: self.path, accountEpoch: self.epoch) { [weak self] getResult in
+                    guard let self else { return }
+                    self.record("get1")
+                    self.repeatReads(remaining: 2, cleanSoFar: writeClean && getResult.document?.exists == true, completedToken: firstGetToken, listenerToken: listenerToken)
+                }
+            }
+        }
+
+        private func repeatReads(remaining: Int, cleanSoFar: Bool, completedToken: String, listenerToken: String) {
+            guard remaining > 0 else {
+                finishReads(cleanSoFar: cleanSoFar, completedToken: completedToken, listenerToken: listenerToken)
+                return
+            }
+            _ = bridge.getDocument(path: path, accountEpoch: epoch) { [weak self] getResult in
+                guard let self else { return }
+                self.record("read\(remaining)")
+                self.repeatReads(
+                    remaining: remaining - 1,
+                    cleanSoFar: cleanSoFar && getResult.document?.exists == true && self.registrySize() == self.baseline + 1,
+                    completedToken: completedToken,
+                    listenerToken: listenerToken
+                )
+            }
+        }
+
+        private func finishReads(cleanSoFar: Bool, completedToken: String, listenerToken: String) {
+            // Repeated successful reads/writes must not grow the registry.
+            print("M3_FIREBASE_SPIKE oneShotRegistryNoGrowth=\(cleanSoFar && registrySize() == baseline + 1 ? "PASS" : "FAIL")")
+            _ = bridge.writeDocument(path: "spikeEcho/other/documents/native-ios-registry", fields: ["ownerUid": uid, "value": "forged", "counter": "0"], accountEpoch: epoch) { [weak self] rejectedResult in
+                guard let self else { return }
+                self.record("failedWrite")
+                // A failed one-shot must remove its token too.
+                let failureClean = rejectedResult.failure?.code == "PERMISSION_DENIED" && self.registrySize() == self.baseline + 1
+                print("M3_FIREBASE_SPIKE oneShotRegistryFailure=\(failureClean ? "PASS" : "FAIL")")
+                self.cancelAfterCompletion(completedToken: completedToken, listenerToken: listenerToken)
+            }
+        }
+
+        private func cancelAfterCompletion(completedToken: String, listenerToken: String) {
+            // Cancelling an already-completed token is a safe no-op with no extra delivery.
+            bridge.cancel(token: completedToken)
+            let harmless = registrySize() == baseline + 1 && deliveries("get1") == 1
+            print("M3_FIREBASE_SPIKE oneShotRegistryCancelAfterCompletion=\(harmless ? "PASS" : "FAIL")")
+            cancelPendingRead(listenerToken: listenerToken)
+        }
+
+        private func cancelPendingRead(listenerToken: String) {
+            bridge.disableNetwork { [weak self] disabled in
+                guard let self else { return }
+                guard disabled.failure == nil else {
+                    print("M3_FIREBASE_SPIKE oneShotRegistryCancel=FAIL")
+                    print("M3_FIREBASE_SPIKE oneShotRegistrySuppression=FAIL")
+                    self.finish(listenerToken: listenerToken)
+                    return
+                }
+                let pendingToken = self.bridge.getDocument(path: self.path, accountEpoch: self.epoch) { [weak self] _ in
+                    self?.record("cancelledGet")
+                }
+                let registered = self.registrySize() == self.baseline + 2
+                self.bridge.cancel(token: pendingToken)
+                // Explicit cancellation removes the entry synchronously.
+                let removed = self.registrySize() == self.baseline + 1
+                print("M3_FIREBASE_SPIKE oneShotRegistryCancel=\(registered && removed ? "PASS" : "FAIL")")
+                self.bridge.enableNetwork { [weak self] enabled in
+                    guard let self else { return }
+                    _ = self.bridge.getDocument(path: self.path, accountEpoch: self.epoch) { [weak self] roundTrip in
+                        guard let self else { return }
+                        self.record("postEnableGet")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                            guard let self else { return }
+                            // The cancelled read's late SDK completion must never reach the consumer.
+                            let suppressed = enabled.failure == nil && roundTrip.document?.exists == true && self.deliveries("cancelledGet") == 0
+                            print("M3_FIREBASE_SPIKE oneShotRegistrySuppression=\(suppressed ? "PASS" : "FAIL")")
+                            self.finish(listenerToken: listenerToken)
+                        }
+                    }
+                }
+            }
+        }
+
+        private func finish(listenerToken: String) {
+            _ = bridge.increment(path: path, field: "counter", by: 1, accountEpoch: epoch) { [weak self] incrementResult in
+                guard let self else { return }
+                self.record("increment")
+                let successClean = incrementResult.failure == nil && self.registrySize() == self.baseline + 1
+                print("M3_FIREBASE_SPIKE oneShotRegistrySuccess=\(successClean ? "PASS" : "FAIL")")
+                self.lock.lock()
+                let atMostOnce = self.deliveryCounts.values.allSatisfy { $0 == 1 }
+                self.lock.unlock()
+                print("M3_FIREBASE_SPIKE oneShotRegistryDeliveryOnce=\(atMostOnce ? "PASS" : "FAIL")")
+                self.bridge.cancel(token: listenerToken)
+                print("M3_FIREBASE_SPIKE oneShotRegistryListenerDisposal=\(self.registrySize() == self.baseline ? "PASS" : "FAIL")")
+                self.completion()
             }
         }
     }

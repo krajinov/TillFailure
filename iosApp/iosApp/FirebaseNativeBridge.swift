@@ -5,19 +5,18 @@ import Foundation
 import Shared
 
 final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
-    private final class CallbackGate {
-        var cancelled = false
-    }
-
-    private final class PendingWriteGate {
+    /// Thread-safe single-settlement gate for one-shot operations. Exactly one of the
+    /// SDK completion, explicit cancellation, timeout, or global termination claims it,
+    /// so a callback is delivered at most once and completed tokens are never retained.
+    private final class OneShotGate {
         private let lock = NSLock()
-        private var completed = false
+        private var settled = false
 
         func claim() -> Bool {
             lock.lock()
             defer { lock.unlock() }
-            guard !completed else { return false }
-            completed = true
+            guard !settled else { return false }
+            settled = true
             return true
         }
     }
@@ -65,12 +64,14 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
 
     func getDocument(path: String, accountEpoch: Int64, callback_: @escaping (NativeFirebaseDocumentResult) -> Void) -> String {
         activate(epoch: accountEpoch)
-        let gate = CallbackGate()
+        let (token, gate) = beginOneShot()
         firestore.document(path).getDocument(source: .server) { [weak self] snapshot, error in
-            guard !gate.cancelled, self?.accepts(epoch: accountEpoch) == true else { return }
-            callback_(self?.documentResult(snapshot: snapshot, error: error) ?? Self.unknownDocumentResult())
+            guard let self else { return }
+            self.deliverOneShot(token: token, gate: gate, accountEpoch: accountEpoch) {
+                callback_(self.documentResult(snapshot: snapshot, error: error))
+            }
         }
-        return registerCancellation { gate.cancelled = true }
+        return token
     }
 
     func listenDocument(path: String, accountEpoch: Int64, callback_: @escaping (NativeFirebaseDocumentResult) -> Void) -> String {
@@ -84,17 +85,19 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
 
     func writeDocument(path: String, fields: [String: String], accountEpoch: Int64, callback_: @escaping (NativeFirebaseUnitResult) -> Void) -> String {
         activate(epoch: accountEpoch)
-        let gate = CallbackGate()
+        let (token, gate) = beginOneShot()
         firestore.document(path).setData(fields) { [weak self] error in
-            guard !gate.cancelled, self?.accepts(epoch: accountEpoch) == true else { return }
-            callback_(NativeFirebaseUnitResult(failure: error.map(Self.mapFailure)))
+            guard let self else { return }
+            self.deliverOneShot(token: token, gate: gate, accountEpoch: accountEpoch) {
+                callback_(NativeFirebaseUnitResult(failure: error.map(Self.mapFailure)))
+            }
         }
-        return registerCancellation { gate.cancelled = true }
+        return token
     }
 
     func increment(path: String, field: String, by: Int64, accountEpoch: Int64, callback_: @escaping (NativeFirebaseDocumentResult) -> Void) -> String {
         activate(epoch: accountEpoch)
-        let gate = CallbackGate()
+        let (token, gate) = beginOneShot()
         let reference = firestore.document(path)
         firestore.runTransaction({ transaction, errorPointer -> Any? in
             do {
@@ -107,41 +110,45 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
                 return nil
             }
         }) { [weak self] _, error in
-            guard !gate.cancelled, self?.accepts(epoch: accountEpoch) == true else { return }
+            guard let self else { return }
             if let error {
-                callback_(NativeFirebaseDocumentResult(document: nil, failure: Self.mapFailure(error)))
+                self.deliverOneShot(token: token, gate: gate, accountEpoch: accountEpoch) {
+                    callback_(NativeFirebaseDocumentResult(document: nil, failure: Self.mapFailure(error)))
+                }
             } else {
-                reference.getDocument(source: .server) { snapshot, readError in
-                    guard !gate.cancelled, self?.accepts(epoch: accountEpoch) == true else { return }
-                    callback_(self?.documentResult(snapshot: snapshot, error: readError) ?? Self.unknownDocumentResult())
+                reference.getDocument(source: .server) { [weak self] snapshot, readError in
+                    guard let self else { return }
+                    self.deliverOneShot(token: token, gate: gate, accountEpoch: accountEpoch) {
+                        callback_(self.documentResult(snapshot: snapshot, error: readError))
+                    }
                 }
             }
         }
-        return registerCancellation { gate.cancelled = true }
+        return token
     }
 
     func waitForPendingWrites(accountEpoch: Int64, timeoutMillis: Int64, callback_: @escaping (NativeFirebaseUnitResult) -> Void) -> String {
         precondition(timeoutMillis > 0, "Pending-write timeout must be positive")
         activate(epoch: accountEpoch)
-        let gate = PendingWriteGate()
         let token = UUID().uuidString
+        let gate = OneShotGate()
         let finish: (NativeFirebaseUnitResult) -> Void = { [weak self] result in
-            guard gate.claim() else { return }
-            self?.removeCancellation(token: token)
-            guard self?.accepts(epoch: accountEpoch) == true else { return }
-            callback_(result)
+            guard let self else { return }
+            self.deliverOneShot(token: token, gate: gate, accountEpoch: accountEpoch) {
+                callback_(result)
+            }
         }
         let timeout = DispatchWorkItem {
             finish(NativeFirebaseUnitResult(failure: NativeFirebaseFailure(code: "DEADLINE_EXCEEDED", retryable: true)))
+        }
+        registerCancellation(token: token) {
+            timeout.cancel()
+            finish(NativeFirebaseUnitResult(failure: NativeFirebaseFailure(code: "CANCELLED", retryable: true)))
         }
         DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(Int(timeoutMillis)), execute: timeout)
         firestore.waitForPendingWrites { error in
             timeout.cancel()
             finish(NativeFirebaseUnitResult(failure: error.map(Self.mapFailure)))
-        }
-        registerCancellation(token: token) {
-            timeout.cancel()
-            finish(NativeFirebaseUnitResult(failure: NativeFirebaseFailure(code: "CANCELLED", retryable: true)))
         }
         return token
     }
@@ -216,6 +223,27 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
         return token
     }
 
+    /// Preallocates the token and stores the one-shot cancellation entry exactly once
+    /// before any SDK completion path is registered, so a completion can never race the
+    /// registration and leave a retained closure behind.
+    private func beginOneShot() -> (String, OneShotGate) {
+        let token = UUID().uuidString
+        let gate = OneShotGate()
+        registerCancellation(token: token) { _ = gate.claim() }
+        return (token, gate)
+    }
+
+    /// Claims the single settlement, removes the registry entry on success or failure
+    /// alike, and delivers only while the account epoch still accepts callbacks.
+    /// A completion after cancellation is suppressed; a cancellation after completion
+    /// finds no entry and is a safe no-op.
+    private func deliverOneShot(token: String, gate: OneShotGate, accountEpoch: Int64, deliver: () -> Void) {
+        guard gate.claim() else { return }
+        removeCancellation(token: token)
+        guard accepts(epoch: accountEpoch) else { return }
+        deliver()
+    }
+
     private func registerCancellation(token: String, _ cancellation: @escaping () -> Void) {
         lock.lock()
         if terminated {
@@ -232,6 +260,15 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
         cancellations.removeValue(forKey: token)
         lock.unlock()
     }
+
+    #if DEBUG
+    /// Test-only diagnostic for the Debug-gated spike harness; not compiled into release builds.
+    var debugCancellationCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return cancellations.count
+    }
+    #endif
 
     private func documentResult(snapshot: DocumentSnapshot?, error: Error?) -> NativeFirebaseDocumentResult {
         if let error { return NativeFirebaseDocumentResult(document: nil, failure: Self.mapFailure(error)) }

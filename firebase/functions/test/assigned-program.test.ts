@@ -84,7 +84,7 @@ describe("assigned-program publication", () => {
     assert.equal((await db.doc("users/client/workspaces/ws/assignedPrograms/asg-two").get()).get("lifecycleState"), "ready");
     const discoverable = await db.collection("workspaces/ws/assignedPrograms").where("status", "==", "active").get();
     assert.deepEqual(discoverable.docs.map((document) => document.id), ["asg-two"]);
-    await closeAssignment(db, "client", "ws", "asg-two", "revoked");
+    await closeAssignment(db, { callerUid: "trainer", idempotencyKey: "close-asg-two", uid: "client", workspaceId: "ws", assignmentId: "asg-two", status: "revoked", expectedRevision: 1 });
     assert.equal((await db.doc("users/client/workspaces/ws/assignedPrograms/asg-two").get()).get("accessStatus"), "revoked");
   });
 
@@ -146,7 +146,7 @@ describe("assigned-program publication", () => {
 
   it("rejects terminal and already-replaced predecessors", async () => {
     await publishAssignment(db, base);
-    await closeAssignment(db, "client", "ws", "asg-one", "cancelled");
+    await closeAssignment(db, { callerUid: "trainer", idempotencyKey: "close-asg-one", uid: "client", workspaceId: "ws", assignmentId: "asg-one", status: "cancelled", expectedRevision: 1 });
     await assert.rejects(() => publishAssignment(db, { ...base, idempotencyKey: "closed", assignmentId: "asg-closed", replacesAssignmentId: "asg-one", replacesExpectedRevision: 2 }), /predecessor-not-replaceable/);
     assert.equal((await db.doc("users/client/workspaces/ws/assignedPrograms/asg-closed").get()).exists, false);
 
@@ -213,5 +213,126 @@ describe("assigned-program publication", () => {
     const active = await db.collection("workspaces/ws/assignedPrograms").where("status", "==", "active").get();
     assert.deepEqual(active.docs.map((document) => document.id), [winner]);
     assert.equal((await db.collection("assignmentCommands").get()).size, 2);
+  });
+
+  it("rejects plans that do not reference materialized snapshot workouts", async () => {
+    const plan = (id: string, workoutId: string) => ({ id, workoutId, scheduledInstantMillis: Date.UTC(2027, 0, 1) });
+    // Valid single and multiple references still publish.
+    await publishAssignment(db, { ...base, idempotencyKey: "plans-valid", assignmentId: "asg-plans-valid", plans: [plan("p1", "day-one"), plan("p2", "day-one")] });
+    assert.equal((await db.doc("users/client/workspaces/ws/assignedPrograms/asg-plans-valid/plannedWorkouts/p2").get()).exists, true);
+
+    // Absent workout reference.
+    await assert.rejects(() => publishAssignment(db, { ...base, idempotencyKey: "plan-absent", assignmentId: "asg-plan-absent", plans: [plan("p1", "day-missing")] }), /plan-workout-reference-missing/);
+    // Blank plan workout reference.
+    await assert.rejects(() => publishAssignment(db, { ...base, idempotencyKey: "plan-blank", assignmentId: "asg-plan-blank", plans: [plan("p1", "   ")] }), /plan-workout-reference-invalid/);
+    // Duplicate snapshot workout IDs make every reference ambiguous.
+    await assert.rejects(() => publishAssignment(db, { ...base, idempotencyKey: "workouts-duplicated", assignmentId: "asg-dup", workouts: [base.workouts[0]!, { ...base.workouts[0]!, position: 1 }] }), /snapshot-workout-id-duplicated/);
+    // Blank snapshot workout ID.
+    await assert.rejects(() => publishAssignment(db, { ...base, idempotencyKey: "workout-blank", assignmentId: "asg-blank", workouts: [{ ...base.workouts[0]!, id: " " }] }), /snapshot-workout-id-invalid/);
+    // Mixed set where one of several plans is invalid.
+    await assert.rejects(() => publishAssignment(db, { ...base, idempotencyKey: "plan-mixed", assignmentId: "asg-mixed", plans: [plan("p1", "day-one"), plan("p2", "day-missing")] }), /plan-workout-reference-missing/);
+
+    // No header, snapshot, workout, exercise, plan, manifest, index, or receipt remains.
+    for (const id of ["asg-plan-absent", "asg-plan-blank", "asg-dup", "asg-blank", "asg-mixed"]) {
+      assert.equal((await db.doc(`users/client/workspaces/ws/assignedPrograms/${id}`).get()).exists, false);
+      assert.equal((await db.doc(`users/client/workspaces/ws/assignedPrograms/${id}/snapshots/content`).get()).exists, false);
+      assert.equal((await db.doc(`users/client/workspaces/ws/assignedPrograms/${id}/manifests/download`).get()).exists, false);
+      assert.equal((await db.doc(`users/client/workspaces/ws/assignedPrograms/${id}/plannedWorkouts/p1`).get()).exists, false);
+      assert.equal((await db.doc(`workspaces/ws/assignedPrograms/${id}`).get()).exists, false);
+    }
+    assert.equal((await db.collection("assignmentCommands").get()).size, 1);
+    // Valid idempotent publication remains unchanged.
+    const replay = await publishAssignment(db, { ...base, idempotencyKey: "plans-valid", assignmentId: "asg-plans-valid", plans: [plan("p1", "day-one"), plan("p2", "day-one")] });
+    assert.equal(replay.replayed, true);
+    assert.equal((await db.collection("assignmentCommands").get()).size, 1);
+  });
+
+  it("closes only live assignments through guarded revision-checked transitions", async () => {
+    // Valid active-to-terminal transitions for each supported reason.
+    for (const [id, status] of [["asg-archived", "archived"], ["asg-cancelled", "cancelled"], ["asg-revoked", "revoked"]] as const) {
+      await publishAssignment(db, { ...base, idempotencyKey: `publish-${id}`, assignmentId: id });
+      const closed = await closeAssignment(db, { callerUid: "trainer", idempotencyKey: `close-${id}`, uid: "client", workspaceId: "ws", assignmentId: id, status, expectedRevision: 1 });
+      assert.equal(closed.replayed, false);
+      assert.equal(closed.revision, 2);
+      assert.equal(closed.status, status);
+      const header = await db.doc(`users/client/workspaces/ws/assignedPrograms/${id}`).get();
+      assert.equal(header.get("accessStatus"), status);
+      assert.equal(header.get("lifecycleState"), "terminal");
+      assert.equal(header.get("revision"), 2);
+      const index = await db.doc(`workspaces/ws/assignedPrograms/${id}`).get();
+      assert.equal(index.get("status"), status);
+      assert.equal(index.get("revision"), 2);
+    }
+
+    // Stale and malformed expected revisions reject without any write.
+    await publishAssignment(db, { ...base, idempotencyKey: "publish-stale", assignmentId: "asg-stale-close" });
+    await assert.rejects(() => closeAssignment(db, { callerUid: "trainer", idempotencyKey: "close-stale", uid: "client", workspaceId: "ws", assignmentId: "asg-stale-close", status: "archived", expectedRevision: 99 }), /assignment-stale-revision/);
+    await assert.rejects(() => closeAssignment(db, { callerUid: "trainer", idempotencyKey: "close-zero", uid: "client", workspaceId: "ws", assignmentId: "asg-stale-close", status: "archived", expectedRevision: 0 }), /expected-revision-invalid/);
+    assert.equal((await db.doc("users/client/workspaces/ws/assignedPrograms/asg-stale-close").get()).get("lifecycleState"), "ready");
+    assert.equal((await db.doc("workspaces/ws/assignedPrograms/asg-stale-close").get()).get("status"), "active");
+
+    // Expired assignments are not live and cannot be closed.
+    await publishAssignment(db, { ...base, idempotencyKey: "publish-expired", assignmentId: "asg-expired", accessExpiresAtMillis: Date.UTC(2020, 0, 1) });
+    await assert.rejects(() => closeAssignment(db, { callerUid: "trainer", idempotencyKey: "close-expired", uid: "client", workspaceId: "ws", assignmentId: "asg-expired", status: "archived", expectedRevision: 1 }), /assignment-not-live/);
+    assert.equal((await db.doc("users/client/workspaces/ws/assignedPrograms/asg-expired").get()).get("lifecycleState"), "ready");
+  });
+
+  it("preserves terminal state, receipts, and replacement metadata against repeated closes", async () => {
+    await publishAssignment(db, { ...base, idempotencyKey: "publish-guard", assignmentId: "asg-guard" });
+    await closeAssignment(db, { callerUid: "trainer", idempotencyKey: "close-guard", uid: "client", workspaceId: "ws", assignmentId: "asg-guard", status: "archived", expectedRevision: 1 });
+    const closedHeader = (await db.doc("users/client/workspaces/ws/assignedPrograms/asg-guard").get()).data();
+    const closedIndex = (await db.doc("workspaces/ws/assignedPrograms/asg-guard").get()).data();
+    const receiptsBefore = (await db.collection("assignmentCommands").get()).size;
+
+    // A different operation ID cannot close the already-terminal assignment again.
+    await assert.rejects(() => closeAssignment(db, { callerUid: "trainer", idempotencyKey: "close-guard-again", uid: "client", workspaceId: "ws", assignmentId: "asg-guard", status: "revoked", expectedRevision: 2 }), /assignment-not-live/);
+    await assert.rejects(() => closeAssignment(db, { callerUid: "trainer", idempotencyKey: "close-guard-stale", uid: "client", workspaceId: "ws", assignmentId: "asg-guard", status: "revoked", expectedRevision: 1 }), /assignment-stale-revision/);
+    // A different caller cannot replay the original caller's receipt.
+    await assert.rejects(() => closeAssignment(db, { callerUid: "someone-else", idempotencyKey: "close-guard", uid: "client", workspaceId: "ws", assignmentId: "asg-guard", status: "archived", expectedRevision: 2 }), /assignment-not-live/);
+    assert.deepEqual((await db.doc("users/client/workspaces/ws/assignedPrograms/asg-guard").get()).data(), closedHeader);
+    assert.deepEqual((await db.doc("workspaces/ws/assignedPrograms/asg-guard").get()).data(), closedIndex);
+    assert.equal((await db.collection("assignmentCommands").get()).size, receiptsBefore);
+
+    // The same operation ID replays through the caller-bound receipt without any rewrite.
+    const replay = await closeAssignment(db, { callerUid: "trainer", idempotencyKey: "close-guard", uid: "client", workspaceId: "ws", assignmentId: "asg-guard", status: "archived", expectedRevision: 1 });
+    assert.equal(replay.replayed, true);
+    assert.equal(replay.revision, 2);
+    assert.equal(replay.status, "archived");
+    assert.deepEqual((await db.doc("users/client/workspaces/ws/assignedPrograms/asg-guard").get()).data(), closedHeader);
+    assert.equal((await db.collection("assignmentCommands").get()).size, receiptsBefore);
+
+    // A replaced predecessor cannot be closed and its replacement metadata is immutable.
+    await publishAssignment(db, { ...base, idempotencyKey: "publish-pred", assignmentId: "asg-pred" });
+    await publishAssignment(db, { ...base, idempotencyKey: "publish-succ", assignmentId: "asg-succ", replacesAssignmentId: "asg-pred", replacesExpectedRevision: 1 });
+    const replacedHeader = (await db.doc("users/client/workspaces/ws/assignedPrograms/asg-pred").get()).data();
+    const replacedIndex = (await db.doc("workspaces/ws/assignedPrograms/asg-pred").get()).data();
+    await assert.rejects(() => closeAssignment(db, { callerUid: "trainer", idempotencyKey: "close-replaced", uid: "client", workspaceId: "ws", assignmentId: "asg-pred", status: "archived", expectedRevision: 2 }), /assignment-not-live/);
+    assert.deepEqual((await db.doc("users/client/workspaces/ws/assignedPrograms/asg-pred").get()).data(), replacedHeader);
+    assert.deepEqual((await db.doc("workspaces/ws/assignedPrograms/asg-pred").get()).data(), replacedIndex);
+    assert.equal(replacedHeader!.replacedByAssignmentId, "asg-succ");
+    assert.equal(replacedHeader!.accessStatus, "replaced");
+
+    // Divergent or missing index representations fail closed without partial writes.
+    await publishAssignment(db, { ...base, idempotencyKey: "publish-diverged", assignmentId: "asg-diverged" });
+    await db.doc("workspaces/ws/assignedPrograms/asg-diverged").update({ revision: 7 });
+    await assert.rejects(() => closeAssignment(db, { callerUid: "trainer", idempotencyKey: "close-diverged", uid: "client", workspaceId: "ws", assignmentId: "asg-diverged", status: "archived", expectedRevision: 1 }), /assignment-index-inconsistent/);
+    await db.doc("workspaces/ws/assignedPrograms/asg-diverged").delete();
+    await assert.rejects(() => closeAssignment(db, { callerUid: "trainer", idempotencyKey: "close-no-index", uid: "client", workspaceId: "ws", assignmentId: "asg-diverged", status: "archived", expectedRevision: 1 }), /assignment-index-missing/);
+    assert.equal((await db.doc("users/client/workspaces/ws/assignedPrograms/asg-diverged").get()).get("lifecycleState"), "ready");
+    assert.equal((await db.doc("users/client/workspaces/ws/assignedPrograms/asg-diverged").get()).get("revision"), 1);
+  });
+
+  it("allows exactly one of two competing closes to commit", async () => {
+    await publishAssignment(db, { ...base, idempotencyKey: "publish-race", assignmentId: "asg-race" });
+    const close = (key: string) => closeAssignment(db, { callerUid: "trainer", idempotencyKey: key, uid: "client", workspaceId: "ws", assignmentId: "asg-race", status: "archived", expectedRevision: 1 });
+    const results = await Promise.allSettled([close("close-race-a"), close("close-race-b")]);
+    assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
+    assert.equal(results.filter((result) => result.status === "rejected").length, 1);
+    const header = await db.doc("users/client/workspaces/ws/assignedPrograms/asg-race").get();
+    assert.equal(header.get("revision"), 2);
+    assert.equal(header.get("lifecycleState"), "terminal");
+    assert.equal(header.get("accessStatus"), "archived");
+    assert.equal((await db.doc("workspaces/ws/assignedPrograms/asg-race").get()).get("revision"), 2);
+    assert.equal((await db.collection("assignmentCommands").where("commandKind", "==", "close-assignment").get()).size, 1);
   });
 });
