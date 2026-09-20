@@ -1,7 +1,7 @@
 # Firebase authorization and security plan
 
-Status: **proposal; rules and resources do not yet exist**
-Review date: **2026-09-11** (assigned-program authorization correction)
+Status: **Milestone 3 local Rules/trusted-operation primitives implemented; complete product rules remain proposed**
+Review date: **2026-09-20**
 
 ## Authorization model
 
@@ -109,7 +109,7 @@ The source/entitlement/receipt shapes are owned by [firestore-schema.md](firesto
 
 **Bounded lifecycle contract:** trusted configuration must supply finite `maxMembershipsPerAccount` and `maxMembershipsPerWorkspace`, covering memberships whose relationship status is active even in a suspended workspace. Both activation and restoration enforce these limits; count remains within the account bound. Concurrent per-account membership scans serialize through its entitlement revision; workspace scans serialize through `membershipRevision`. Configure caps so a full workspace transition's `2 * affectedMemberships + 2 + A` writes (membership/entitlement pairs, workspace, receipt, optional audit writes `A`) and all document/index bytes fit the [schema transaction budgets](firestore-schema.md#deterministic-bucket-coverage-and-bounds). Bound account reconciliation reads as well. Preflight limits and recheck inside the transaction; never truncate a scan or split the authorization change into eventual batches. Cap values remain product/operational decisions, but an uncapped deployment is unsupported.
 
-Missing/malformed entitlements deny catalog access and block related lifecycle mutations pending audited, bounded reconciliation of current sources. A detected source/count mismatch requires trusted deactivation of the entitlement before repair; Rules cannot discover a plausible but stale count by searching memberships. Repair must serialize with those same lifecycle records. No independent TTL deletes entitlements or contributing memberships. Milestone 3 must prove these invariants before the lifecycle is implemented in Milestone 4. If required workspace size exceeds the atomic budget or a lifecycle path cannot maintain it, this proposal is blocked: explicitly approve another catalog policy/layout before enabling that path, rather than claiming arbitrary Rules lookup or delayed projection is equivalent.
+Missing/malformed entitlements deny catalog access and block related lifecycle mutations pending audited, bounded reconciliation of current sources. A detected source/count mismatch requires trusted deactivation of the entitlement before repair; Rules cannot discover a plausible but stale count by searching memberships. Repair must serialize with those same lifecycle records. No independent TTL deletes entitlements or contributing memberships. Milestone 3 proved these invariants in isolated emulator tests; Milestone 4 still owns complete identity lifecycle integration. If required workspace size exceeds the atomic budget or a lifecycle path cannot maintain it, this proposal is blocked: explicitly approve another catalog policy/layout before enabling that path, rather than claiming arbitrary Rules lookup or delayed projection is equivalent.
 
 ## Storage permission matrix
 
@@ -187,6 +187,10 @@ Every callable/HTTP/task handler must:
 - Assignment snapshot ownership, source-enumeration denial, tampering, atomic publication/replay and interrupted cleanup tests are specified in [testing-strategy.md](testing-strategy.md#planned-assigned-program-snapshot-tests).
 - Storage rejects wrong path ownership, oversized/disallowed content, and mismatched metadata.
 - Admin-backed Functions deny unauthorized callers independently of Firestore rules.
+
+## Milestone 3 emulator proof
+
+The local `demo-tillfailure-m3` suite passed 14/14 trusted-operation and Rules tests. It proved deterministic booking locks and idempotent atomic lifecycle changes, bounded catalog contribution/count maintenance, bounded assigned-copy publication/replacement, direct snapshot authorization checks, hidden trainer source paths, stable client write denial, and Storage owner/MIME/metadata/size checks. The probes reject unsupported write/fan-out/document counts before partial writes. These results validate the authorization primitives, not final product caps or any deployed environment. See [Milestone 3 report](milestones/milestone-3-report.md).
 
 ## Unresolved policy inputs
 

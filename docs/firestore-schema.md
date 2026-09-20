@@ -1,7 +1,7 @@
 # Firestore schema proposal
 
-Status: **proposal; no Firebase resources have been created**
-Review date: **2026-09-11** (account-owned assigned-program snapshot proposal)
+Status: **proposed product schema with Milestone 3 emulator primitives; no cloud resources created**
+Review date: **2026-09-20**
 
 ## Conventions
 
@@ -70,7 +70,7 @@ Create generates a high-entropy token, stores only its hash/version internally, 
 
 ### Assigned-program snapshot identity
 
-Selected architecture (not implemented): for assignment `asg_demo`, the canonical header is `users/uid_client/workspaces/ws_demo/assignedPrograms/asg_demo`, and its one immutable snapshot is `users/uid_client/workspaces/ws_demo/assignedPrograms/asg_demo/snapshots/content`. A workout item is `users/uid_client/workspaces/ws_demo/assignedPrograms/asg_demo/snapshots/content/workouts/day1/exercises/item_squat`. The assignment ID may remain random: every requested descendant already contains it, so Rules derive its parent directly without searching by template/version. New content or reassignment uses a new assignment ID and new fixed `content` snapshot; IDs are never reused.
+Selected product architecture (isolated Milestone 3 primitive implemented; product flow not implemented): for assignment `asg_demo`, the canonical header is `users/uid_client/workspaces/ws_demo/assignedPrograms/asg_demo`, and its one immutable snapshot is `users/uid_client/workspaces/ws_demo/assignedPrograms/asg_demo/snapshots/content`. A workout item is `users/uid_client/workspaces/ws_demo/assignedPrograms/asg_demo/snapshots/content/workouts/day1/exercises/item_squat`. The assignment ID may remain random: every requested descendant already contains it, so Rules derive its parent directly without searching by template/version. New content or reassignment uses a new assignment ID and new fixed `content` snapshot; IDs are never reused.
 
 Example canonical assignment header (timestamp strings illustrate Firestore Timestamp fields):
 
@@ -268,7 +268,7 @@ All examples also carry the audit/schema fields from Conventions. They are shape
 
 ## Index plan
 
-The exact `firestore.indexes.json` will be generated only when implementation begins. Expected composite indexes are:
+Milestone 3 adds a minimal emulator `firestore.indexes.json`; the spike paths use point reads or simple queries and require no composite index. Expected later product indexes remain:
 
 - membership collection group: `userId, status` for server-side discovery/maintenance, never a Rules membership search;
 - invitation summaries: `status,createdAt desc`;

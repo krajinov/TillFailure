@@ -1,0 +1,222 @@
+import { FieldValue, Firestore, Timestamp } from "firebase-admin/firestore";
+import { commandId, stableHash } from "./hashing.js";
+
+export interface BookingPolicy {
+  readonly slotQuantumMinutes: 1 | 5 | 10 | 15;
+  readonly maxDurationMinutes: number;
+  readonly maxBufferBeforeMinutes: number;
+  readonly maxBufferAfterMinutes: number;
+  readonly maxBuckets: number;
+  readonly maxWrites: number;
+  readonly scheduleRevision: number;
+}
+
+export interface BookingRange {
+  readonly startsAtMillis: number;
+  readonly endsAtMillis: number;
+  readonly bufferBeforeMinutes: number;
+  readonly bufferAfterMinutes: number;
+}
+
+export interface BookingRequest extends BookingRange {
+  readonly workspaceId: string;
+  readonly trainerId: string;
+  readonly clientId: string;
+  readonly appointmentId: string;
+  readonly callerUid: string;
+  readonly idempotencyKey: string;
+}
+
+export interface BookingResult {
+  readonly appointmentId: string;
+  readonly revision: number;
+  readonly status: "confirmed" | "cancelled";
+  readonly bucketIds: readonly string[];
+  readonly replayed: boolean;
+}
+
+const SUPPORTED_QUANTA = new Set([1, 5, 10, 15]);
+
+export function coveredUtcBucketMinutes(range: BookingRange, quantumMinutes: number): number[] {
+  if (!SUPPORTED_QUANTA.has(quantumMinutes)) throw new Error("unsupported-quantum");
+  if (range.endsAtMillis <= range.startsAtMillis) throw new Error("invalid-range");
+  const quantumMillis = quantumMinutes * 60_000;
+  const bufferedStart = range.startsAtMillis - range.bufferBeforeMinutes * 60_000;
+  const bufferedEnd = range.endsAtMillis + range.bufferAfterMinutes * 60_000;
+  const first = Math.floor(bufferedStart / quantumMillis);
+  const exclusiveLast = Math.ceil(bufferedEnd / quantumMillis);
+  return Array.from(
+    { length: exclusiveLast - first },
+    (_, offset) => (first + offset) * quantumMinutes
+  );
+}
+
+function validateRange(range: BookingRange, policy: BookingPolicy): number[] {
+  const durationMinutes = (range.endsAtMillis - range.startsAtMillis) / 60_000;
+  if (durationMinutes <= 0 || durationMinutes > policy.maxDurationMinutes) throw new Error("unsupported-duration");
+  if (range.bufferBeforeMinutes < 0 || range.bufferBeforeMinutes > policy.maxBufferBeforeMinutes) throw new Error("unsupported-buffer");
+  if (range.bufferAfterMinutes < 0 || range.bufferAfterMinutes > policy.maxBufferAfterMinutes) throw new Error("unsupported-buffer");
+  const buckets = coveredUtcBucketMinutes(range, policy.slotQuantumMinutes);
+  if (buckets.length > policy.maxBuckets) throw new Error("bucket-budget-exceeded");
+  return buckets;
+}
+
+function bucketIds(trainerId: string, minutes: readonly number[]): string[] {
+  return minutes.map((minute) => `${trainerId}_${minute}`);
+}
+
+function receiptResult(data: FirebaseFirestore.DocumentData, requestHash: string): BookingResult {
+  if (data.requestHash !== requestHash) throw new Error("idempotency-key-reused");
+  return {
+    appointmentId: data.appointmentId as string,
+    revision: data.revision as number,
+    status: data.status as "confirmed" | "cancelled",
+    bucketIds: data.bucketIds as string[],
+    replayed: true
+  };
+}
+
+export async function bookAppointment(db: Firestore, request: BookingRequest, policy: BookingPolicy): Promise<BookingResult> {
+  const buckets = validateRange(request, policy);
+  const ids = bucketIds(request.trainerId, buckets);
+  if (ids.length + 2 > policy.maxWrites) throw new Error("write-budget-exceeded");
+  const receiptRef = db.doc(`workspaces/${request.workspaceId}/bookingCommands/${commandId(request.callerUid, request.idempotencyKey)}`);
+  const appointmentRef = db.doc(`workspaces/${request.workspaceId}/appointments/${request.appointmentId}`);
+  const requestHash = stableHash({ kind: "book", ...request });
+
+  return db.runTransaction(async (transaction) => {
+    const receipt = await transaction.get(receiptRef);
+    if (receipt.exists) return receiptResult(receipt.data()!, requestHash);
+    const lockRefs = ids.map((id) => db.doc(`workspaces/${request.workspaceId}/bookingSlots/${id}`));
+    const locks = await transaction.getAll(...lockRefs);
+    if (locks.some((lock) => lock.exists)) throw new Error("slot-conflict");
+
+    lockRefs.forEach((ref, index) => transaction.create(ref, {
+      schemaVersion: 1,
+      workspaceId: request.workspaceId,
+      trainerId: request.trainerId,
+      appointmentId: request.appointmentId,
+      utcBucket: buckets[index],
+      appointmentRevision: 1
+    }));
+    transaction.create(appointmentRef, {
+      schemaVersion: 1,
+      workspaceId: request.workspaceId,
+      trainerId: request.trainerId,
+      clientId: request.clientId,
+      startsAt: Timestamp.fromMillis(request.startsAtMillis),
+      endsAt: Timestamp.fromMillis(request.endsAtMillis),
+      bufferBeforeMinutes: request.bufferBeforeMinutes,
+      bufferAfterMinutes: request.bufferAfterMinutes,
+      status: "confirmed",
+      revision: 1,
+      scheduleRevision: policy.scheduleRevision,
+      bucketIds: ids
+    });
+    transaction.create(receiptRef, {
+      schemaVersion: 1,
+      commandKind: "book",
+      requestHash,
+      appointmentId: request.appointmentId,
+      revision: 1,
+      status: "confirmed",
+      bucketIds: ids,
+      committedAt: FieldValue.serverTimestamp()
+    });
+    return { appointmentId: request.appointmentId, revision: 1, status: "confirmed", bucketIds: ids, replayed: false };
+  });
+}
+
+export interface RescheduleRequest extends BookingRequest {
+  readonly expectedRevision: number;
+}
+
+export async function rescheduleAppointment(db: Firestore, request: RescheduleRequest, policy: BookingPolicy): Promise<BookingResult> {
+  const newBuckets = bucketIds(request.trainerId, validateRange(request, policy));
+  const appointmentRef = db.doc(`workspaces/${request.workspaceId}/appointments/${request.appointmentId}`);
+  const receiptRef = db.doc(`workspaces/${request.workspaceId}/bookingCommands/${commandId(request.callerUid, request.idempotencyKey)}`);
+  const requestHash = stableHash({ kind: "reschedule", ...request });
+
+  return db.runTransaction(async (transaction) => {
+    const documents = await transaction.getAll(receiptRef, appointmentRef);
+    const receipt = documents[0]!;
+    const appointment = documents[1]!;
+    if (receipt.exists) return receiptResult(receipt.data()!, requestHash);
+    if (!appointment.exists || appointment.get("status") !== "confirmed") throw new Error("appointment-not-live");
+    if (appointment.get("revision") !== request.expectedRevision) throw new Error("stale-revision");
+    const oldBuckets = appointment.get("bucketIds") as string[];
+    const allIds = [...new Set([...oldBuckets, ...newBuckets])];
+    if (allIds.length + 2 > policy.maxWrites) throw new Error("write-budget-exceeded");
+    const lockRefs = allIds.map((id) => db.doc(`workspaces/${request.workspaceId}/bookingSlots/${id}`));
+    const locks = await transaction.getAll(...lockRefs);
+    locks.forEach((lock, index) => {
+      const id = allIds[index]!;
+      if (oldBuckets.includes(id) && (!lock.exists || lock.get("appointmentId") !== request.appointmentId)) throw new Error("old-lock-inconsistent");
+      if (newBuckets.includes(id) && lock.exists && lock.get("appointmentId") !== request.appointmentId) throw new Error("slot-conflict");
+    });
+    const revision = request.expectedRevision + 1;
+    for (const id of allIds) {
+      const ref = db.doc(`workspaces/${request.workspaceId}/bookingSlots/${id}`);
+      if (newBuckets.includes(id)) {
+        transaction.set(ref, { schemaVersion: 1, workspaceId: request.workspaceId, trainerId: request.trainerId, appointmentId: request.appointmentId, appointmentRevision: revision });
+      } else {
+        transaction.delete(ref);
+      }
+    }
+    transaction.update(appointmentRef, {
+      startsAt: Timestamp.fromMillis(request.startsAtMillis),
+      endsAt: Timestamp.fromMillis(request.endsAtMillis),
+      bufferBeforeMinutes: request.bufferBeforeMinutes,
+      bufferAfterMinutes: request.bufferAfterMinutes,
+      bucketIds: newBuckets,
+      revision
+    });
+    transaction.create(receiptRef, { schemaVersion: 1, commandKind: "reschedule", requestHash, appointmentId: request.appointmentId, revision, status: "confirmed", bucketIds: newBuckets, committedAt: FieldValue.serverTimestamp() });
+    return { appointmentId: request.appointmentId, revision, status: "confirmed", bucketIds: newBuckets, replayed: false };
+  });
+}
+
+export interface CancelRequest {
+  readonly workspaceId: string;
+  readonly appointmentId: string;
+  readonly callerUid: string;
+  readonly idempotencyKey: string;
+  readonly expectedRevision: number;
+}
+
+export async function cancelAppointment(db: Firestore, request: CancelRequest, maxWrites = 200): Promise<BookingResult> {
+  const appointmentRef = db.doc(`workspaces/${request.workspaceId}/appointments/${request.appointmentId}`);
+  const receiptRef = db.doc(`workspaces/${request.workspaceId}/bookingCommands/${commandId(request.callerUid, request.idempotencyKey)}`);
+  const requestHash = stableHash({ kind: "cancel", ...request });
+  return db.runTransaction(async (transaction) => {
+    const documents = await transaction.getAll(receiptRef, appointmentRef);
+    const receipt = documents[0]!;
+    const appointment = documents[1]!;
+    if (receipt.exists) return receiptResult(receipt.data()!, requestHash);
+    if (!appointment.exists || appointment.get("status") !== "confirmed") throw new Error("appointment-not-live");
+    if (appointment.get("revision") !== request.expectedRevision) throw new Error("stale-revision");
+    const ids = appointment.get("bucketIds") as string[];
+    if (ids.length + 2 > maxWrites) throw new Error("write-budget-exceeded");
+    const refs = ids.map((id) => db.doc(`workspaces/${request.workspaceId}/bookingSlots/${id}`));
+    const locks = await transaction.getAll(...refs);
+    if (locks.some((lock) => !lock.exists || lock.get("appointmentId") !== request.appointmentId)) throw new Error("old-lock-inconsistent");
+    refs.forEach((ref) => transaction.delete(ref));
+    const revision = request.expectedRevision + 1;
+    transaction.update(appointmentRef, { status: "cancelled", revision, bucketIds: [] });
+    transaction.create(receiptRef, { schemaVersion: 1, commandKind: "cancel", requestHash, appointmentId: request.appointmentId, revision, status: "cancelled", bucketIds: [], committedAt: FieldValue.serverTimestamp() });
+    return { appointmentId: request.appointmentId, revision, status: "cancelled", bucketIds: [], replayed: false };
+  });
+}
+
+export async function cleanupTerminalAppointmentLocks(db: Firestore, workspaceId: string, appointmentId: string): Promise<number> {
+  const appointmentRef = db.doc(`workspaces/${workspaceId}/appointments/${appointmentId}`);
+  return db.runTransaction(async (transaction) => {
+    const appointment = await transaction.get(appointmentRef);
+    if (!appointment.exists) throw new Error("appointment-missing");
+    if (appointment.get("status") === "confirmed") throw new Error("live-appointment-locks-protected");
+    const query = db.collection(`workspaces/${workspaceId}/bookingSlots`).where("appointmentId", "==", appointmentId);
+    const locks = await transaction.get(query);
+    locks.docs.forEach((lock) => transaction.delete(lock.ref));
+    return locks.size;
+  });
+}

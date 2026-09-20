@@ -17,13 +17,15 @@ The application targets Android and iOS and shares both business logic and user 
 
 ## Project status
 
+Milestone 3 is implemented on local branch `feature/milestone-3-firebase-spike`: the Local Emulator Suite, trusted transaction/Rules probes, official Android adapter, official Apple SDK plus narrow Swift bridge, and UID-partitioned persistence prototype have runtime evidence. ADR-001 now selects the official SDK boundary. This is still emulator/debug spike code, not production Firebase initialization or a Milestone 4 feature. See [Milestone 3 report](docs/milestones/milestone-3-report.md).
+
 Milestone 1, the verified project foundation, is complete. Milestone 2, the shared design system and representative visual fixtures, is implemented for review on `feature/milestone-2-design-system`; its Android/iOS catalog walkthrough, PR #2 P2 corrections (including destination-owned snackbar placement and disabled filter-chip states), and a five-screen typed-model consistency audit were verified through 2026-09-13. Acceptance remains pending the screen-reader checks listed in [`docs/milestones/milestone-2-report.md`](docs/milestones/milestone-2-report.md).
 
 The repository contains a dedicated Android application (`androidApp`), a native Xcode host (`iosApp`), and an Android-KMP shared library (`shared`). Both hosts render the same temporary `Foundation Home -> Foundation Details -> Back` Compose flow.
 
 This flow proves typed Navigation 3, destination-scoped Koin ViewModels, lifecycle-aware state/effect collection, MVI state changes, transient effects, and destination disposal. It is technical demonstration code under `shared/.../foundation` and is explicitly intended for replacement as later product milestones establish the real application shell.
 
-No Firebase SDK, backend, authentication, role selector, product feature, deployment, or production resource is implemented. See [`docs/milestones/milestone-1-report.md`](docs/milestones/milestone-1-report.md) for fresh evidence and limitations.
+No Firebase-backed product feature, production authentication flow, role selector, deployment, or cloud resource is implemented. Milestone 3 adds only emulator/debug SDK adapters and bounded backend/persistence probes. See the [Milestone 3 report](docs/milestones/milestone-3-report.md) for current evidence and the [Milestone 1 report](docs/milestones/milestone-1-report.md) for foundation evidence.
 
 Debug builds expose **Open development UI catalog** on Foundation Home. The catalog contains centralized TillFailure foundations/components and five deterministic, nonfunctional visual compositions. Android uses `BuildConfig.DEBUG`; iOS uses `_isDebugAssertConfiguration()`, so the entry is not supplied to release hosts. The fixtures do not authenticate, persist data, or bypass a production shell.
 
@@ -377,9 +379,9 @@ The UI must distinguish:
 - retrying
 - conflict detected
 
-Appointment booking is server-authoritative and must not display success until the appointment, deterministic slot locks, and idempotency receipt commit together. The proposed contention and catalog-entitlement mechanisms are defined in [schema](docs/firestore-schema.md) and [security](docs/firestore-security.md); neither has a Firebase implementation or runtime proof yet. Cached catalog entitlement never authorizes a write or bypasses online Rules.
+Appointment booking is server-authoritative and must not display success until the appointment, deterministic slot locks, and idempotency receipt commit together. Milestone 3 implements and emulator-tests the bounded contention and catalog-entitlement primitives defined in [schema](docs/firestore-schema.md) and [security](docs/firestore-security.md); complete product scheduling and identity lifecycle integration remain later milestones. Cached catalog entitlement never authorizes a write or bypasses online Rules.
 
-Assigned programs use the selected `users/{uid}/workspaces/{wid}/assignedPrograms/{aid}/snapshots/content` model: trusted publication atomically creates the immutable client-safe copy, planning records, inventory, trainer indexes and receipt. Client Rules derive account/workspace/membership and parent eligibility directly from that path; source template/version IDs are provenance only. New prescriptions/reassignment require a new copy, and revocation/archive/cancellation/expiry denies old content. Offline cached copies follow [bounded eligibility and locked recovery](docs/offline-sync.md#assigned-snapshot-eligibility), not an evergreen grant. This is a [documentation decision awaiting emulator proof](docs/testing-strategy.md#planned-assigned-program-snapshot-tests), not implemented Firebase behavior.
+Assigned programs use the selected `users/{uid}/workspaces/{wid}/assignedPrograms/{aid}/snapshots/content` model: trusted publication atomically creates the immutable client-safe copy, planning records, inventory, trainer indexes and receipt. Client Rules derive account/workspace/membership and parent eligibility directly from that path; source template/version IDs are provenance only. New prescriptions/reassignment require a new copy, and revocation/archive/cancellation/expiry denies old content. Offline cached copies follow [bounded eligibility and locked recovery](docs/offline-sync.md#assigned-snapshot-eligibility), not an evergreen grant. Milestone 3 proved the isolated Rules and trusted-transaction primitive; Milestone 7 still owns complete product integration.
 
 An additional local database must not be introduced merely to duplicate Firestore offline persistence. Any additional persistence technology requires a documented architectural reason.
 
@@ -392,7 +394,7 @@ The project plans separate Firebase projects for:
 
 Firebase configuration files and secrets must not be committed unless they are explicitly safe and intended for source control.
 
-Android and Apple Firebase configuration files are currently tracked at the paths below, but Firebase dependencies and initialization are not present. Their existence is not evidence that an integration or deployment works; ownership, environment and source-control policy must be reviewed before implementation.
+Android and Apple Firebase configuration files are currently tracked at the paths below, but Milestone 3 does not use them for its named demo applications. The spike initializes only guarded loopback/demo clients; these configuration files are not evidence of deployment or production readiness, and ownership/environment/source-control policy still requires review.
 
 Expected local files include:
 
@@ -411,9 +413,9 @@ The Firebase Local Emulator Suite should be used for:
 
 ## Getting started
 
-Use the verified foundation commands above for shared metadata, Android-host tests/assembly, shared iOS tests, and the native Xcode host build. Fresh command results, runtime attribution, warnings, and unavailable checks are recorded in the [Milestone 1 report](docs/milestones/milestone-1-report.md).
+Use the verified foundation commands above for shared metadata, Android-host tests/assembly, shared iOS tests, and the native Xcode host build. Milestone 3 backend prerequisites and commands are in [`firebase/README.md`](firebase/README.md); full runtime attribution, warnings, and limitations are in the [Milestone 3 report](docs/milestones/milestone-3-report.md).
 
-Open `iosApp/iosApp.xcodeproj` in Xcode to run the native host application. The Firebase CLI/backend tree is not part of Milestone 1, so emulator/backend commands are not yet available.
+Open `iosApp/iosApp.xcodeproj` in Xcode to run the native host application. The Firebase CLI/backend tree is a Milestone 3 local spike and is intentionally separate from the Milestone 1 foundation flow.
 
 ## Development rules
 

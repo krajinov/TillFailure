@@ -1,0 +1,140 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function activeAccount(uid) {
+      let account = get(/databases/$(database)/documents/users/$(uid));
+      return account.data.schemaVersion == 1 && account.data.accountStatus == "active";
+    }
+
+    function catalogEntitled(uid) {
+      let entitlement = get(/databases/$(database)/documents/users/$(uid)/authorizations/systemCatalog);
+      return entitlement.data.schemaVersion == 1
+        && entitlement.data.status == "active"
+        && entitlement.data.activeMembershipCount is int
+        && entitlement.data.activeMembershipCount > 0
+        && entitlement.data.activeMembershipCount <= 20;
+    }
+
+    function activeWorkspace(wid) {
+      let workspace = get(/databases/$(database)/documents/workspaces/$(wid));
+      return workspace.data.schemaVersion == 1 && workspace.data.status == "active";
+    }
+
+    function activeClientMembership(wid, uid) {
+      let membership = get(/databases/$(database)/documents/workspaces/$(wid)/memberships/$(uid));
+      return membership.data.schemaVersion == 1
+        && membership.data.userId == uid
+        && membership.data.role == "client"
+        && membership.data.status == "active";
+    }
+
+    function assignmentReadable(uid, wid, aid) {
+      let assignment = get(/databases/$(database)/documents/users/$(uid)/workspaces/$(wid)/assignedPrograms/$(aid));
+      return signedIn()
+        && request.auth.uid == uid
+        && activeAccount(uid)
+        && activeWorkspace(wid)
+        && activeClientMembership(wid, uid)
+        && assignment.data.schemaVersion == 1
+        && assignment.data.clientId == uid
+        && assignment.data.workspaceId == wid
+        && assignment.data.assignmentId == aid
+        && assignment.data.snapshotId == "content"
+        && assignment.data.lifecycleState == "ready"
+        && assignment.data.accessStatus == "active"
+        && assignment.data.accessExpiresAt is timestamp
+        && assignment.data.accessExpiresAt > request.time;
+    }
+
+    match /systemExercises/{exerciseId} {
+      allow get, list: if signedIn()
+        && activeAccount(request.auth.uid)
+        && catalogEntitled(request.auth.uid)
+        && resource.data.status == "published";
+      allow write: if false;
+    }
+
+    match /users/{uid}/workspaces/{wid}/assignedPrograms/{aid} {
+      allow get, list: if signedIn()
+        && request.auth.uid == uid
+        && activeAccount(uid)
+        && activeWorkspace(wid)
+        && activeClientMembership(wid, uid)
+        && resource.data.schemaVersion == 1
+        && resource.data.clientId == uid
+        && resource.data.workspaceId == wid
+        && resource.data.assignmentId == aid;
+      allow write: if false;
+
+      match /snapshots/content {
+        allow get: if assignmentReadable(uid, wid, aid)
+          && resource.data.schemaVersion == 1
+          && resource.data.clientId == uid
+          && resource.data.workspaceId == wid
+          && resource.data.assignmentId == aid
+          && resource.data.snapshotId == "content";
+        allow list, write: if false;
+
+        match /workouts/{workoutId} {
+          allow get, list: if assignmentReadable(uid, wid, aid)
+            && resource.data.clientId == uid
+            && resource.data.workspaceId == wid
+            && resource.data.assignmentId == aid
+            && resource.data.snapshotId == "content";
+          allow write: if false;
+
+          match /exercises/{itemId} {
+            allow get, list: if assignmentReadable(uid, wid, aid)
+              && resource.data.clientId == uid
+              && resource.data.workspaceId == wid
+              && resource.data.assignmentId == aid
+              && resource.data.snapshotId == "content";
+            allow write: if false;
+          }
+        }
+      }
+
+      match /plannedWorkouts/{plannedWorkoutId} {
+        allow get, list: if assignmentReadable(uid, wid, aid)
+          && resource.data.clientId == uid
+          && resource.data.workspaceId == wid
+          && resource.data.assignmentId == aid
+          && resource.data.snapshotId == "content";
+        allow write: if false;
+      }
+
+      match /manifests/download {
+        allow get: if assignmentReadable(uid, wid, aid)
+          && resource.data.clientId == uid
+          && resource.data.workspaceId == wid
+          && resource.data.assignmentId == aid;
+        allow list, write: if false;
+      }
+    }
+
+    match /workspaces/{wid}/programTemplates/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /workspaces/{wid}/assignedPrograms/{aid} {
+      allow read, write: if false;
+    }
+
+    match /spikeEcho/{uid}/documents/{documentId} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create, update: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.ownerUid == uid
+        && request.resource.data.keys().hasOnly(["ownerUid", "value", "counter"]);
+      allow delete: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

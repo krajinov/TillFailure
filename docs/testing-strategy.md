@@ -1,7 +1,11 @@
 # Testing and observability strategy
 
-Status: **Milestone 1 foundation checks implemented; later feature/Firebase strategy remains planned**
-Review date: **2026-09-11** (planned assigned-snapshot authorization/lifecycle coverage)
+Status: **Milestone 3 Firebase/native spike checks implemented; later feature strategy remains planned**
+Review date: **2026-09-20**
+
+## Milestone 3 executed evidence
+
+The emulator backend passed 14/14 tests; Android host tests passed 58/58; Android connected tests passed 57/57 including the official Firebase adapter; iOS simulator shared tests passed 57/57; and the signed Swift debug harness passed Auth, read/write/rejection, metadata, transaction, cancellation, pending-write wait, epoch fencing, real background/foreground delivery, and terminate/clear. Atomic persistence recreation passed on both targets. A deliberately stalled pending-write timeout/cancellation and native Storage process-recovery scenario remain unproved and must not be inferred from successful completion paths. Full commands and attribution are in [Milestone 3 report](milestones/milestone-3-report.md).
 
 ## Test layers
 
@@ -37,7 +41,7 @@ Minimum release scenarios:
 
 ## Planned booking contention tests
 
-These are required future proofs of the [bucket schema](firestore-schema.md#deterministic-bucket-coverage-and-bounds) and [trusted transaction protocol](firestore-security.md#booking-transaction-protocol). No Firebase Rules, Functions, or emulator implementation exists for these checks today. Milestone 3 proves the contention primitive with isolated fixtures; Milestone 10 must pass the complete scheduling suite.
+Milestone 3 implements and passes the isolated Firebase Rules/Functions emulator proof of the [bucket schema](firestore-schema.md#deterministic-bucket-coverage-and-bounds) and [trusted transaction protocol](firestore-security.md#booking-transaction-protocol). Milestone 10 must still pass the complete scheduling and product-integration suite with approved timing/cap values.
 
 - Property/domain tests for every supported quantum: any positive overlap between buffered UTC intervals intersects their bucket sets; test first/last boundaries, unaligned starts/buffers rounded outward, midnight/day boundaries, and conservative rejection within a shared bucket. Different trainer/workspace namespaces are independent.
 - Run two concurrent first bookings into an empty range with different appointment IDs and idempotency keys. Assert at most one confirms, every confirmed appointment owns its full lock set, and the loser leaves no appointment/locks/receipt. Repeat with overlap caused only by pre/post buffers.
@@ -65,7 +69,7 @@ Use the actual Rules read/list checks and trusted lifecycle transactions against
 
 ## Planned assigned-program snapshot tests
 
-These tests specify future proof, not results of this documentation correction. Milestone 3 must prove the [direct path authorization](firestore-security.md#assigned-program-authorization-and-lifecycle) and bounded transaction primitive with isolated fixtures; Milestones 7/8 implement complete lifecycle and native offline behavior. Use client SDK/Rules test contexts for allow/deny assertions, and Admin only to seed fixtures or exercise separately authorized trusted operations.
+Milestone 3 passes the isolated [direct path authorization](firestore-security.md#assigned-program-authorization-and-lifecycle) and bounded trusted-transaction proof. Milestones 7/8 still implement the complete assignment lifecycle and native offline behavior. Tests use client SDK/Rules contexts for allow/deny assertions and Admin only to seed fixtures or exercise separately authorized trusted operations.
 
 - Active owning client can get its safe assignment header and ready/active/unexpired snapshot, workout/item children, planned instances and server inventory. Verify exact-collection header lists and identity-constrained descendant queries. Verify the four direct lookups and actual query/multi-read access-call budgets; do not rely on Rules queries or assumed call caching.
 - Unauthenticated, different UID/workspace/client, inactive/missing/malformed account/workspace/membership/assignment, wrong role, non-ready parent and expired/terminal parent fail content reads. An eligible owner may still read its own allowlisted terminal header, with no prescriptions or private notes. Snapshot-ID substitutions and unspecified descendant collections fail.

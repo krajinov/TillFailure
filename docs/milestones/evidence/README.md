@@ -1,4 +1,4 @@
-# Milestone 1 sanitized runtime evidence
+# Sanitized runtime evidence
 
 All images are local Android/iOS simulator captures of the temporary technical foundation. They contain no user accounts, credentials, Firebase data, health data, messages, tokens, or private media.
 
@@ -14,6 +14,8 @@ All images are local Android/iOS simulator captures of the temporary technical f
 | `android-home.png` | Home state retained after returning from Details during the initial runtime pass. |
 | `ios-home-final.png` | Final Xcode-built iOS app launched and rendered shared Foundation Home. |
 | `ios-resumed.png` | iOS app returned after a Settings background/foreground transition. |
+| `ios-m3-cold-launch.png` | Signed iOS Firebase-linked build cold-launched without the opt-in spike flag; Foundation Home remains the default UI. |
+| `android-m3-cold-launch.png` | Android Firebase-linked debug build cold-launched; Foundation Home remains the default UI. |
 
 Screenshots support runtime observations; they do not substitute for automated assertions or prove process-death restoration.
 
