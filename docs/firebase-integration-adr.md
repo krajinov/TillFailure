@@ -71,7 +71,7 @@ The emulator/non-production spike proved on both platforms:
 6. Account-scope disposal, late-callback epoch fencing, `waitForPendingWrites`, termination, and cleanup behavior.
 7. The same repository contract scenarios on Android and iOS.
 
-GitLive `2.6.0` was compared against those requirements. ADR acceptance includes a signed iOS application build/launch using the Swift bridge, not only Kotlin/Native tests. A deliberately stalled pending-write timeout/cancellation remains a milestone limitation, but the API exists and successful completion/cancellation fencing passed.
+GitLive `2.6.0` was compared against those requirements. ADR acceptance includes a signed iOS application build/launch using the Swift bridge, not only Kotlin/Native tests. Both native adapters deliberately stalled a valid pending write with networking disabled and proved independent timeout and explicit-cancellation results exactly once, late-completion suppression, metadata acknowledgement after reconnect, and UID/epoch fencing.
 
 ## Test boundaries
 
@@ -82,7 +82,7 @@ GitLive `2.6.0` was compared against those requirements. ADR acceptance includes
 
 ## Evidence
 
-Milestone 3 evidence is recorded in [the milestone report](milestones/milestone-3-report.md). Android instrumentation and the actual signed Swift implementation passed Auth observation, accepted/server reads and writes, Rules rejection mapping, metadata listeners, transactions, cancellation, pending-write drain, epoch fencing, and terminate/clear. Swift also passed a real Settings background/foreground transition. The accepted decision does not claim production-ready encrypted persistence or native Storage recovery.
+Milestone 3 evidence is recorded in [the milestone report](milestones/milestone-3-report.md). Android instrumentation and the actual signed Swift implementation passed Auth observation, accepted/server reads and writes, Rules rejection mapping, pending/cache-to-server metadata transitions, transactions, stalled cancellation/timeout, epoch fencing, and terminate/clear. Swift also passed a real Settings background/foreground transition. Platform recovery records are AES-GCM encrypted with Android Keystore or Apple Keychain keys; hardware backing, secure erase, physical-device Data Protection, production key rotation, and native Storage recovery are not claimed.
 
 - [GitLive 2.6.0 coordinates, coverage, and iOS linking](https://github.com/GitLiveApp/firebase-kotlin-sdk/blob/v2.6.0/README.md)
 - [GitLive 2.6.0 build versions](https://github.com/GitLiveApp/firebase-kotlin-sdk/blob/v2.6.0/gradle/libs.versions.toml)

@@ -132,7 +132,6 @@ export interface RescheduleRequest extends BookingRequest {
 }
 
 export async function rescheduleAppointment(db: Firestore, request: RescheduleRequest, policy: BookingPolicy): Promise<BookingResult> {
-  const newBuckets = bucketIds(request.trainerId, validateRange(request, policy));
   const appointmentRef = db.doc(`workspaces/${request.workspaceId}/appointments/${request.appointmentId}`);
   const receiptRef = db.doc(`workspaces/${request.workspaceId}/bookingCommands/${commandId(request.callerUid, request.idempotencyKey)}`);
   const requestHash = stableHash({ kind: "reschedule", ...request });
@@ -144,6 +143,9 @@ export async function rescheduleAppointment(db: Firestore, request: RescheduleRe
     if (receipt.exists) return receiptResult(receipt.data()!, requestHash);
     if (!appointment.exists || appointment.get("status") !== "confirmed") throw new Error("appointment-not-live");
     if (appointment.get("revision") !== request.expectedRevision) throw new Error("stale-revision");
+    if (appointment.get("trainerId") !== request.trainerId) throw new Error("immutable-trainer-mismatch");
+    if (appointment.get("clientId") !== request.clientId) throw new Error("immutable-client-mismatch");
+    const newBuckets = bucketIds(request.trainerId, validateRange(request, policy));
     const oldBuckets = appointment.get("bucketIds") as string[];
     const allIds = [...new Set([...oldBuckets, ...newBuckets])];
     if (allIds.length + 2 > policy.maxWrites) throw new Error("write-budget-exceeded");

@@ -77,6 +77,7 @@ export interface WorkspaceTransition {
   readonly workspaceId: string;
   readonly nextStatus: "active" | "suspended";
   readonly expectedMembershipRevision: number;
+  readonly maxMembershipsPerAccount: number;
   readonly maxMembershipsPerWorkspace: number;
   readonly maxWrites: number;
 }
@@ -110,8 +111,11 @@ export async function transitionWorkspace(db: Firestore, input: WorkspaceTransit
       if (!entitlement?.exists || !account?.exists) {
         throw new Error(`lifecycle-source-missing:${entitlementRefs[index]!.path}:${Boolean(entitlement?.exists)}:${accountRefs[index]!.path}:${Boolean(account?.exists)}`);
       }
-      const nextCount = entitlement.get("activeMembershipCount") as number + Number(newContributes) - Number(oldContributes);
-      if (nextCount < 0) throw new Error("entitlement-underflow");
+      const oldCount = entitlement.get("activeMembershipCount") as number;
+      const nextCount = oldCount + Number(newContributes) - Number(oldContributes);
+      if (!Number.isInteger(oldCount) || nextCount < 0 || nextCount > input.maxMembershipsPerAccount) {
+        throw new Error("membership-bound-violated");
+      }
       transaction.update(membership.ref, { catalogContributionActive: newContributes, revision: FieldValue.increment(1) });
       transaction.update(entitlement.ref, {
         activeMembershipCount: nextCount,

@@ -5,7 +5,7 @@ Review date: **2026-09-20**
 
 ## Milestone 3 executed evidence
 
-The emulator backend passed 14/14 tests; Android host tests passed 58/58; Android connected tests passed 57/57 including the official Firebase adapter; iOS simulator shared tests passed 57/57; and the signed Swift debug harness passed Auth, read/write/rejection, metadata, transaction, cancellation, pending-write wait, epoch fencing, real background/foreground delivery, and terminate/clear. Atomic persistence recreation passed on both targets. A deliberately stalled pending-write timeout/cancellation and native Storage process-recovery scenario remain unproved and must not be inferred from successful completion paths. Full commands and attribution are in [Milestone 3 report](milestones/milestone-3-report.md).
+The Node 22 emulator backend passed 17/17 tests; Android host tests passed 57/57; Android connected tests passed 58/58; iOS simulator shared tests passed 57/57; and the signed Swift debug harness passed Auth, read/write/rejection, cache/pending metadata transitions, transaction, deliberately stalled cancellation and timeout, exactly-once late-completion/epoch fencing, real background/foreground delivery, and terminate/clear. Actual Android Keystore and Apple Keychain/CryptoKit recovery implementations passed encrypted restart, UID isolation, tamper/key-loss, backup-exclusion and atomic-replacement checks. Native Storage process recovery is deferred to Milestone 9 or 11 and is not part of Milestone 3 acceptance. Full commands and attribution are in [Milestone 3 report](milestones/milestone-3-report.md).
 
 ## Test layers
 

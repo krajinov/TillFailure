@@ -33,7 +33,7 @@ interface NativeFirebaseBridge {
     fun listenDocument(path: String, accountEpoch: Long, callback: (NativeFirebaseDocumentResult) -> Unit): String
     fun writeDocument(path: String, fields: Map<String, String>, accountEpoch: Long, callback: (NativeFirebaseUnitResult) -> Unit): String
     fun increment(path: String, field: String, by: Long, accountEpoch: Long, callback: (NativeFirebaseDocumentResult) -> Unit): String
-    fun waitForPendingWrites(accountEpoch: Long, callback: (NativeFirebaseUnitResult) -> Unit): String
+    fun waitForPendingWrites(accountEpoch: Long, timeoutMillis: Long, callback: (NativeFirebaseUnitResult) -> Unit): String
     fun cancel(token: String)
     fun terminateAndClear(callback: (NativeFirebaseUnitResult) -> Unit)
 }
@@ -66,8 +66,12 @@ class IosFirebaseSpikeClient(
         return FirebaseCancellation { bridge.cancel(token) }
     }
 
-    override fun waitForPendingWrites(accountEpoch: Long, callback: (FirebaseUnitResult) -> Unit): FirebaseCancellation {
-        val token = bridge.waitForPendingWrites(accountEpoch) { callback(it.toContract()) }
+    override fun waitForPendingWrites(
+        accountEpoch: Long,
+        timeoutMillis: Long,
+        callback: (FirebaseUnitResult) -> Unit,
+    ): FirebaseCancellation {
+        val token = bridge.waitForPendingWrites(accountEpoch, timeoutMillis) { callback(it.toContract()) }
         return FirebaseCancellation { bridge.cancel(token) }
     }
 

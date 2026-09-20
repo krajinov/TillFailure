@@ -5,6 +5,7 @@ import org.junit.Test
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -74,6 +75,80 @@ class AndroidFirebaseSpikeClientTest {
         await(serverReadFinished, "server read")
         assertEquals(FirebaseDataOrigin.SERVER, assertNotNull(serverRead.get()).document?.origin)
 
+        val metadataPath = "spikeEcho/$uid/documents/native-android-metadata"
+        val pendingMetadata = CountDownLatch(1)
+        val acknowledgedMetadata = CountDownLatch(1)
+        val pendingOrigin = AtomicReference<FirebaseDataOrigin>()
+        val acknowledgedOrigin = AtomicReference<FirebaseDataOrigin>()
+        val metadataCallbacks = AtomicInteger(0)
+        val metadataListener = client.listenDocument(metadataPath, epoch) { result ->
+            val document = result.document ?: return@listenDocument
+            metadataCallbacks.incrementAndGet()
+            if (document.exists && document.hasPendingWrites) {
+                pendingOrigin.set(document.origin)
+                pendingMetadata.countDown()
+            } else if (document.exists && pendingMetadata.count == 0L) {
+                acknowledgedOrigin.set(document.origin)
+                acknowledgedMetadata.countDown()
+            }
+        }
+        awaitNetwork(client, enabled = false)
+        val stalledWriteFinished = CountDownLatch(1)
+        client.writeDocument(
+            metadataPath,
+            mapOf("ownerUid" to uid, "value" to "stalled", "counter" to "0"),
+            epoch,
+        ) { stalledWriteFinished.countDown() }
+        await(pendingMetadata, "local pending metadata")
+        assertEquals(FirebaseDataOrigin.CACHE, pendingOrigin.get())
+
+        val cancelledWaitResult = AtomicReference<FirebaseUnitResult>()
+        val cancelledWaitCallbacks = AtomicInteger(0)
+        val cancelledWaitFinished = CountDownLatch(1)
+        val cancelledWait = client.waitForPendingWrites(epoch, timeoutMillis = 5_000) {
+            cancelledWaitCallbacks.incrementAndGet()
+            cancelledWaitResult.set(it)
+            cancelledWaitFinished.countDown()
+        }
+        cancelledWait.cancel()
+        await(cancelledWaitFinished, "explicit pending-write cancellation")
+        assertEquals(StableFirebaseErrorCode.CANCELLED, cancelledWaitResult.get()?.failure?.code)
+
+        val timedOutWaitResult = AtomicReference<FirebaseUnitResult>()
+        val timedOutWaitCallbacks = AtomicInteger(0)
+        val timedOutWaitFinished = CountDownLatch(1)
+        client.waitForPendingWrites(epoch, timeoutMillis = 300) {
+            timedOutWaitCallbacks.incrementAndGet()
+            timedOutWaitResult.set(it)
+            timedOutWaitFinished.countDown()
+        }
+        await(timedOutWaitFinished, "pending-write timeout")
+        assertEquals(StableFirebaseErrorCode.DEADLINE_EXCEEDED, timedOutWaitResult.get()?.failure?.code)
+
+        awaitNetwork(client, enabled = true)
+        await(stalledWriteFinished, "stalled write settlement")
+        await(acknowledgedMetadata, "acknowledged metadata")
+        assertEquals(FirebaseDataOrigin.SERVER, acknowledgedOrigin.get())
+        val settled = CountDownLatch(1)
+        client.waitForPendingWrites(epoch, timeoutMillis = 5_000) { settled.countDown() }
+        await(settled, "post-stall pending-write settlement")
+        assertEquals(1, cancelledWaitCallbacks.get(), "SDK completion crossed the cancellation fence")
+        assertEquals(1, timedOutWaitCallbacks.get(), "SDK completion crossed the timeout fence")
+
+        metadataListener.cancel()
+        val callbacksAtDisposal = metadataCallbacks.get()
+        val postDisposalWrite = CountDownLatch(1)
+        client.writeDocument(
+            metadataPath,
+            mapOf("ownerUid" to uid, "value" to "after-disposal", "counter" to "0"),
+            epoch,
+        ) { postDisposalWrite.countDown() }
+        await(postDisposalWrite, "post-disposal write")
+        val postDisposalDrain = CountDownLatch(1)
+        client.waitForPendingWrites(epoch, timeoutMillis = 5_000) { postDisposalDrain.countDown() }
+        await(postDisposalDrain, "post-disposal drain")
+        assertEquals(callbacksAtDisposal, metadataCallbacks.get(), "Listener delivered after disposal")
+
         val rejectedWrite = AtomicReference<FirebaseUnitResult>()
         val rejectedFinished = CountDownLatch(1)
         client.writeDocument(
@@ -107,8 +182,26 @@ class AndroidFirebaseSpikeClientTest {
         await(pendingFinished, "pending-write drain")
         assertTrue(assertNotNull(pendingWrites.get()).isSuccess)
 
+        awaitNetwork(client, enabled = false)
+        val epochFencedWrite = client.writeDocument(
+            "spikeEcho/$uid/documents/native-android-epoch",
+            mapOf("ownerUid" to uid, "value" to "old-epoch", "counter" to "0"),
+            epoch,
+        ) {}
+        val stalePendingCallbacks = AtomicInteger(0)
+        val stalePendingWait = client.waitForPendingWrites(epoch, timeoutMillis = 5_000) {
+            stalePendingCallbacks.incrementAndGet()
+        }
         switchedAccount.set(true)
         val replacementEpoch = fence.advance()
+        awaitNetwork(client, enabled = true)
+        val replacementDrain = CountDownLatch(1)
+        client.waitForPendingWrites(replacementEpoch, timeoutMillis = 5_000) { replacementDrain.countDown() }
+        await(replacementDrain, "replacement-epoch pending drain")
+        stalePendingWait.cancel()
+        epochFencedWrite.cancel()
+        assertEquals(0, stalePendingCallbacks.get(), "Old-epoch pending wait crossed the account fence")
+
         val replacementWrite = AtomicReference<FirebaseUnitResult>()
         val replacementWriteFinished = CountDownLatch(1)
         client.writeDocument(
@@ -121,7 +214,6 @@ class AndroidFirebaseSpikeClientTest {
         }
         await(replacementWriteFinished, "replacement-epoch write")
         assertTrue(assertNotNull(replacementWrite.get()).isSuccess)
-        Thread.sleep(500)
         assertFalse(lateListenerCallback.get())
 
         val cancelledCallbackObserved = AtomicBoolean(false)
@@ -143,5 +235,17 @@ class AndroidFirebaseSpikeClientTest {
 
     private fun await(latch: CountDownLatch, operation: String) {
         assertTrue(latch.await(15, TimeUnit.SECONDS), "$operation timed out")
+    }
+
+    private fun awaitNetwork(client: AndroidFirebaseSpikeClient, enabled: Boolean) {
+        val result = AtomicReference<FirebaseUnitResult>()
+        val finished = CountDownLatch(1)
+        val callback: (FirebaseUnitResult) -> Unit = {
+            result.set(it)
+            finished.countDown()
+        }
+        if (enabled) client.enableNetwork(callback) else client.disableNetwork(callback)
+        await(finished, if (enabled) "enable Firestore network" else "disable Firestore network")
+        assertTrue(assertNotNull(result.get()).isSuccess)
     }
 }

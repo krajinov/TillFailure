@@ -74,7 +74,7 @@ The Android BoM does not provide one visible per-library version in the Gradle c
 
 | Package/tool | Exact version | Runtime/placement | Status | Source |
 |---|---:|---|---|---|
-| Node.js | `22` runtime line | `firebase/functions` and CI | **Source-verified supported runtime**; local Node 25.9.0 is not the planned/supported Functions runtime | [Cloud Functions runtime support](https://firebase.google.com/docs/functions/manage-functions#set_nodejs_version) |
+| Node.js | `22.23.2` | isolated local runtime for `firebase/functions`; Node 22 line required in CI | **Build/emulator-verified**; `npm ci`, TypeScript and all 17 emulator tests passed, and Functions reported `Using node@22 from host` | [Cloud Functions runtime support](https://firebase.google.com/docs/functions/manage-functions#set_nodejs_version) |
 | `firebase-functions` | `7.4.0` | Functions production dependency | **Build/emulator-verified** | [npm package](https://www.npmjs.com/package/firebase-functions/v/7.4.0) |
 | `firebase-admin` | `14.4.0` | Functions production dependency | **Build/emulator-verified** | [npm package](https://www.npmjs.com/package/firebase-admin/v/14.4.0) |
 | `@firebase/rules-unit-testing` | `5.0.2` | Rules dev dependency | **Emulator-verified** Firestore and Storage Rules API | [npm package](https://www.npmjs.com/package/@firebase/rules-unit-testing/v/5.0.2) |
@@ -82,7 +82,7 @@ The Android BoM does not provide one visible per-library version in the Gradle c
 | Firebase CLI | `15.30.2` | Locked local developer/CI tool | **Emulator-verified** clean start/stop | [Firebase CLI releases](https://github.com/firebase/firebase-tools/releases/tag/v15.30.2) |
 | TypeScript | `5.9.3` | Functions dev dependency | **Build-verified** exact patch | [Firebase Functions TypeScript guide](https://firebase.google.com/docs/functions/typescript) |
 
-Milestone 3 added local packages, Rules, emulator configuration, and native SDKs. It did not create or modify a Firebase cloud project.
+Milestone 3 added local packages, Rules, emulator configuration, and native SDKs. The acceptance run used npm `11.12.1`; eight moderate audit findings and transitive deprecation warnings were retained without `npm audit fix`. It did not create or modify a Firebase cloud project or change the lockfile in the correction pass.
 
 ## Explicitly not selected
 

@@ -68,13 +68,19 @@ fun interface FirebaseCancellation {
     fun cancel()
 }
 
+const val DEFAULT_PENDING_WRITE_TIMEOUT_MILLIS = 15_000L
+
 interface FirebaseSpikeClient {
     fun observeSession(accountEpoch: Long, callback: (FirebaseAuthSession) -> Unit): FirebaseCancellation
     fun getDocument(path: String, accountEpoch: Long, callback: (FirebaseDocumentResult) -> Unit): FirebaseCancellation
     fun listenDocument(path: String, accountEpoch: Long, callback: (FirebaseDocumentResult) -> Unit): FirebaseCancellation
     fun writeDocument(path: String, fields: Map<String, String>, accountEpoch: Long, callback: (FirebaseUnitResult) -> Unit): FirebaseCancellation
     fun increment(path: String, field: String, by: Long, accountEpoch: Long, callback: (FirebaseDocumentResult) -> Unit): FirebaseCancellation
-    fun waitForPendingWrites(accountEpoch: Long, callback: (FirebaseUnitResult) -> Unit): FirebaseCancellation
+    fun waitForPendingWrites(
+        accountEpoch: Long,
+        timeoutMillis: Long = DEFAULT_PENDING_WRITE_TIMEOUT_MILLIS,
+        callback: (FirebaseUnitResult) -> Unit,
+    ): FirebaseCancellation
     fun terminateAndClear(callback: (FirebaseUnitResult) -> Unit)
 }
 

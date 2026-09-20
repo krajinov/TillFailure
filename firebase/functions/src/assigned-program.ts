@@ -58,11 +58,13 @@ export async function publishAssignment(db: Firestore, input: PublishAssignmentR
   const exerciseCount = input.workouts.reduce((sum, workout) => sum + workout.exercises.length, 0);
   const documentCount = 1 + 1 + workoutCount + exerciseCount + input.plans.length + 1 + 1 + 1 + (input.replacesAssignmentId ? 1 : 0);
   if (documentCount > input.maxWrites) throw new Error("write-budget-exceeded");
-  const requiredPaths: string[] = ["snapshots/content"];
+  const requiredPathSet = new Set<string>(["snapshots/content"]);
   input.workouts.forEach((workout) => {
-    requiredPaths.push(`snapshots/content/workouts/${workout.id}`);
-    workout.exercises.forEach((exercise) => requiredPaths.push(`snapshots/content/workouts/${workout.id}/exercises/${exercise.id}`));
+    requiredPathSet.add(`snapshots/content/workouts/${workout.id}`);
+    workout.exercises.forEach((exercise) => requiredPathSet.add(`snapshots/content/workouts/${workout.id}/exercises/${exercise.id}`));
   });
+  input.plans.forEach((plan) => requiredPathSet.add(`plannedWorkouts/${plan.id}`));
+  const requiredPaths = [...requiredPathSet].sort();
 
   return db.runTransaction(async (transaction) => {
     const documents = await transaction.getAll(receiptRef, headerRef);

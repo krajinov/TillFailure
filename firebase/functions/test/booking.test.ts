@@ -51,6 +51,9 @@ describe("booking contention probe", () => {
     assert.deepEqual(replay.bucketIds, first.bucketIds);
     const moved = await rescheduleAppointment(db, { ...request, idempotencyKey: "move", expectedRevision: 1, startsAtMillis: base + 2 * 60 * 60_000, endsAtMillis: base + 3 * 60 * 60_000 }, policy);
     assert.equal(moved.revision, 2);
+    const movedReplay = await rescheduleAppointment(db, { ...request, idempotencyKey: "move", expectedRevision: 1, startsAtMillis: base + 2 * 60 * 60_000, endsAtMillis: base + 3 * 60 * 60_000 }, policy);
+    assert.equal(movedReplay.replayed, true);
+    assert.deepEqual(movedReplay.bucketIds, moved.bucketIds);
     for (const oldId of first.bucketIds) assert.equal((await db.doc(`workspaces/ws_lifecycle/bookingSlots/${oldId}`).get()).exists, false);
     for (const newId of moved.bucketIds) assert.equal((await db.doc(`workspaces/ws_lifecycle/bookingSlots/${newId}`).get()).get("appointmentId"), "appt");
     await assert.rejects(() => cleanupTerminalAppointmentLocks(db, "ws_lifecycle", "appt"), /live-appointment/);
@@ -58,6 +61,32 @@ describe("booking contention probe", () => {
     assert.equal(cancelled.status, "cancelled");
     assert.equal((await db.collection("workspaces/ws_lifecycle/bookingSlots").get()).size, 0);
     assert.equal(await cleanupTerminalAppointmentLocks(db, "ws_lifecycle", "appt"), 0);
+  });
+
+  it("rejects immutable trainer/client changes without touching the appointment or locks", async () => {
+    const base = Date.UTC(2026, 8, 19, 10, 0);
+    const request = { workspaceId: "ws_identity", trainerId: "trainer", clientId: "client", callerUid: "client", appointmentId: "appt", idempotencyKey: "book", startsAtMillis: base, endsAtMillis: base + 60 * 60_000, bufferBeforeMinutes: 0, bufferAfterMinutes: 0 };
+    const booked = await bookAppointment(db, request, policy);
+    const appointmentPath = "workspaces/ws_identity/appointments/appt";
+    const originalAppointment = (await db.doc(appointmentPath).get()).data();
+
+    await assert.rejects(
+      () => rescheduleAppointment(db, { ...request, trainerId: "alternate-trainer", idempotencyKey: "move-trainer", expectedRevision: 1, startsAtMillis: base + 2 * 60 * 60_000, endsAtMillis: base + 3 * 60 * 60_000 }, policy),
+      /immutable-trainer-mismatch/
+    );
+    await assert.rejects(
+      () => rescheduleAppointment(db, { ...request, clientId: "alternate-client", idempotencyKey: "move-client", expectedRevision: 1, startsAtMillis: base + 2 * 60 * 60_000, endsAtMillis: base + 3 * 60 * 60_000 }, policy),
+      /immutable-client-mismatch/
+    );
+
+    assert.deepEqual((await db.doc(appointmentPath).get()).data(), originalAppointment);
+    for (const originalId of booked.bucketIds) {
+      assert.equal((await db.doc(`workspaces/ws_identity/bookingSlots/${originalId}`).get()).get("appointmentId"), "appt");
+    }
+    const allLocks = await db.collection("workspaces/ws_identity/bookingSlots").get();
+    assert.equal(allLocks.size, booked.bucketIds.length);
+    assert.ok(allLocks.docs.every((lock) => lock.get("trainerId") === "trainer"));
+    assert.equal((await db.collection("workspaces/ws_identity/bookingCommands").get()).size, 1);
   });
 
   it("rejects an unsupported transaction budget before writing", async () => {

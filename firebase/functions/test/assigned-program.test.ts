@@ -33,6 +33,38 @@ describe("assigned-program publication", () => {
     assert.equal((await publishAssignment(db, base)).replayed, true);
     assert.equal((await db.doc("users/client/workspaces/ws/assignedPrograms/asg-one/snapshots/content").get()).get("snapshotId"), "content");
     assert.equal((await db.doc("users/client/workspaces/ws/assignedPrograms/asg-one/snapshots/content/workouts/day-one/exercises/squat").get()).get("prescription"), "3 x 5");
+    const manifest = await db.doc("users/client/workspaces/ws/assignedPrograms/asg-one/manifests/download").get();
+    assert.deepEqual(manifest.get("requiredPaths"), [
+      "plannedWorkouts/plan-one",
+      "snapshots/content",
+      "snapshots/content/workouts/day-one",
+      "snapshots/content/workouts/day-one/exercises/squat"
+    ]);
+  });
+
+  it("publishes a deterministic complete inventory with zero, one, or many plans", async () => {
+    await publishAssignment(db, { ...base, idempotencyKey: "zero", assignmentId: "asg-zero", plans: [] });
+    assert.deepEqual(
+      (await db.doc("users/client/workspaces/ws/assignedPrograms/asg-zero/manifests/download").get()).get("requiredPaths"),
+      ["snapshots/content", "snapshots/content/workouts/day-one", "snapshots/content/workouts/day-one/exercises/squat"]
+    );
+
+    await publishAssignment(db, {
+      ...base,
+      idempotencyKey: "many",
+      assignmentId: "asg-many",
+      plans: [
+        { id: "plan-z", workoutId: "day-one", scheduledInstantMillis: Date.UTC(2027, 0, 3) },
+        { id: "plan-a", workoutId: "day-one", scheduledInstantMillis: Date.UTC(2027, 0, 2) }
+      ]
+    });
+    const requiredPaths = (await db.doc("users/client/workspaces/ws/assignedPrograms/asg-many/manifests/download").get()).get("requiredPaths") as string[];
+    assert.deepEqual(requiredPaths, [...requiredPaths].sort());
+    assert.equal(new Set(requiredPaths).size, requiredPaths.length);
+    assert.ok(requiredPaths.includes("plannedWorkouts/plan-a"));
+    assert.ok(requiredPaths.includes("plannedWorkouts/plan-z"));
+    assert.equal((await db.doc("users/client/workspaces/ws/assignedPrograms/asg-many/plannedWorkouts/plan-a").get()).exists, true);
+    assert.equal((await db.doc("users/client/workspaces/ws/assignedPrograms/asg-many/plannedWorkouts/plan-z").get()).exists, true);
   });
 
   it("replacement uses new identity and terminal states deny the old parent", async () => {
@@ -47,5 +79,7 @@ describe("assigned-program publication", () => {
   it("rejects an oversized publication without partial state", async () => {
     await assert.rejects(() => publishAssignment(db, { ...base, maxWrites: 2 }), /write-budget/);
     assert.equal((await db.doc("users/client/workspaces/ws/assignedPrograms/asg-one").get()).exists, false);
+    assert.equal((await db.doc("users/client/workspaces/ws/assignedPrograms/asg-one/manifests/download").get()).exists, false);
+    assert.equal((await db.doc("users/client/workspaces/ws/assignedPrograms/asg-one/plannedWorkouts/plan-one").get()).exists, false);
   });
 });

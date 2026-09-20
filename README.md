@@ -17,7 +17,7 @@ The application targets Android and iOS and shares both business logic and user 
 
 ## Project status
 
-Milestone 3 is implemented on local branch `feature/milestone-3-firebase-spike`: the Local Emulator Suite, trusted transaction/Rules probes, official Android adapter, official Apple SDK plus narrow Swift bridge, and UID-partitioned persistence prototype have runtime evidence. ADR-001 now selects the official SDK boundary. This is still emulator/debug spike code, not production Firebase initialization or a Milestone 4 feature. See [Milestone 3 report](docs/milestones/milestone-3-report.md).
+Milestone 3 is locally accepted on branch `feature/milestone-3-firebase-spike`: the Node 22 Local Emulator Suite, corrected trusted transaction/Rules probes, official Android adapter, official Apple SDK plus narrow Swift bridge, deliberately stalled pending-write handling, matching metadata transitions, and encrypted UID-partitioned recovery persistence have runtime evidence. ADR-001 selects the official SDK boundary. This remains emulator/debug spike code, not production Firebase initialization or a Milestone 4 feature. See [Milestone 3 report](docs/milestones/milestone-3-report.md).
 
 Milestone 1, the verified project foundation, is complete. Milestone 2, the shared design system and representative visual fixtures, is implemented for review on `feature/milestone-2-design-system`; its Android/iOS catalog walkthrough, PR #2 P2 corrections (including destination-owned snackbar placement and disabled filter-chip states), and a five-screen typed-model consistency audit were verified through 2026-09-13. Acceptance remains pending the screen-reader checks listed in [`docs/milestones/milestone-2-report.md`](docs/milestones/milestone-2-report.md).
 

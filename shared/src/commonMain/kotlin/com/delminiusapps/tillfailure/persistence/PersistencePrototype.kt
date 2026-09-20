@@ -3,6 +3,14 @@ package com.delminiusapps.tillfailure.persistence
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
+const val RECOVERY_ENCRYPTION_VERSION = 1
+const val RECOVERY_KEY_IDENTIFIER = "tillfailure.recovery.v1"
+
+class RecoveryPersistenceLockedException(
+    message: String,
+    cause: Throwable? = null,
+) : IllegalStateException(message, cause)
+
 @Serializable
 data class OfflineAccessGrant(
     val schemaVersion: Int = 1,

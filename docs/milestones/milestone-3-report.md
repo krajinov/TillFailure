@@ -1,130 +1,104 @@
 # Milestone 3 report: Firebase environment, native parity, and persistence spike
 
-Status: **implemented and locally verified; milestone acceptance remains conditional on the blockers below**
+Status: **locally accepted**
 
 Date: **2026-09-20**
 
 Branch: `feature/milestone-3-firebase-spike`
-Starting commit: `7d0bf7dfd2a6cb4d23d5d72bb76b20e4ebb55f47`
+
+Milestone base: `7d0bf7dfd2a6cb4d23d5d72bb76b20e4ebb55f47`
+
+Acceptance-correction start: `079a1a5698639e91aae2bbe9915d2f3725555ee3`
 
 ## Outcome
 
-Milestone 3 established an emulator-only Firebase backend, proved the three documented authorization/transaction primitives, exercised official Android and Apple Firebase adapters through real native runtimes, and tested a UID-partitioned atomic-file persistence prototype on both targets. ADR-001 is accepted for official SDKs plus the narrow Swift bridge.
+Milestone 3 established an emulator-only Firebase backend, proved the selected booking, catalog-entitlement, assignment-publication and Rules primitives, exercised official Android and Apple Firebase adapters through native runtimes, and implemented encrypted UID-partitioned recovery persistence on both platforms. ADR-001 is accepted for official SDKs behind TillFailure contracts and the narrow Swift bridge.
 
-The milestone is not marked fully accepted because the atomic-file prototype does not prove application-level encryption at rest, and a deliberately stalled `waitForPendingWrites` timeout/cancellation was not induced on both native SDKs. Storage Rules were emulator-tested, but native resumable Storage upload/process-death behavior was not evaluated because no Milestone 3 product upload path required it.
+This is local acceptance of the Firebase core/native-parity spike, not production approval. No Firebase cloud project or production resource was created or changed; nothing was deployed, merged, tagged or released; and no Milestone 4 behavior was added. Cloud ownership, production configuration, physical-device security, App Check, retention policy, release signing and deployment remain unresolved.
 
-No Firebase cloud project was created or changed. Nothing was deployed, staged, committed, pushed, merged, tagged, released, or opened as a PR. No production credentials/data or Milestone 4 behavior was used.
+## Corrective review closure
 
-## Implemented structure
+- Booking reschedule loads the stored appointment before replacement-bucket calculation and rejects trainer or client identity changes atomically. Tests prove the appointment/original locks remain unchanged, the alternate trainer receives no lock, and valid retries remain idempotent.
+- Assigned-program publication puts the snapshot and every created `plannedWorkouts/{id}` path in a sorted, duplicate-free `requiredPaths` inventory. Zero/one/many-plan and failed-publication tests prove completeness and all-or-none commit behavior.
+- Workspace restoration validates every computed entitlement count against zero and `maxMembershipsPerAccount`. Below-cap and exact-cap restores pass; above-cap restore leaves workspace, contributions, counts and authorization unchanged.
 
-- Root `firebase.json` fixes Auth `9099`, Functions `5001`, Firestore `8080`, and Storage `9199` to loopback and disables Emulator UI.
-- `firebase/functions` contains a Node 22 Functions package, exact lockfile, TypeScript trusted-operation probes, and serial emulator tests.
-- `firebase/firestore.rules`, `firebase/firestore.indexes.json`, and `firebase/storage.rules` deny by default and expose only the spike paths.
-- `shared/commonMain` owns immutable Firebase-free contracts, stable failures, cancellation, callback fencing, and versioned persistence records.
-- `shared/androidMain` uses official Android Auth/Firestore SDKs and a UID-partitioned atomic file.
-- `iosApp` owns the official Apple SDK and callback bridge; `shared/iosMain` maps bridge DTOs into the same common contract and owns the iOS atomic file.
-- The Swift harness is Debug-only and opt-in through `TILLFAILURE_FIREBASE_SPIKE=1`; normal launch remains the Milestone 2 Foundation/catalog flow.
+## Runtime and dependency evidence
 
-## Exact dependencies
+| Area | Exact version/evidence |
+|---|---|
+| Node.js | `22.23.2`, isolated `npx` runtime; Functions emulator reported `Using node@22 from host` |
+| npm | `11.12.1`; locked `npm ci` completed |
+| Firebase CLI | `15.30.2`; clean local startup and shutdown |
+| Firebase Functions/Admin/JS | `7.4.0` / `14.4.0` / `12.19.0` |
+| Rules unit testing / TypeScript | `5.0.2` / `5.9.3` |
+| Firebase Android BoM | `34.19.0`, API 34 emulator runtime |
+| Firebase Apple SDK | SPM `12.19.2`, signed iPhone 16e/iOS 26.2 simulator runtime |
 
-| Area | Exact version | Result |
-|---|---:|---|
-| Firebase Android BoM | `34.19.0` | Android adapter compiled and ran on API 34 emulator |
-| Firebase Apple SDK (SPM) | `12.19.2` | Resolved, linked, signed, and ran on iPhone 16e/iOS 26.2 simulator |
-| Firebase Functions | `7.4.0` | TypeScript compile and emulator load passed |
-| Firebase Admin | `14.4.0` | Trusted transaction tests passed |
-| Firebase JS test client | `12.19.0` | Rules integration tests passed |
-| Rules unit testing | `5.0.2` | Firestore and Storage Rules tests passed |
-| Firebase CLI | `15.30.2` | Locked local emulator start/stop passed |
-| TypeScript | `5.9.3` | Exact compile passed |
-| Node types | `22.20.3` | Exact compile passed |
-| Kotlin serialization JSON | `1.9.0` | Persistence envelope round trips passed |
-| AndroidX test runner | `1.7.0` | Android device suite executed |
-
-The package requires and declares Node 22. The available host ran Node `25.9.0`, and the Functions emulator explicitly reported that it used host Node 25 instead. This is a local tool-version limitation and not evidence of a Node 22 runtime pass. `npm audit` reported eight moderate transitive findings; no unsafe automatic audit fix was applied.
+`npm ci` reported deprecation notices for transitive `node-domexception`, `json-ptr`, `uuid` and `glob`, plus eight moderate audit findings. No `npm audit fix`, dependency update or lockfile change was made. Xcode retained the existing ICU minimum-simulator and always-run script-phase warnings; the Storage emulator retained its Java `sun.misc.Unsafe` warning.
 
 ## Backend proof
 
-Final emulator run: **14 passed, 0 failed**.
+Final Node 22 emulator run: **17 passed, 0 failed**.
 
-| Primitive | Automated proof |
+| Primitive | Tests and result |
 |---|---|
-| Booking contention | 4 tests: complete outward-rounded buffered buckets; overlapping first booking in an empty range allows at most one commit; lock/appointment/receipt replay and reschedule/cancel atomicity; cleanup protects live appointments; bounds reject before write |
-| Catalog entitlement | 3 tests: activation/replay/revocation/restoration without count drift; bounded workspace suspend/restore and account disable; unsupported fan-out rejects without partial state |
-| Assigned snapshot | 3 tests: bounded atomic publication and replay; replacement gets a new identity and old parent becomes terminal; oversize publication rejects without partial state |
-| Firestore/Storage Rules | 4 tests: active catalog entitlement/published item; bounded direct snapshot checks and hidden trainer sources; owner write versus forged owner denial; Storage owner/MIME/metadata/size checks |
+| Assigned publication | 4/4: atomic replay, deterministic complete zero/one/many-plan inventory, replacement/terminal denial, oversize all-or-none rejection |
+| Booking | 5/5: bucket coverage, first-booking contention, idempotent reschedule/cancel, immutable trainer/client rejection, transaction-budget rejection |
+| Catalog lifecycle | 4/4: count lifecycle, workspace/account transitions, fan-out rejection, below/exact/above-cap restoration |
+| Firestore/Storage Rules | 4/4: catalog, assigned snapshot/source denial, stable forged-owner denial, Storage owner/MIME/metadata/size |
 
-The probes keep quantum, timing, membership fan-out, snapshot size, and write caps as inputs. They establish feasibility under tested caps; they do not approve product values. The booking paths use `workspaces/{workspaceId}/bookingSlots/{trainerId}_{utcBucket}` and never treat an empty appointment query as a lock. Snapshot clients can read only the account-owned copy at `users/{uid}/workspaces/{wid}/assignedPrograms/{aid}/snapshots/content`; original trainer sources remain denied.
+The probes validate the primitives under configured bounds. They do not approve final product caps or a deployed environment.
 
-## Official SDK versus GitLive 2.6.0
+## Native parity matrix
 
-GitLive `2.6.0` source exposes the necessary common Auth flow and Firestore get/listen/write/transaction, metadata, error codes, pending-write wait, cancellation through Flow collection, termination, persistence clearing, and emulator routing. It is a functionally credible alternative, not rejected for missing these APIs.
-
-| Required surface | GitLive `2.6.0` | Official adapters | Decision evidence |
+| Case | Android actual | Apple actual | Attribution |
 |---|---|---|---|
-| Auth state/emulator | Common `authStateChanged`, `useEmulator` | Native runtime pass on both | Parity |
-| Get/listen/write/transaction | Common suspend/Flow APIs | Native runtime pass on both | Parity |
-| Snapshot metadata | `isFromCache`, `hasPendingWrites`, metadata changes | Native runtime pass on both | Parity |
-| Rules rejection | Typed Firestore exception code | Stable `PERMISSION_DENIED` mapped on both | Parity |
-| Pending-write wait | Common `waitForPendingWrites` | Success path passed on both | Parity; stalled cancellation not induced |
-| Cancellation/disposal | Coroutine/Flow cancellation | Explicit project token/registration | Both viable; project bridge is explicit |
-| Late-callback fencing | Still an app-owned responsibility | UID/account epoch is built into both adapters and runtime-tested | Equivalent app work |
-| Terminate/clear | Common APIs present | Native runtime pass on both | Parity |
-| Emulator/restart | Native SDK delegation | Explicit demo-project/loopback guards; native cold launch and persistence restart proof | Official path passed |
-| Dependency alignment | Kotlin `2.2.21`, Android BoM `34.17.0`, Apple CocoaPods `11.8.0` in the exact tag | Existing Kotlin `2.4.10`, Android BoM `34.19.0`, Apple SPM `12.19.2` | Official path avoids wrapper and Apple SDK lag |
+| Auth and accepted read/write | PASS | PASS | Android instrumentation; signed opt-in Swift harness |
+| Rules rejection mapping | `PERMISSION_DENIED` PASS | `PERMISSION_DENIED` PASS | Client SDK paths only; no Admin bypass |
+| Cache/pending metadata | Offline cache + pending true, then server + pending false PASS | Offline cache + pending true, then server + pending false PASS | Metadata-change listeners on both |
+| Listener disposal | No callback after disposal PASS | No callback after disposal PASS | Native registrations removed |
+| Stalled explicit cancellation | `CANCELLED`, exactly once; late SDK completion fenced PASS | `CANCELLED`, exactly once; late SDK completion fenced PASS | Networking disabled before valid local write |
+| Independent stalled timeout | `DEADLINE_EXCEEDED`, exactly once PASS | `DEADLINE_EXCEEDED`, exactly once PASS | 300 ms configured harness timeout; deterministic latches/groups |
+| Account-epoch fencing | Old-epoch completion/callback suppressed PASS | Old-epoch completion/callback suppressed PASS | Network re-enabled and current epoch drained |
+| Terminate/clear and lifecycle | PASS | Real Settings background/foreground and terminate/clear PASS | Emulator/simulator runtime |
+| Encrypted restart recovery | Android Keystore-backed AES-256-GCM PASS | Keychain key + CryptoKit AES-GCM PASS | Actual platform implementations, not common fakes |
 
-ADR-001 therefore accepts the official SDK approach. GitLive would reduce handwritten adapter code, but it does not remove app-owned fencing/persistence policy, and its stable tag introduces an extra compatibility owner plus an older CocoaPods-based Apple SDK. No GitLive dependency remains in the tree.
+The underlying pending-write SDK task is not claimed to be physically cancellable. TillFailure’s exactly-once gate suppresses late completion after cancel, timeout or epoch change.
 
-## Seven-case native parity matrix
+## Recovery persistence
 
-| Case | Android actual result | Apple actual result | Attribution and limitations |
-|---|---|---|---|
-| 1. Online accepted read/write | PASS: anonymous Auth, owner write, server read | PASS: signed native app, owner write, server read | Automated Android instrumentation; opt-in Swift runtime harness |
-| 2. Rules-rejected stable error | PASS: forged owner mapped to `PERMISSION_DENIED` | PASS: forged owner mapped to `PERMISSION_DENIED` | Emulator Rules, no Admin bypass in client paths |
-| 3. Listener metadata/pending transition | PASS: listener observed document; contract exposes source/pending metadata | PASS: observed cache/server and pending true→false | Android assertion is less granular than printed Apple transition; metadata mapping compiles and is used |
-| 4. Cancellation/disposal/no late callback | PASS: cancelled get stayed silent; listener removed | PASS: cancelled get stayed silent; listener removed | 500 ms post-cancel observation window; not a proof against every scheduler delay |
-| 5. Pending-write wait and cancellation | PASS: drain completed | PASS: drain completed | Completion passed; artificially stalled timeout/cancellation remains **not proven** |
-| 6. Terminate/clear/account fencing | PASS: old-epoch listener stayed silent; terminate/clear passed | PASS: old-epoch get stayed silent; real background/foreground read and terminate/clear passed | Actual device/simulator runtimes |
-| 7. Restart/process recovery | PASS: Android atomic-file store recreated and recovered UID partitions | PASS: iOS atomic-file store recreated and recovered UID partitions; clean emulator restart obtained a fresh anonymous identity instead of reusing a stale local token | Host/native tests plus signed harness; encryption at rest remains **not proven** |
+The common recovery record contract remains Firebase- and platform-type-free. Both implementations use an explicit version-1 encrypted envelope with key identifier `tillfailure.recovery.v1`, random nonce per write, UID/version/key-ID authenticated data, temporary-file flush and atomic rename. Existing unreadable data is authenticated before replacement or deletion; corruption, tamper, wrong/missing key and key loss produce a locked error rather than empty success.
 
-## Persistence prototype
+- Android stores a non-exportable AES-256 key in Android Keystore and files under app-private `noBackupFilesDir`. API 34 instrumentation proved round trip/recreation, UID isolation, absent plaintext, unique nonce, envelope version/key ID, no-backup location, atomic replacement, temporary cleanup, tamper/wrong/missing-key lockout and preservation of unresolved files.
+- Apple stores a random AES-GCM key in Keychain with `AfterFirstUnlockThisDeviceOnly`, writes app-private Application Support files with backup exclusion, and requests `completeUntilFirstUserAuthentication` Data Protection. The signed Swift harness proved the same round-trip, isolation, envelope, nonce, tamper/key-loss and preservation cases. The simulator accepted the protection configuration but returned no observable protection-class attribute; physical-device protection semantics are therefore not claimed.
 
-One versioned JSON envelope stores `OfflineAccessGrant`, download manifests, workout recovery, mutation journal entries, pending uploads, and the switch marker. Files are partitioned by validated UID. Both platform implementations write a temporary file, flush it, and atomically rename it; recreation, isolation, deletion, and temporary-file cleanup tests pass.
-
-Selected direction: a small app-owned atomic record set is sufficient to continue into a security/encryption spike; a second general-purpose database is not justified yet. It is not production-approved. Atomic rename was exercised, but crash injection between flush and rename, backup policy, OS data-protection class, application-layer encryption, key rotation, and secure erase were not proven.
+Future rotation uses a new versioned key identifier, reads old envelopes with their matching retained key, atomically rewrites each UID partition under the new key, and deletes the old key only after audited migration completion. Full production rotation is not implemented. Hardware backing, secure erase and physical-device Data Protection are not claimed.
 
 ## Verification ledger
 
 | Gate | Final result |
 |---|---|
-| Locked backend install | PASS (`npm ci`; engine/audit warnings recorded) |
-| Functions TypeScript build | PASS |
-| Clean emulator suite startup/shutdown | PASS |
-| Trusted-operation + Rules/Storage tests | PASS, 14/14 |
-| Common metadata / iOS compilation | PASS |
-| Android host tests | PASS, 58/58 |
-| Android connected tests | PASS, 57/57 including native Firebase case |
-| Android debug assembly and cold launch | PASS; Foundation Home remained default |
-| iOS simulator shared tests | PASS, 57/57 |
-| Native Xcode build | PASS with Firebase SPM `12.19.2` |
-| Native Swift Firebase harness | PASS for all emitted checks, including lifecycle and fencing |
-| iOS cold launch | PASS; Foundation Home remained default |
-| Diff whitespace / conflict markers | PASS |
-| Secret/generated/machine-file audit | PASS after ignoring Functions `lib`; tracked Firebase config contents were not printed or changed |
+| Node 22 `npm ci`, TypeScript build, emulator start/stop | PASS |
+| Trusted-operation and Rules suite | **17/17 PASS** |
+| Common metadata + Android/iOS compilation | PASS |
+| Android host tests | **57/57 PASS** |
+| Android connected tests | **58/58 PASS** |
+| Android debug assembly/cold launch | PASS; Foundation Home default |
+| iOS shared simulator tests | **57/57 PASS** |
+| Native signed Xcode Debug build | PASS |
+| Swift Firebase/recovery harness | PASS; every asserted check, lifecycle cleanup included |
+| Android/iOS cold launch | PASS; fresh sanitized screenshots inspected |
+| Diff/secret/generated/machine-path audit | PASS at acceptance commit |
 
-Warnings retained: Android SDK XML parser version warning; Kotlin framework bundle-ID inference warning; ICU object minimum iOS Simulator 18.5 versus app deployment 18.2; Xcode script phase always runs; Storage emulator Java `sun.misc.Unsafe` warning; Node 25 versus requested Node 22 warning.
+## Remaining decisions and deferred work
 
-## Remaining owner decisions and blockers
-
-- Engineering/security must select and prove encryption/data-protection and backup behavior for the app-owned records before production data is stored.
-- Engineering must induce and specify stalled pending-write timeout/cancellation semantics on both adapters before the sign-out protocol relies on a timeout.
-- Product/security still own offline eligibility duration, locked recovery retention/export/discard, and destructive account-switch policy.
-- Product/engineering still own concrete booking quantum/duration/buffer/window caps, workspace fan-out caps, assignment size/horizon/expiry, and retention.
-- Platform/security still own Firebase environments, region/data residency, billing/budgets, service accounts, App Check, deployment, and release signing. None were touched here.
-- Native Storage upload recovery remains deferred until an approved media/upload feature requires it.
+- Native resumable Storage upload/process-death recovery remains deferred to the first approved media/upload milestone, currently Milestone 9 or 11. The safe pending-upload registry remains required; this is not a Milestone 3 acceptance blocker.
+- Product/security still own offline eligibility duration, locked-recovery retention/export/discard, booking and fan-out production caps, privacy/retention policy and shared-device requirements.
+- Platform/security still own Firebase project/environment ownership, region/data residency, billing/budgets, service accounts, App Check, deployment, production credentials and release signing.
+- Physical-device Keystore/Keychain/Data Protection behavior and production restore drills remain release evidence, not simulator claims.
 
 ## Evidence
 
-- [iOS cold launch](evidence/ios-m3-cold-launch.png)
 - [Android cold launch](evidence/android-m3-cold-launch.png)
-- Backend, Gradle, Android instrumentation, Xcode, and sanitized `M3_FIREBASE_SPIKE` console results are summarized here; generated logs/build outputs remain ignored.
+- [iOS cold launch](evidence/ios-m3-cold-launch.png)
+- Generated build/emulator logs remain ignored; exact commands and sanitized results are summarized above.

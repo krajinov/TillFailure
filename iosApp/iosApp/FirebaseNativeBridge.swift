@@ -9,6 +9,19 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
         var cancelled = false
     }
 
+    private final class PendingWriteGate {
+        private let lock = NSLock()
+        private var completed = false
+
+        func claim() -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            guard !completed else { return false }
+            completed = true
+            return true
+        }
+    }
+
     private let auth: Auth
     private let firestore: Firestore
     private let lock = NSLock()
@@ -107,14 +120,30 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
         return registerCancellation { gate.cancelled = true }
     }
 
-    func waitForPendingWrites(accountEpoch: Int64, callback_: @escaping (NativeFirebaseUnitResult) -> Void) -> String {
+    func waitForPendingWrites(accountEpoch: Int64, timeoutMillis: Int64, callback_: @escaping (NativeFirebaseUnitResult) -> Void) -> String {
+        precondition(timeoutMillis > 0, "Pending-write timeout must be positive")
         activate(epoch: accountEpoch)
-        let gate = CallbackGate()
-        firestore.waitForPendingWrites { [weak self] error in
-            guard !gate.cancelled, self?.accepts(epoch: accountEpoch) == true else { return }
-            callback_(NativeFirebaseUnitResult(failure: error.map(Self.mapFailure)))
+        let gate = PendingWriteGate()
+        let token = UUID().uuidString
+        let finish: (NativeFirebaseUnitResult) -> Void = { [weak self] result in
+            guard gate.claim() else { return }
+            self?.removeCancellation(token: token)
+            guard self?.accepts(epoch: accountEpoch) == true else { return }
+            callback_(result)
         }
-        return registerCancellation { gate.cancelled = true }
+        let timeout = DispatchWorkItem {
+            finish(NativeFirebaseUnitResult(failure: NativeFirebaseFailure(code: "DEADLINE_EXCEEDED", retryable: true)))
+        }
+        DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(Int(timeoutMillis)), execute: timeout)
+        firestore.waitForPendingWrites { error in
+            timeout.cancel()
+            finish(NativeFirebaseUnitResult(failure: error.map(Self.mapFailure)))
+        }
+        registerCancellation(token: token) {
+            timeout.cancel()
+            finish(NativeFirebaseUnitResult(failure: NativeFirebaseFailure(code: "CANCELLED", retryable: true)))
+        }
+        return token
     }
 
     func cancel(token: String) {
@@ -157,6 +186,18 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
         }
     }
 
+    func disableNetwork(completion: @escaping (NativeFirebaseUnitResult) -> Void) {
+        firestore.disableNetwork { error in
+            completion(NativeFirebaseUnitResult(failure: error.map(Self.mapFailure)))
+        }
+    }
+
+    func enableNetwork(completion: @escaping (NativeFirebaseUnitResult) -> Void) {
+        firestore.enableNetwork { error in
+            completion(NativeFirebaseUnitResult(failure: error.map(Self.mapFailure)))
+        }
+    }
+
     private func activate(epoch: Int64) {
         lock.lock()
         if epoch > currentEpoch { currentEpoch = epoch }
@@ -171,15 +212,25 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
 
     private func registerCancellation(_ cancellation: @escaping () -> Void) -> String {
         let token = UUID().uuidString
+        registerCancellation(token: token, cancellation)
+        return token
+    }
+
+    private func registerCancellation(token: String, _ cancellation: @escaping () -> Void) {
         lock.lock()
         if terminated {
             lock.unlock()
             cancellation()
-            return token
+            return
         }
         cancellations[token] = cancellation
         lock.unlock()
-        return token
+    }
+
+    private func removeCancellation(token: String) {
+        lock.lock()
+        cancellations.removeValue(forKey: token)
+        lock.unlock()
     }
 
     private func documentResult(snapshot: DocumentSnapshot?, error: Error?) -> NativeFirebaseDocumentResult {

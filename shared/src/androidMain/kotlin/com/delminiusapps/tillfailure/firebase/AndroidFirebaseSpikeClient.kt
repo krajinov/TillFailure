@@ -1,6 +1,8 @@
 package com.delminiusapps.tillfailure.firebase
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.auth.FirebaseAuth
@@ -114,12 +116,34 @@ class AndroidFirebaseSpikeClient(
         return FirebaseCancellation { cancelled.set(true) }
     }
 
-    override fun waitForPendingWrites(accountEpoch: Long, callback: (FirebaseUnitResult) -> Unit): FirebaseCancellation {
-        val cancelled = AtomicBoolean(false)
+    override fun waitForPendingWrites(
+        accountEpoch: Long,
+        timeoutMillis: Long,
+        callback: (FirebaseUnitResult) -> Unit,
+    ): FirebaseCancellation {
+        require(timeoutMillis > 0) { "Pending-write timeout must be positive" }
+        val completed = AtomicBoolean(false)
+        val handler = Handler(Looper.getMainLooper())
+        fun finish(result: FirebaseUnitResult) {
+            if (completed.compareAndSet(false, true) && fence.accepts(accountEpoch)) callback(result)
+        }
+        val timeout = Runnable {
+            finish(FirebaseUnitResult(StableFirebaseFailure(StableFirebaseErrorCode.DEADLINE_EXCEEDED, true)))
+        }
+        handler.postDelayed(timeout, timeoutMillis)
         firestore.waitForPendingWrites()
-            .addOnSuccessListener { if (!cancelled.get() && fence.accepts(accountEpoch)) callback(FirebaseUnitResult()) }
-            .addOnFailureListener { error -> if (!cancelled.get() && fence.accepts(accountEpoch)) callback(FirebaseUnitResult(mapFailure(error))) }
-        return FirebaseCancellation { cancelled.set(true) }
+            .addOnSuccessListener {
+                handler.removeCallbacks(timeout)
+                finish(FirebaseUnitResult())
+            }
+            .addOnFailureListener { error ->
+                handler.removeCallbacks(timeout)
+                finish(FirebaseUnitResult(mapFailure(error)))
+            }
+        return FirebaseCancellation {
+            handler.removeCallbacks(timeout)
+            finish(FirebaseUnitResult(StableFirebaseFailure(StableFirebaseErrorCode.CANCELLED, true)))
+        }
     }
 
     override fun terminateAndClear(callback: (FirebaseUnitResult) -> Unit) {
@@ -134,10 +158,23 @@ class AndroidFirebaseSpikeClient(
 
     fun signInAnonymously(accountEpoch: Long, callback: (FirebaseUnitResult) -> Unit): FirebaseCancellation {
         val cancelled = AtomicBoolean(false)
+        auth.signOut()
         auth.signInAnonymously()
             .addOnSuccessListener { if (!cancelled.get() && fence.accepts(accountEpoch)) callback(FirebaseUnitResult()) }
             .addOnFailureListener { error -> if (!cancelled.get() && fence.accepts(accountEpoch)) callback(FirebaseUnitResult(mapFailure(error))) }
         return FirebaseCancellation { cancelled.set(true) }
+    }
+
+    fun disableNetwork(callback: (FirebaseUnitResult) -> Unit) {
+        firestore.disableNetwork()
+            .addOnSuccessListener { callback(FirebaseUnitResult()) }
+            .addOnFailureListener { callback(FirebaseUnitResult(mapFailure(it))) }
+    }
+
+    fun enableNetwork(callback: (FirebaseUnitResult) -> Unit) {
+        firestore.enableNetwork()
+            .addOnSuccessListener { callback(FirebaseUnitResult()) }
+            .addOnFailureListener { callback(FirebaseUnitResult(mapFailure(it))) }
     }
 
     private fun deliverDocument(

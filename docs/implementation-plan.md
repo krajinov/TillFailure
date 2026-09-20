@@ -1,7 +1,7 @@
 # Implementation roadmap
 
-Status: **Milestones 1-2 implemented for review; Milestones 3-12 remain proposals requiring explicit approval**
-Review date: **2026-09-13**
+Status: **Milestone 3 locally accepted; later product milestones require explicit approval**
+Review date: **2026-09-20**
 
 Milestones are ordered, reviewable changes. Foundation work may be horizontal; feature milestones must demonstrate an end-to-end user outcome with authorization and recovery, not just screens or repositories. “Commands” are planned verification and may require files that do not exist yet.
 
@@ -31,7 +31,7 @@ Implementation status (verified through 2026-09-13): **implemented; acceptance p
 
 ## 3. Firebase environment, native parity, and persistence spike
 
-**Status 2026-09-20:** implemented with emulator/native evidence. ADR-001 is accepted for official Android and Apple SDKs plus the narrow Swift bridge. Booking, entitlement, snapshot, Rules, native parity, and atomic-file restart probes passed. Production acceptance remains blocked on persistence encryption/data-protection policy and a deliberately stalled pending-write timeout/cancellation proof. See [Milestone 3 report](milestones/milestone-3-report.md).
+**Status 2026-09-20:** **locally accepted** with Node 22 emulator and native runtime evidence. ADR-001 is accepted for official Android and Apple SDKs plus the narrow Swift bridge. Corrected booking/entitlement/assignment primitives, Rules, matching metadata transitions, deliberately stalled cancellation/timeout, epoch fencing, and encrypted Android Keystore/Apple Keychain recovery all passed. Production/cloud and physical-device security evidence remains separate. See [Milestone 3 report](milestones/milestone-3-report.md).
 
 - **User outcome:** Developers can run isolated local backend tests and have evidence that the conditional native SDK architecture can support TillFailure safely; no production feature or deployment.
 - **Affected areas:** Planned root `firebase.json`; `firebase/functions`; Firestore/Storage rules/indexes; Android/Apple native adapters and configuration boundaries.
@@ -39,9 +39,9 @@ Implementation status (verified through 2026-09-13): **implemented; acceptance p
 - **Firebase/security:** Emulator-only baseline, deny-by-default rules, Node 22 Functions build, environment/project naming. Do not create/deploy resources without separate authorization.
 - **Tests/commands:** Gradle wrapper tests; native Swift/Xcode integration tests; full Android/iOS build and launch; emulator rules/backend commands after their files exist. Run the seven-case parity matrix from ADR-001/testing, including rejected writes, cancellation, pending-write wait, termination/clear, account epoch and process recovery.
 - **Architecture proof gate:** Milestone 3 proved deterministic empty-range booking contention and fixed-path catalog entitlement Rules/atomic lifecycle primitives from [testing-strategy.md](testing-strategy.md#planned-booking-contention-tests), including configured transaction/write caps. Complete scheduling implementation and approval of final product timing/cap values remain Milestone 10.
-- **Assignment proof gate:** Prove [account-owned snapshot authorization](testing-strategy.md#planned-assigned-program-snapshot-tests), denied client source enumeration, direct-read/query budgets and atomic bounded publication/replay primitives. This is future emulator work, not started by this documentation correction; full assignment implementation remains Milestone 7.
-- **Acceptance:** Conditional ADR-001 is accepted or replaced based on direct official-vs-GitLive API evidence; Android and actual Swift implementations satisfy the same Auth/listener/write/error/disposal contract; persistence APIs match official semantics; the chosen journal/manifest storage survives restart; emulator suite starts clean; no Swift bridge claim relies on `iosSimulatorArm64Test`.
-- **Dependencies/risks:** Swift/Kotlin bridge feasibility, exact mutation-journal storage, Firebase CLI/TypeScript, emulator gaps, shared-device cache policy. Product features 4 onward do not start until the relevant adapter/authorization gate passes.
+- **Assignment proof gate:** Milestone 3 proved account-owned snapshot authorization, denied client source enumeration, atomic bounded publication/replay, and a deterministic inventory containing every created planned-workout path. Full assignment product integration and final caps remain Milestone 7.
+- **Acceptance:** Passed locally. Android and actual Swift implementations satisfy the same Auth/listener/write/error/disposal/stalled-wait contract; encrypted journal/manifest storage survives restart and fails closed; the Node 22 emulator suite starts/stops cleanly; no Swift bridge claim relies on `iosSimulatorArm64Test`.
+- **Dependencies/risks:** Production Firebase ownership/configuration, approved policy/caps, physical-device protection, shared-device cache policy, App Check and release/deployment controls remain future gates. Native Storage recovery is deferred to the first approved media/upload milestone (9 or 11).
 
 ## 4. Authentication, invitations, and role-aware shell
 

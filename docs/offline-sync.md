@@ -71,6 +71,8 @@ Account deletion and switching apply to snapshot cache entries, local manifests,
 
 Firestore mobile transactions are not the offline mutation mechanism. Batched writes may queue offline but do not solve stale-revision recovery by themselves. Milestone 3 proved callback, metadata, rejection, cancellation, and epoch-fencing behavior for both native adapters; product-specific stale-revision/restart reconciliation remains Milestone 8 work.
 
+Native resumable Storage upload/process-death recovery is deferred to the first approved media/upload milestone, currently Milestone 9 or 11. The pending-upload registry and its account isolation, durable app-owned file reference, cleanup and sign-out safety requirements remain mandatory, but no artificial media path is required for Milestone 3 acceptance.
+
 ## Reliable workout download completeness
 
 ### Manifest ownership and contents
@@ -96,11 +98,11 @@ The server `users/{uid}/workspaces/{wid}/assignedPrograms/{aid}/manifests/downlo
 
 A **downloaded workout** is a planned workout whose required cache probe passes. A **resumable active session** additionally has an app-owned recovery snapshot/journal containing the exact prescription and local edits needed to resume even if planned-workout cache entries are later evicted. **Optional offline media** is independently available and never determines resumability unless product explicitly makes it required.
 
-## Durable mutation journal: atomic-file prototype passed; encryption decision required
+## Durable mutation journal: encrypted atomic-file prototype passed
 
-Native Firestore persistence reliably queues writes, but a rejected optimistic write can lose its local overlay; it is not a project-owned conflict archive. Milestone 3 therefore prototyped one versioned, UID-partitioned app-owned JSON envelope for grants, manifests, recovery, journal entries, upload records, and switch markers. Android and iOS use temporary-write, flush, and atomic rename; recreation/isolation/deletion tests passed. Room, SQLDelight, or a second general database is not justified by current evidence.
+Native Firestore persistence reliably queues writes, but a rejected optimistic write can lose its local overlay; it is not a project-owned conflict archive. Milestone 3 therefore implemented one versioned, UID-partitioned app-owned encrypted envelope for grants, manifests, recovery, journal entries, upload records, and switch markers. Android uses AES-256-GCM with a non-exportable Android Keystore key and `noBackupFilesDir`; Apple uses CryptoKit AES-GCM with a random Keychain key, backup-excluded Application Support files, and a requested `completeUntilFirstUserAuthentication` protection class. Both use a fresh nonce, authenticated UID/version/key ID, temporary-write, flush and atomic rename. Tamper/corruption/key loss fails closed and unresolved data cannot be silently overwritten or deleted. Room, SQLDelight, or a second general database is not justified by current evidence.
 
-This is not production approval. Crash injection, backup policy, OS data-protection class, application-level encryption/key rotation, and secure erase remain unproved. Security/engineering must resolve those before private user records use the mechanism.
+This is not production approval. Backup exclusion and application encryption are locally proved; production rotation, crash/power-loss injection, secure erase, hardware backing and physical-device Data Protection remain unproved. Key ID `tillfailure.recovery.v1` supports a future audited read-old/atomically-rewrite/delete-old-key migration.
 
 Alternatives considered:
 
@@ -108,7 +110,7 @@ Alternatives considered:
 |---|---|
 | Firebase cache only | Simplest, but insufficient for durable presentation of a server-rejected local payload after restart. Not selected for conflict-capable workout edits. |
 | Immutable operation documents reconciled by server | Robust audit/replay but adds backend model and operational complexity. Defer unless Rules-based revision writes cannot meet requirements. |
-| Small app-owned mutation journal | Recommended MVP direction: preserves only critical local payloads/statuses and leaves Firestore as the business database. Exact storage and encryption remain spike-gated. |
+| Small app-owned mutation journal | Selected MVP direction: preserves only critical local payloads/statuses and leaves Firestore as the business database. Platform-encrypted atomic storage passed locally; production rotation and physical-device controls remain later gates. |
 
 ### Logged-set mutation lifecycle
 
@@ -122,7 +124,7 @@ Alternatives considered:
 8. **Resolution:** `Keep local` creates a new operation based on the now-current server revision; `Use server` records explicit discard/resolution and removes the local payload only after confirmation. A merge is offered only for independently mergeable fields.
 9. **Retry:** use a new resolution operation ID or the same idempotent transport retry as defined by the adapter; never create a duplicate set/session.
 
-Milestone 3 proved ordinary-write Rules acceptance/rejection, native metadata, server reads, cancellation fencing, and successful pending-write drain. It did not prove rejection after process restart or an intentionally stalled pending-write timeout. Milestone 8 remains blocked on those product-specific recovery cases; immutable operation reconciliation must be evaluated if the proposed protocol cannot satisfy them.
+Milestone 3 proved ordinary-write Rules acceptance/rejection, native pending/cache-to-server metadata, server reads, successful pending-write drain, and deliberately stalled timeout/cancellation with exactly-once late-callback/epoch fencing. It did not prove product-specific stale-revision rejection after process restart; Milestone 8 must cover that recovery case and evaluate immutable operation reconciliation if the proposed protocol cannot satisfy it.
 
 ## Session and completion meanings
 
