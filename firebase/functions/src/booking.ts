@@ -65,6 +65,10 @@ function bucketIds(trainerId: string, minutes: readonly number[]): string[] {
   return minutes.map((minute) => `${trainerId}_${minute}`);
 }
 
+function lockDocument(workspaceId: string, trainerId: string, appointmentId: string, utcBucket: number, appointmentRevision: number) {
+  return { schemaVersion: 1, workspaceId, trainerId, appointmentId, utcBucket, appointmentRevision };
+}
+
 function receiptResult(data: FirebaseFirestore.DocumentData, requestHash: string): BookingResult {
   if (data.requestHash !== requestHash) throw new Error("idempotency-key-reused");
   return {
@@ -91,14 +95,7 @@ export async function bookAppointment(db: Firestore, request: BookingRequest, po
     const locks = await transaction.getAll(...lockRefs);
     if (locks.some((lock) => lock.exists)) throw new Error("slot-conflict");
 
-    lockRefs.forEach((ref, index) => transaction.create(ref, {
-      schemaVersion: 1,
-      workspaceId: request.workspaceId,
-      trainerId: request.trainerId,
-      appointmentId: request.appointmentId,
-      utcBucket: buckets[index],
-      appointmentRevision: 1
-    }));
+    lockRefs.forEach((ref, index) => transaction.create(ref, lockDocument(request.workspaceId, request.trainerId, request.appointmentId, buckets[index]!, 1)));
     transaction.create(appointmentRef, {
       schemaVersion: 1,
       workspaceId: request.workspaceId,
@@ -145,7 +142,9 @@ export async function rescheduleAppointment(db: Firestore, request: RescheduleRe
     if (appointment.get("revision") !== request.expectedRevision) throw new Error("stale-revision");
     if (appointment.get("trainerId") !== request.trainerId) throw new Error("immutable-trainer-mismatch");
     if (appointment.get("clientId") !== request.clientId) throw new Error("immutable-client-mismatch");
-    const newBuckets = bucketIds(request.trainerId, validateRange(request, policy));
+    const newBucketMinutes = validateRange(request, policy);
+    const newBuckets = bucketIds(request.trainerId, newBucketMinutes);
+    const utcBucketByLockId = new Map(newBuckets.map((id, index) => [id, newBucketMinutes[index]!]));
     const oldBuckets = appointment.get("bucketIds") as string[];
     const allIds = [...new Set([...oldBuckets, ...newBuckets])];
     if (allIds.length + 2 > policy.maxWrites) throw new Error("write-budget-exceeded");
@@ -154,13 +153,14 @@ export async function rescheduleAppointment(db: Firestore, request: RescheduleRe
     locks.forEach((lock, index) => {
       const id = allIds[index]!;
       if (oldBuckets.includes(id) && (!lock.exists || lock.get("appointmentId") !== request.appointmentId)) throw new Error("old-lock-inconsistent");
+      if (oldBuckets.includes(id) && newBuckets.includes(id) && lock.get("utcBucket") !== utcBucketByLockId.get(id)) throw new Error("old-lock-inconsistent");
       if (newBuckets.includes(id) && lock.exists && lock.get("appointmentId") !== request.appointmentId) throw new Error("slot-conflict");
     });
     const revision = request.expectedRevision + 1;
     for (const id of allIds) {
       const ref = db.doc(`workspaces/${request.workspaceId}/bookingSlots/${id}`);
       if (newBuckets.includes(id)) {
-        transaction.set(ref, { schemaVersion: 1, workspaceId: request.workspaceId, trainerId: request.trainerId, appointmentId: request.appointmentId, appointmentRevision: revision });
+        transaction.set(ref, lockDocument(request.workspaceId, request.trainerId, request.appointmentId, utcBucketByLockId.get(id)!, revision));
       } else {
         transaction.delete(ref);
       }

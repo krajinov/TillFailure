@@ -10,6 +10,8 @@ Milestone base: `7d0bf7dfd2a6cb4d23d5d72bb76b20e4ebb55f47`
 
 Acceptance-correction start: `079a1a5698639e91aae2bbe9915d2f3725555ee3`
 
+Second corrective review start: `9e657fac52eb4384b1ea63f3f5bf93ce40e4b6b2`
+
 ## Outcome
 
 Milestone 3 established an emulator-only Firebase backend, proved the selected booking, catalog-entitlement, assignment-publication and Rules primitives, exercised official Android and Apple Firebase adapters through native runtimes, and implemented encrypted UID-partitioned recovery persistence on both platforms. ADR-001 is accepted for official SDKs behind TillFailure contracts and the narrow Swift bridge.
@@ -18,9 +20,18 @@ This is local acceptance of the Firebase core/native-parity spike, not productio
 
 ## Corrective review closure
 
+First round (closed at `9e657fa`):
+
 - Booking reschedule loads the stored appointment before replacement-bucket calculation and rejects trainer or client identity changes atomically. Tests prove the appointment/original locks remain unchanged, the alternate trainer receives no lock, and valid retries remain idempotent.
 - Assigned-program publication puts the snapshot and every created `plannedWorkouts/{id}` path in a sorted, duplicate-free `requiredPaths` inventory. Zero/one/many-plan and failed-publication tests prove completeness and all-or-none commit behavior.
 - Workspace restoration validates every computed entitlement count against zero and `maxMembershipsPerAccount`. Below-cap and exact-cap restores pass; above-cap restore leaves workspace, contributions, counts and authorization unchanged.
+
+Second round (PR #3 review `pullrequestreview-5260762387`):
+
+- Assignment replacement requires an explicitly supplied expected predecessor revision and reads the predecessor header and its workspace discovery index inside the publication transaction before any write. Missing predecessors, account/workspace/client/trainer identity mismatches, stale revisions, and terminal or already-replaced predecessors are rejected; receipt replay of a successful replacement still returns the original result without re-retiring anything. A deterministic `Promise.allSettled` concurrency test proves exactly one of two competing replacements of the same live predecessor commits, and the loser leaves no successor header, index, plan, manifest or receipt.
+- A successful replacement retires both predecessor representations in the same commit: the account-owned header becomes `accessStatus=replaced`/`lifecycleState=terminal` and the workspace discovery index becomes `status=replaced`, each recording `replacedByAssignmentId`, `replacedAt` and the advanced revision. Trainer discovery queries then return only the successor. A missing, wrong-workspace, non-active, or revision-diverged predecessor index fails closed with no partial writes. The publication write budget counts both retirement writes (replacement adds 2, not 1) and the exact-budget test proves the ceiling.
+- Membership activation enforces `maxMembershipsPerWorkspace` against the server-owned workspace `activeMembershipCount` while serialized through the expected workspace `membershipRevision`. Malformed, negative, and already-oversized counts, stale workspace revisions, and above-cap activations reject atomically with membership, workspace, entitlement, account and receipt state unchanged; below-cap and exactly-at-cap activations pass; replays never double-count. Suspension/restoration recomputes the same count, and a workspace filled to its cap remains atomically suspendable—the failure mode the finding described can no longer occur.
+- Rescheduling writes every retained and newly acquired lock through the same lock writer initial booking uses, including the immutable `utcBucket` derived from the validated bucket calculation (never client-supplied) and the current `appointmentRevision`. Same-interval reschedules preserve every bucket identity; partially overlapping reschedules keep retained identities, give acquired locks the exact initial-booking field set, delete released locks, and replay/rejection leave lock documents byte-identical.
 
 ## Runtime and dependency evidence
 
@@ -38,14 +49,14 @@ This is local acceptance of the Firebase core/native-parity spike, not productio
 
 ## Backend proof
 
-Final Node 22 emulator run: **17 passed, 0 failed**.
+Final Node 22 emulator run after the second corrective round: **31 passed, 0 failed** (two consecutive clean runs; the first corrective round's final run was 17/17).
 
 | Primitive | Tests and result |
 |---|---|
-| Assigned publication | 4/4: atomic replay, deterministic complete zero/one/many-plan inventory, replacement/terminal denial, oversize all-or-none rejection |
-| Booking | 5/5: bucket coverage, first-booking contention, idempotent reschedule/cancel, immutable trainer/client rejection, transaction-budget rejection |
-| Catalog lifecycle | 4/4: count lifecycle, workspace/account transitions, fan-out rejection, below/exact/above-cap restoration |
-| Firestore/Storage Rules | 4/4: catalog, assigned snapshot/source denial, stable forged-owner denial, Storage owner/MIME/metadata/size |
+| Assigned publication | 10/10: atomic replay, deterministic complete zero/one/many-plan inventory, revision-checked replacement retiring header and discovery index atomically with trainer-discovery exclusion, replacement replay without re-retirement, oversize all-or-none rejection, exact write budget counting both predecessor writes, stale/missing/malformed-request rejection with unchanged state, terminal and already-replaced predecessor rejection, predecessor/index identity and inconsistency rejection, single-winner competing-replacement concurrency |
+| Booking | 8/8: bucket coverage, first-booking contention, idempotent reschedule/cancel, immutable trainer/client rejection, transaction-budget rejection, same-interval reschedule `utcBucket` preservation, retained/acquired lock schema parity with initial booking plus removed-bucket deletion, lock stability across replay and rejected reschedule |
+| Catalog lifecycle | 8/8: count lifecycle without drift on replay/revoke/restore, workspace/account transitions, fan-out rejection, below/exact/above-cap restoration, workspace-cap activation below/exactly-at/above cap with unchanged rejected state, independent account-cap and workspace-cap rejection, stale workspace revision and malformed/negative/oversized count fail-closed, at-cap suspension and restoration |
+| Firestore/Storage Rules | 5/5: catalog, assigned snapshot/source denial, stable forged-owner denial, server-authoritative lifecycle/count/lock/index/receipt write denial, Storage owner/MIME/metadata/size |
 
 The probes validate the primitives under configured bounds. They do not approve final product caps or a deployed environment.
 
@@ -78,17 +89,19 @@ Future rotation uses a new versioned key identifier, reads old envelopes with th
 
 | Gate | Final result |
 |---|---|
-| Node 22 `npm ci`, TypeScript build, emulator start/stop | PASS |
-| Trusted-operation and Rules suite | **17/17 PASS** |
-| Common metadata + Android/iOS compilation | PASS |
-| Android host tests | **57/57 PASS** |
-| Android connected tests | **58/58 PASS** |
-| Android debug assembly/cold launch | PASS; Foundation Home default |
-| iOS shared simulator tests | **57/57 PASS** |
-| Native signed Xcode Debug build | PASS |
-| Swift Firebase/recovery harness | PASS; every asserted check, lifecycle cleanup included |
-| Android/iOS cold launch | PASS; fresh sanitized screenshots inspected |
-| Diff/secret/generated/machine-path audit | PASS at acceptance commit |
+| Node 22 `npm ci`, TypeScript build, emulator start/stop | PASS (rerun for the second corrective round) |
+| Trusted-operation and Rules suite | **31/31 PASS** (second corrective round; two consecutive clean runs) |
+| Common metadata + Android/iOS compilation | PASS (retained from `9e657fa`; not rerun for backend-only changes) |
+| Android host tests | **57/57 PASS** (retained from `9e657fa`; not rerun) |
+| Android connected tests | **58/58 PASS** (retained from `9e657fa`; not rerun) |
+| Android debug assembly/cold launch | PASS; Foundation Home default (retained from `9e657fa`; not rerun) |
+| iOS shared simulator tests | **57/57 PASS** (retained from `9e657fa`; not rerun) |
+| Native signed Xcode Debug build | PASS (retained from `9e657fa`; not rerun) |
+| Swift Firebase/recovery harness | PASS; every asserted check, lifecycle cleanup included (retained from `9e657fa`; not rerun) |
+| Android/iOS cold launch | PASS; fresh sanitized screenshots inspected (retained from `9e657fa`; not rerun) |
+| Diff/secret/generated/machine-path audit | PASS at acceptance commit and at the second corrective commit |
+
+The second corrective round changed only `firebase/functions` TypeScript sources/tests and documentation: no native source, shared Kotlin, build configuration, dependency, or lockfile changed, so the expensive native acceptance matrix was intentionally not rerun and its earlier evidence is preserved with its original `9e657fa` attribution.
 
 ## Remaining decisions and deferred work
 

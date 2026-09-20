@@ -94,4 +94,68 @@ describe("booking contention probe", () => {
     await assert.rejects(() => bookAppointment(db, { workspaceId: "ws_budget", trainerId: "trainer", clientId: "client", callerUid: "client", appointmentId: "appt", idempotencyKey: "key", startsAtMillis: base, endsAtMillis: base + 60 * 60_000, bufferBeforeMinutes: 0, bufferAfterMinutes: 0 }, { ...policy, maxWrites: 5 }), /write-budget/);
     assert.equal((await db.collection("workspaces/ws_budget/appointments").get()).size, 0);
   });
+
+  it("preserves utcBucket identity on a same-interval reschedule", async () => {
+    const base = Date.UTC(2026, 8, 19, 10, 0);
+    const request = { workspaceId: "ws_bucket", trainerId: "trainer", clientId: "client", callerUid: "client", appointmentId: "appt", idempotencyKey: "book", startsAtMillis: base, endsAtMillis: base + 60 * 60_000, bufferBeforeMinutes: 0, bufferAfterMinutes: 0 };
+    const booked = await bookAppointment(db, request, policy);
+    const originalBuckets = new Map<string, number>();
+    for (const id of booked.bucketIds) {
+      originalBuckets.set(id, (await db.doc(`workspaces/ws_bucket/bookingSlots/${id}`).get()).get("utcBucket") as number);
+    }
+    const moved = await rescheduleAppointment(db, { ...request, idempotencyKey: "same-interval", expectedRevision: 1 }, policy);
+    assert.deepEqual(moved.bucketIds, booked.bucketIds);
+    for (const id of moved.bucketIds) {
+      const lock = await db.doc(`workspaces/ws_bucket/bookingSlots/${id}`).get();
+      assert.equal(lock.get("utcBucket"), originalBuckets.get(id));
+      assert.equal(lock.get("utcBucket"), Number(id.slice("trainer_".length)));
+      assert.equal(lock.get("appointmentRevision"), 2);
+    }
+  });
+
+  it("writes retained and acquired reschedule locks with the initial-booking schema", async () => {
+    const base = Date.UTC(2026, 8, 19, 10, 0);
+    const request = { workspaceId: "ws_schema", trainerId: "trainer", clientId: "client", callerUid: "client", appointmentId: "appt", idempotencyKey: "book", startsAtMillis: base, endsAtMillis: base + 60 * 60_000, bufferBeforeMinutes: 0, bufferAfterMinutes: 0 };
+    const booked = await bookAppointment(db, request, policy);
+    const bookingSchema = Object.keys((await db.doc(`workspaces/ws_schema/bookingSlots/${booked.bucketIds[0]}`).get()).data()!).sort();
+    const moved = await rescheduleAppointment(db, { ...request, idempotencyKey: "shift", expectedRevision: 1, startsAtMillis: base + 30 * 60_000, endsAtMillis: base + 90 * 60_000 }, policy);
+    const retained = booked.bucketIds.filter((id) => moved.bucketIds.includes(id));
+    const acquired = moved.bucketIds.filter((id) => !booked.bucketIds.includes(id));
+    const removed = booked.bucketIds.filter((id) => !moved.bucketIds.includes(id));
+    assert.ok(retained.length > 0 && acquired.length > 0 && removed.length > 0);
+    for (const id of removed) assert.equal((await db.doc(`workspaces/ws_schema/bookingSlots/${id}`).get()).exists, false);
+    for (const id of [...retained, ...acquired]) {
+      const lock = (await db.doc(`workspaces/ws_schema/bookingSlots/${id}`).get()).data()!;
+      assert.deepEqual(Object.keys(lock).sort(), bookingSchema);
+      assert.equal(lock.utcBucket, Number(id.slice("trainer_".length)));
+      assert.equal(lock.workspaceId, "ws_schema");
+      assert.equal(lock.trainerId, "trainer");
+      assert.equal(lock.appointmentId, "appt");
+      assert.equal(lock.appointmentRevision, 2);
+    }
+    const allLocks = await db.collection("workspaces/ws_schema/bookingSlots").get();
+    assert.equal(allLocks.size, moved.bucketIds.length);
+  });
+
+  it("keeps lock documents stable across reschedule replay and rejection", async () => {
+    const base = Date.UTC(2026, 8, 19, 10, 0);
+    const request = { workspaceId: "ws_stable", trainerId: "trainer", clientId: "client", callerUid: "client", appointmentId: "appt", idempotencyKey: "book", startsAtMillis: base, endsAtMillis: base + 60 * 60_000, bufferBeforeMinutes: 0, bufferAfterMinutes: 0 };
+    await bookAppointment(db, request, policy);
+    const move = { ...request, idempotencyKey: "move", expectedRevision: 1, startsAtMillis: base + 30 * 60_000, endsAtMillis: base + 90 * 60_000 };
+    const first = await rescheduleAppointment(db, move, policy);
+    const captureLocks = async () => {
+      const locks = await db.collection("workspaces/ws_stable/bookingSlots").orderBy("__name__").get();
+      return locks.docs.map((document) => [document.id, document.data()]);
+    };
+    const afterMove = await captureLocks();
+    const replay = await rescheduleAppointment(db, move, policy);
+    assert.equal(replay.replayed, true);
+    assert.deepEqual(replay.bucketIds, first.bucketIds);
+    assert.deepEqual(await captureLocks(), afterMove);
+
+    const appointmentBefore = (await db.doc("workspaces/ws_stable/appointments/appt").get()).data();
+    await assert.rejects(() => rescheduleAppointment(db, { ...request, idempotencyKey: "stale-move", expectedRevision: 1, startsAtMillis: base + 4 * 60 * 60_000, endsAtMillis: base + 5 * 60 * 60_000 }, policy), /stale-revision/);
+    assert.deepEqual(await captureLocks(), afterMove);
+    assert.deepEqual((await db.doc("workspaces/ws_stable/appointments/appt").get()).data(), appointmentBefore);
+  });
 });

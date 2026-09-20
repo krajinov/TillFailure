@@ -75,6 +75,18 @@ describe("Firestore and Storage rules", () => {
     await assertFails(setDoc(doc(client, "spikeEcho/other/documents/doc"), { ownerUid: "client", value: "forged", counter: 0 }));
   });
 
+  it("denies client writes to server-authoritative lifecycle, count, lock, and index documents", async () => {
+    await seedEligibleAssignment();
+    const client = environment.authenticatedContext("client").firestore();
+    await assertFails(setDoc(doc(client, "workspaces/ws"), { schemaVersion: 1, status: "active", membershipRevision: 99, activeMembershipCount: 99 }));
+    await assertFails(setDoc(doc(client, "workspaces/ws/memberships/client"), { schemaVersion: 1, userId: "client", role: "trainer", status: "active", revision: 99, catalogContributionActive: true }));
+    await assertFails(setDoc(doc(client, "workspaces/ws/assignedPrograms/asg"), { schemaVersion: 1, status: "active", revision: 99 }));
+    await assertFails(setDoc(doc(client, "workspaces/ws/bookingSlots/trainer_1"), { schemaVersion: 1, utcBucket: 1, appointmentRevision: 99 }));
+    await assertFails(setDoc(doc(client, "lifecycleCommands/cmd"), { schemaVersion: 1, requestHash: "forged" }));
+    await assertFails(setDoc(doc(client, "assignmentCommands/cmd"), { schemaVersion: 1, requestHash: "forged" }));
+    await assertFails(setDoc(doc(client, "users/client/workspaces/ws/assignedPrograms/asg"), { schemaVersion: 1, lifecycleState: "ready", accessStatus: "active", revision: 99 }));
+  });
+
   it("enforces owner, MIME, metadata, and size for Storage", async () => {
     const ownerStorage = environment.authenticatedContext("client").storage();
     const otherStorage = environment.authenticatedContext("other").storage();
