@@ -101,7 +101,9 @@ class AndroidAtomicFilePersistence(
     }
 
     internal fun fileFor(uid: String): File {
-        require(uid.isNotBlank())
+        // Only the digest is used as a filename, so any valid Firebase UID (email-shaped,
+        // punctuated, or Unicode) is safe and path traversal is impossible by construction.
+        RecoveryUidContract.requireValid(uid)
         val digest = MessageDigest.getInstance("SHA-256").digest(uid.encodeToByteArray()).joinToString("") { byte -> "%02x".format(byte) }
         return File(rootDirectory, "account-$digest-v$RECOVERY_ENCRYPTION_VERSION.json")
     }

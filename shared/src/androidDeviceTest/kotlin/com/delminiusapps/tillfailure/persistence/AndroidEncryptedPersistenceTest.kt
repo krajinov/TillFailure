@@ -81,6 +81,76 @@ class AndroidEncryptedPersistenceTest {
         }
     }
 
+    @Test
+    fun acceptsTheCompleteFirebaseUidDomainWithDigestOnlyPartitions() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val suffix = UUID.randomUUID().toString()
+        val keyId = "$RECOVERY_KEY_IDENTIFIER.uid.$suffix"
+        val store = AndroidAtomicFilePersistence(context, keyId)
+        val emailUid = "user@example.com+$suffix"
+        val distinctUid = "user+alias@example.com+$suffix"
+        val punctuationUid = "a.b-c_d:e|f!g-$suffix"
+        val unicodeUid = "üser-Ω-$suffix"
+        val maxLengthUid = "u".repeat(RecoveryUidContract.MAX_UID_UTF16_LENGTH)
+        val traversalUid = "../../etc/passwd-$suffix"
+        val partitions = listOf(
+            emailUid to "email",
+            punctuationUid to "punctuation",
+            unicodeUid to "unicode",
+            maxLengthUid to "max-length",
+            traversalUid to "traversal",
+        )
+
+        try {
+            for ((uid, payload) in partitions) {
+                store.write(
+                    AccountPersistenceEnvelope(
+                        uid = uid,
+                        mutationJournal = listOf(
+                            MutationJournalEntry(
+                                uid = uid,
+                                workspaceId = "ws",
+                                operationId = "op",
+                                payload = payload,
+                                state = "PendingSync",
+                            ),
+                        ),
+                    ),
+                )
+            }
+            val restarted = AndroidAtomicFilePersistence(context, keyId)
+            for ((uid, payload) in partitions) {
+                assertEquals(payload, restarted.read(uid)?.mutationJournal?.single()?.payload)
+            }
+
+            // Distinct valid identifiers never collapse into one logical account.
+            assertNotEquals(store.fileFor(emailUid).name, store.fileFor(distinctUid).name)
+            assertNull(restarted.read(distinctUid))
+
+            // Only the digest names the partition file, so traversal-like identifiers stay inside
+            // the recovery root and can never escape it.
+            val traversalFile = store.fileFor(traversalUid)
+            assertTrue(Regex("^account-[0-9a-f]{64}-v$RECOVERY_ENCRYPTION_VERSION\\.json$").matches(traversalFile.name))
+            assertEquals(store.rootDirectory.canonicalPath, traversalFile.parentFile?.canonicalPath)
+            assertTrue(traversalFile.canonicalPath.startsWith(store.rootDirectory.canonicalPath))
+
+            // Empty, blank, and overlength identifiers are rejected identically to iOS.
+            assertFailsWith<IllegalArgumentException> { store.read("") }
+            assertFailsWith<IllegalArgumentException> { store.write(AccountPersistenceEnvelope(uid = "")) }
+            assertFailsWith<IllegalArgumentException> { store.read("   ") }
+            assertFailsWith<IllegalArgumentException> { store.read("u".repeat(RecoveryUidContract.MAX_UID_UTF16_LENGTH + 1)) }
+
+            // A partition copied under another UID cannot be decrypted: the UID remains
+            // authenticated data and the envelope UID check is unchanged.
+            store.fileFor(punctuationUid).writeBytes(store.fileFor(emailUid).readBytes())
+            assertFailsWith<RecoveryPersistenceLockedException> { store.read(punctuationUid) }
+        } finally {
+            partitions.forEach { (uid, _) -> store.fileFor(uid).delete() }
+            store.rootDirectory.listFiles().orEmpty().filter { it.name.endsWith(".tmp") }.forEach { it.delete() }
+            store.deleteKeyForTest()
+        }
+    }
+
     private fun nonce(raw: String): String =
         requireNotNull(Regex("\\\"nonce\\\":\\\"([^\\\"]+)\\\"").find(raw)?.groupValues?.get(1))
 }

@@ -183,7 +183,10 @@ final class RecoveryPersistenceBridge: NSObject, NativeRecoveryPersistenceBridge
     }
 
     private func validate(uid: String) throws {
-        guard uid.range(of: "^[A-Za-z0-9_-]{1,128}$", options: .regularExpression) != nil else {
+        // Shared cross-platform contract: the Firebase Auth UID bound (non-blank, at most 128
+        // UTF-16 code units) with no filename-safe character whitelist, because only the SHA-256
+        // digest is ever used as the partition filename.
+        guard RecoveryUidContract.shared.isValid(uid: uid) else {
             throw PersistenceError.invalidUid
         }
     }
@@ -207,6 +210,8 @@ final class RecoveryPersistenceBridge: NSObject, NativeRecoveryPersistenceBridge
 
     #if DEBUG
     func debugRawData(uid: String) throws -> Data { try Data(contentsOf: fileURL(for: uid)) }
+
+    func debugPartitionFileName(uid: String) -> String { fileURL(for: uid).lastPathComponent }
 
     func debugOverwrite(uid: String, data: Data) throws { try data.write(to: fileURL(for: uid)) }
 

@@ -32,7 +32,7 @@ async function freshAnonymousUid(): Promise<string> {
 async function seedMember(uid: string, role: "trainer" | "client"): Promise<void> {
   const batch = db.batch();
   batch.set(db.doc(`users/${uid}`), { schemaVersion: 1, accountStatus: "active", lifecycleRevision: 1 });
-  batch.set(db.doc("workspaces/ws_callable"), { schemaVersion: 1, status: "active", membershipRevision: 1, activeMembershipCount: 2 });
+  batch.set(db.doc("workspaces/ws_callable"), { schemaVersion: 1, status: "active", membershipRevision: 1, activeRosterCount: 2, catalogContributionCount: 2 });
   batch.set(db.doc(`workspaces/ws_callable/memberships/${uid}`), { schemaVersion: 1, workspaceId: "ws_callable", userId: uid, role, status: "active", revision: 1, catalogContributionActive: true });
   await batch.commit();
 }

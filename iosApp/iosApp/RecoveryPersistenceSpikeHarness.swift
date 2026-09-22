@@ -9,6 +9,15 @@ enum RecoveryPersistenceSpikeHarness {
         let keyIdentifier = "tillfailure.recovery.v1.test.\(suffix)"
         let firstUid = "uid_one_\(suffix)"
         let secondUid = "uid_two_\(suffix)"
+        // Valid Firebase UIDs outside a filename-safe whitelist: only the digest names the file.
+        let emailUid = "user@example.com+\(suffix)"
+        let distinctUid = "user+alias@example.com+\(suffix)"
+        let punctuationUid = "a.b-c_d:e|f!g-\(suffix)"
+        let unicodeUid = "üser-Ω-\(suffix)"
+        let maxLengthUid = String(repeating: "u", count: 128)
+        let traversalUid = "../../etc/passwd-\(suffix)"
+        let overlengthUid = String(repeating: "u", count: 129)
+        let domainUids = [emailUid, distinctUid, punctuationUid, unicodeUid, maxLengthUid, traversalUid]
         let plaintext = "{\"uid\":\"\(firstUid)\",\"payload\":\"plaintext-recovery-fragment\"}"
         let secondPlaintext = "{\"uid\":\"\(secondUid)\",\"payload\":\"second-account\"}"
         let bridge = RecoveryPersistenceBridge(rootURL: root, keyIdentifier: keyIdentifier)
@@ -23,6 +32,7 @@ enum RecoveryPersistenceSpikeHarness {
         defer {
             bridge.debugCleanup(uid: firstUid)
             bridge.debugCleanup(uid: secondUid)
+            domainUids.forEach { bridge.debugCleanup(uid: $0) }
             bridge.debugDeleteKey()
             try? FileManager.default.removeItem(at: root)
         }
@@ -53,6 +63,24 @@ enum RecoveryPersistenceSpikeHarness {
             record("uidIsolation", restarted.read(uid: secondUid).payload == secondPlaintext)
             let wrongKey = RecoveryPersistenceBridge(rootURL: root, keyIdentifier: "\(keyIdentifier).wrong")
             record("wrongKeyFailsClosed", wrongKey.read(uid: firstUid).failureCode == "LOCKED")
+
+            // Complete Firebase UID domain: email-shaped, punctuated, Unicode, maximum-length, and
+            // traversal-like identifiers all round-trip because only the digest names the file.
+            record("emailUidRoundTrip", bridge.write(uid: emailUid, plaintext: "email-account").failureCode == nil && bridge.read(uid: emailUid).payload == "email-account")
+            record("punctuationUidRoundTrip", bridge.write(uid: punctuationUid, plaintext: "punctuation-account").failureCode == nil && bridge.read(uid: punctuationUid).payload == "punctuation-account")
+            record("unicodeUidRoundTrip", bridge.write(uid: unicodeUid, plaintext: "unicode-account").failureCode == nil && bridge.read(uid: unicodeUid).payload == "unicode-account")
+            record("maxLengthUidRoundTrip", bridge.write(uid: maxLengthUid, plaintext: "max-length-account").failureCode == nil && bridge.read(uid: maxLengthUid).payload == "max-length-account")
+            record("traversalUidRoundTrip", bridge.write(uid: traversalUid, plaintext: "traversal-account").failureCode == nil && bridge.read(uid: traversalUid).payload == "traversal-account")
+            let traversalName = bridge.debugPartitionFileName(uid: traversalUid)
+            record("partitionNameIsDigestOnly", traversalName.range(of: "^account-[0-9a-f]{64}-v1\\.json$", options: .regularExpression) != nil)
+            record("distinctUidsDistinctPartitions", bridge.debugPartitionFileName(uid: emailUid) != bridge.debugPartitionFileName(uid: distinctUid))
+            record("crossUidIsolation", bridge.read(uid: distinctUid).payload == nil)
+            record("emptyUidRejected", bridge.read(uid: "").failureCode == "LOCKED" && bridge.write(uid: "", plaintext: "empty").failureCode == "LOCKED")
+            record("blankUidRejected", bridge.read(uid: "   ").failureCode == "LOCKED")
+            record("overlengthUidRejected", bridge.read(uid: overlengthUid).failureCode == "LOCKED" && bridge.write(uid: overlengthUid, plaintext: "overlength").failureCode == "LOCKED")
+            try bridge.debugOverwrite(uid: punctuationUid, data: bridge.debugRawData(uid: emailUid))
+            record("wrongUidCannotDecrypt", bridge.read(uid: punctuationUid).failureCode == "LOCKED")
+            bridge.debugCleanup(uid: punctuationUid)
 
             var tamperedObject = try jsonObject(secondRaw)
             let ciphertext = tamperedObject["ciphertext"] as? String ?? ""

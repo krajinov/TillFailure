@@ -79,7 +79,7 @@ data class AccountPersistenceEnvelope(
     val switchMarker: AccountSwitchMarker? = null,
 ) {
     init {
-        require(uid.isNotBlank())
+        RecoveryUidContract.requireValid(uid)
         require(offlineAccessGrant?.uid == null || offlineAccessGrant.uid == uid)
         require(downloadManifests.all { it.uid == uid })
         require(workoutRecoverySnapshot?.uid == null || workoutRecoverySnapshot.uid == uid)

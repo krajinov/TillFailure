@@ -1,3 +1,5 @@
+import FirebaseCore
+import FirebaseFirestore
 import Foundation
 import Shared
 import UIKit
@@ -7,6 +9,7 @@ enum FirebaseSpikeHarness {
     private static var lifecycleProbe: LifecycleProbe?
     private static var stalledProbe: StalledPendingWriteProbe?
     private static var registryProbe: RegistryLifecycleProbe?
+    private static var counterProbe: CounterParityProbe?
 
     static func runIfRequested(bridge: FirebaseNativeBridge) {
         guard ProcessInfo.processInfo.environment["TILLFAILURE_FIREBASE_SPIKE"] == "1" else { return }
@@ -65,17 +68,20 @@ enum FirebaseSpikeHarness {
                         bridge.cancel(token: listener)
                         registryProbe = RegistryLifecycleProbe(bridge: bridge, uid: uid, epoch: epoch) {
                             registryProbe = nil
-                            stalledProbe = StalledPendingWriteProbe(bridge: bridge, uid: uid, epoch: epoch) {
-                                stalledProbe = nil
-                                bridge.cancel(token: session)
-                                lifecycleProbe = LifecycleProbe(bridge: bridge, path: acceptedPath, epoch: epoch + 1) {
-                                    bridge.terminateAndClear { clearResult in
-                                        print("M3_FIREBASE_SPIKE terminateAndClear=\(clearResult.failure == nil ? "PASS" : "FAIL")")
-                                        print("M3_FIREBASE_SPIKE oneShotRegistryTerminated=\(bridge.debugCancellationCount == 0 ? "PASS" : "FAIL")")
-                                        lifecycleProbe = nil
+                            counterProbe = CounterParityProbe(bridge: bridge, uid: uid, epoch: epoch) {
+                                counterProbe = nil
+                                stalledProbe = StalledPendingWriteProbe(bridge: bridge, uid: uid, epoch: epoch) {
+                                    stalledProbe = nil
+                                    bridge.cancel(token: session)
+                                    lifecycleProbe = LifecycleProbe(bridge: bridge, path: acceptedPath, epoch: epoch + 1) {
+                                        bridge.terminateAndClear { clearResult in
+                                            print("M3_FIREBASE_SPIKE terminateAndClear=\(clearResult.failure == nil ? "PASS" : "FAIL")")
+                                            print("M3_FIREBASE_SPIKE oneShotRegistryTerminated=\(bridge.debugCancellationCount == 0 ? "PASS" : "FAIL")")
+                                            lifecycleProbe = nil
+                                        }
                                     }
+                                    print("M3_FIREBASE_SPIKE awaitingBackgroundForeground=READY")
                                 }
-                                print("M3_FIREBASE_SPIKE awaitingBackgroundForeground=READY")
                             }
                         }
                     }
@@ -274,6 +280,165 @@ enum FirebaseSpikeHarness {
                     }
                 }
             }
+        }
+    }
+
+    private final class CounterParityProbe {
+        private enum Seeding {
+            case missing
+            case value(Any)
+            case keep
+        }
+
+        private enum Expected {
+            case value(String)
+            case rejected
+        }
+
+        private struct Step {
+            let name: String
+            let seeding: Seeding
+            let delta: Int64
+            let expected: Expected
+        }
+
+        private static let steps: [Step] = [
+            Step(name: "counterMissingStartsAtZero", seeding: .missing, delta: 1, expected: .value("1")),
+            Step(name: "counterNumericStringFiveBecomesSix", seeding: .value("5"), delta: 1, expected: .value("6")),
+            Step(name: "counterIntegralValueIncrements", seeding: .keep, delta: 1, expected: .value("7")),
+            Step(name: "counterZeroIncrements", seeding: .value("0"), delta: 1, expected: .value("1")),
+            Step(name: "counterNegativeValueIncrements", seeding: .value("-3"), delta: 1, expected: .value("-2")),
+            Step(name: "counterNegativeDeltaApplies", seeding: .value("5"), delta: -2, expected: .value("3")),
+            Step(name: "counterSequentialIncrementOne", seeding: .value("5"), delta: 1, expected: .value("6")),
+            Step(name: "counterSequentialIncrementTwo", seeding: .keep, delta: 1, expected: .value("7")),
+            Step(name: "counterSequentialIncrementThree", seeding: .keep, delta: 1, expected: .value("8")),
+            Step(name: "counterSequentialIncrementFour", seeding: .keep, delta: 1, expected: .value("9")),
+            Step(name: "counterSequentialIncrementFive", seeding: .keep, delta: 1, expected: .value("10")),
+            Step(name: "counterMalformedStringRejected", seeding: .value("abc"), delta: 1, expected: .rejected),
+            Step(name: "counterDecimalStringRejected", seeding: .value("5.5"), delta: 1, expected: .rejected),
+            Step(name: "counterWhitespaceStringRejected", seeding: .value(" 5"), delta: 1, expected: .rejected),
+            Step(name: "counterPlusPrefixedStringRejected", seeding: .value("+5"), delta: 1, expected: .rejected),
+            Step(name: "counterEmptyStringRejected", seeding: .value(""), delta: 1, expected: .rejected),
+            Step(name: "counterBooleanRejected", seeding: .value(true), delta: 1, expected: .rejected),
+            Step(name: "counterFloatingPointRejected", seeding: .value(5.0), delta: 1, expected: .rejected),
+            Step(name: "counterCollectionRejected", seeding: .value(["x"]), delta: 1, expected: .rejected),
+            Step(name: "counterOverflowRejected", seeding: .value("9223372036854775807"), delta: 1, expected: .rejected)
+        ]
+
+        private let bridge: FirebaseNativeBridge
+        private let uid: String
+        private let epoch: Int64
+        private let path: String
+        private let completion: () -> Void
+        private let firestore: Firestore?
+        private let deliveryLock = NSLock()
+        private var deliveries = 0
+        private var registryBaseline = 0
+
+        init(bridge: FirebaseNativeBridge, uid: String, epoch: Int64, completion: @escaping () -> Void) {
+            self.bridge = bridge
+            self.uid = uid
+            self.epoch = epoch
+            self.path = "spikeEcho/\(uid)/documents/native-ios-counter"
+            self.completion = completion
+            // The harness reaches the same emulator-configured Firestore instance to seed typed
+            // fixtures (booleans, doubles, arrays) that the string-typed bridge cannot write.
+            let app = FirebaseApp.allApps?.values.first { $0.options.projectID?.hasPrefix("demo-") == true }
+            self.firestore = app.map { Firestore.firestore(app: $0) }
+            self.registryBaseline = bridge.debugCancellationCount
+            run(steps: Self.steps, index: 0)
+        }
+
+        private func run(steps: [Step], index: Int) {
+            guard index < steps.count else {
+                record("counterDeliveryOnce", currentDeliveries() == steps.count)
+                record("counterRegistryCleanup", bridge.debugCancellationCount == registryBaseline)
+                completion()
+                return
+            }
+            let step = steps[index]
+            applySeeding(step.seeding) { [weak self] seeded in
+                guard let self else { return }
+                guard seeded else {
+                    self.record(step.name, false)
+                    self.completion()
+                    return
+                }
+                self.storedDescription { [weak self] before in
+                    guard let self else { return }
+                    self.increment(by: step.delta) { [weak self] result, firstDelivery in
+                        guard let self, firstDelivery else { return }
+                        switch step.expected {
+                        case .value(let expected):
+                            self.record(step.name, result.failure == nil && result.document?.fields["counter"] == expected)
+                            self.run(steps: steps, index: index + 1)
+                        case .rejected:
+                            self.storedDescription { [weak self] after in
+                                guard let self else { return }
+                                let rejected = result.failure?.code == "INVALID_ARGUMENT" && result.failure?.retryable == false
+                                self.record(step.name, rejected && before == after)
+                                self.run(steps: steps, index: index + 1)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private func record(_ name: String, _ condition: Bool) {
+            print("M3_FIREBASE_SPIKE \(name)=\(condition ? "PASS" : "FAIL")")
+        }
+
+        private func currentDeliveries() -> Int {
+            deliveryLock.lock()
+            defer { deliveryLock.unlock() }
+            return deliveries
+        }
+
+        private func applySeeding(_ seeding: Seeding, completion: @escaping (Bool) -> Void) {
+            guard let firestore else { completion(false); return }
+            switch seeding {
+            case .keep:
+                completion(true)
+            case .missing:
+                firestore.document(path).setData(["ownerUid": uid, "counter": NSNull()]) { error in completion(error == nil) }
+            case .value(let value):
+                firestore.document(path).setData(["ownerUid": uid, "counter": value]) { error in completion(error == nil) }
+            }
+        }
+
+        private func storedDescription(completion: @escaping (String) -> Void) {
+            guard let firestore else { completion("<unavailable>"); return }
+            firestore.document(path).getDocument(source: .server) { snapshot, _ in
+                completion(Self.describe(snapshot?.get("counter")))
+            }
+        }
+
+        private func increment(by delta: Int64, completion: @escaping (NativeFirebaseDocumentResult, Bool) -> Void) {
+            let callLock = NSLock()
+            var callDeliveries = 0
+            _ = bridge.increment(path: path, field: "counter", by: delta, accountEpoch: epoch) { [weak self] result in
+                guard let self else { return }
+                callLock.lock()
+                callDeliveries += 1
+                let isFirstDelivery = callDeliveries == 1
+                callLock.unlock()
+                self.deliveryLock.lock()
+                self.deliveries += 1
+                self.deliveryLock.unlock()
+                if isFirstDelivery { completion(result, true) }
+            }
+        }
+
+        private static func describe(_ value: Any?) -> String {
+            guard let value else { return "<nil>" }
+            if let number = value as? NSNumber {
+                if CFGetTypeID(number) == CFBooleanGetTypeID() { return "bool:\(number.boolValue)" }
+                if CFNumberIsFloatType(number) { return "double:\(number.doubleValue)" }
+                return "int:\(number.int64Value)"
+            }
+            if let text = value as? String { return "string:\(text)" }
+            return "other:\(String(describing: value))"
         }
     }
 

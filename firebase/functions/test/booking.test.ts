@@ -27,7 +27,7 @@ async function seedBookingWorkspace(workspaceId: string, options: SeedOptions = 
   const batch = db.batch();
   batch.set(db.doc("users/trainer"), { schemaVersion: 1, accountStatus: "active", lifecycleRevision: 1 });
   batch.set(db.doc("users/client"), { schemaVersion: 1, accountStatus: "active", lifecycleRevision: 1 });
-  batch.set(db.doc(`workspaces/${workspaceId}`), { schemaVersion: 1, status: options.workspaceStatus ?? "active", membershipRevision: 1, activeMembershipCount: 2 });
+  batch.set(db.doc(`workspaces/${workspaceId}`), { schemaVersion: 1, status: options.workspaceStatus ?? "active", membershipRevision: 1, activeRosterCount: 2, catalogContributionCount: 2 });
   batch.set(db.doc(`workspaces/${workspaceId}/memberships/trainer`), { schemaVersion: 1, workspaceId, userId: "trainer", role: "trainer", status: options.trainerMembershipStatus ?? "active", revision: 1, catalogContributionActive: true });
   batch.set(db.doc(`workspaces/${workspaceId}/memberships/client`), { schemaVersion: 1, workspaceId, userId: "client", role: "client", status: options.clientMembershipStatus ?? "active", revision: 1, catalogContributionActive: true });
   await batch.commit();

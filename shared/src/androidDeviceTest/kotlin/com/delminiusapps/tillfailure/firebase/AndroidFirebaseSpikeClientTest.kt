@@ -1,6 +1,10 @@
 package com.delminiusapps.tillfailure.firebase
 
 import androidx.test.platform.app.InstrumentationRegistry
+import com.google.firebase.FirebaseApp
+import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Source
 import org.junit.Test
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -10,6 +14,7 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class AndroidFirebaseSpikeClientTest {
@@ -231,6 +236,115 @@ class AndroidFirebaseSpikeClientTest {
         }
         await(clearFinished, "terminate and clear persistence")
         assertTrue(assertNotNull(cleared.get()).isSuccess)
+    }
+
+    @Test
+    fun counterValuesFollowTheSharedCanonicalContract() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val configuration = FirebaseEmulatorConfiguration(host = "10.0.2.2")
+        val fence = AccountCallbackFence()
+        val epoch = fence.advance()
+        val client = AndroidFirebaseSpikeClient(context, configuration, fence)
+        val observedUid = AtomicReference<String>()
+        val authObserved = CountDownLatch(1)
+        client.observeSession(epoch) { session ->
+            session.uid?.let {
+                observedUid.set(it)
+                authObserved.countDown()
+            }
+        }
+        val signedIn = AtomicReference<FirebaseUnitResult>()
+        val signInFinished = CountDownLatch(1)
+        client.signInAnonymously(epoch) {
+            signedIn.set(it)
+            signInFinished.countDown()
+        }
+        await(signInFinished, "anonymous sign-in")
+        assertTrue(assertNotNull(signedIn.get()).isSuccess)
+        await(authObserved, "auth-state observer")
+        val uid = assertNotNull(observedUid.get())
+        val path = "spikeEcho/$uid/documents/native-android-counter"
+        val firestore = FirebaseFirestore.getInstance(FirebaseApp.getInstance("tillfailure-${configuration.projectId}"))
+
+        fun seedCounter(value: Any?) {
+            val finished = CountDownLatch(1)
+            val failure = AtomicReference<Exception>()
+            firestore.document(path).set(mapOf("ownerUid" to uid, "counter" to value))
+                .addOnCompleteListener { task ->
+                    if (!task.isSuccessful) failure.set(task.exception)
+                    finished.countDown()
+                }
+            await(finished, "seed counter fixture")
+            assertNull(failure.get(), "counter fixture seed failed: ${failure.get()}")
+        }
+
+        fun storedCounter(): Any? {
+            val finished = CountDownLatch(1)
+            val snapshot = AtomicReference<DocumentSnapshot>()
+            firestore.document(path).get(Source.SERVER)
+                .addOnCompleteListener { task ->
+                    snapshot.set(task.result)
+                    finished.countDown()
+                }
+            await(finished, "read stored counter")
+            return assertNotNull(snapshot.get()).get("counter")
+        }
+
+        fun increment(by: Long): FirebaseDocumentResult {
+            val result = AtomicReference<FirebaseDocumentResult>()
+            val finished = CountDownLatch(1)
+            client.increment(path, "counter", by, epoch) {
+                result.set(it)
+                finished.countDown()
+            }
+            await(finished, "counter increment")
+            return assertNotNull(result.get())
+        }
+
+        fun assertIncrementResult(expected: Long, by: Long = 1) {
+            val result = increment(by)
+            assertNull(result.failure, "increment failed: ${result.failure}")
+            assertEquals(expected.toString(), result.document?.fields?.get("counter"))
+        }
+
+        fun assertIncrementRejected(storedBefore: Any?) {
+            val result = increment(1)
+            assertEquals(StableFirebaseErrorCode.INVALID_ARGUMENT, result.failure?.code)
+            assertEquals(false, result.failure?.retryable)
+            assertEquals(storedBefore, storedCounter(), "a rejected increment must not overwrite the stored value")
+        }
+
+        // A missing field starts from zero, matching the documented adapter behavior.
+        seedCounter(null)
+        assertIncrementResult(1)
+        // A canonical numeric string written through the string-typed bridge parses instead of resetting.
+        seedCounter("5")
+        assertIncrementResult(6)
+        // The integral value produced by the previous increment increments again.
+        assertIncrementResult(7)
+        // Zero, negative values, and negative increments.
+        seedCounter("0")
+        assertIncrementResult(1)
+        seedCounter("-3")
+        assertIncrementResult(-2)
+        seedCounter("5")
+        assertIncrementResult(3, by = -2)
+        // Sequential increments apply exactly once each.
+        seedCounter("5")
+        repeat(5) { assertIncrementResult((6 + it).toLong()) }
+        // Malformed, ambiguous, and out-of-range strings are rejected without overwriting.
+        for (value in listOf("abc", "5.5", " 5", "5 ", "+5", "")) {
+            seedCounter(value)
+            assertIncrementRejected(value)
+        }
+        // Typed unsupported values are rejected: boolean, floating point, and collection.
+        for (value in listOf(true, 5.0, listOf("x"))) {
+            seedCounter(value)
+            assertIncrementRejected(value)
+        }
+        // Current-value and addition overflow are rejected without overwriting.
+        seedCounter("9223372036854775807")
+        assertIncrementRejected("9223372036854775807")
     }
 
     private fun await(latch: CountDownLatch, operation: String) {

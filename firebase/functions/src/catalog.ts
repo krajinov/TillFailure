@@ -46,17 +46,30 @@ export async function transitionMembership(db: Firestore, input: MembershipTrans
     const previousRevision = membership.exists ? membership.get("revision") as number : 0;
     if (previousRevision !== input.expectedRevision) throw new Error("stale-revision");
     if (workspace.get("membershipRevision") !== input.expectedWorkspaceRevision) throw new Error("stale-workspace-revision");
+    // Relationship state and catalog contribution are distinct concepts:
+    // an active membership is part of the workspace roster even while the workspace is
+    // suspended, but it contributes to catalog entitlement only in an active workspace.
+    const wasActive = membership.exists && membership.get("status") === "active";
+    const becomesActive = input.nextStatus === "active";
     const oldContributes = membership.exists && membership.get("catalogContributionActive") === true;
-    const newContributes = input.nextStatus === "active" && workspace.get("status") === "active";
+    const newContributes = becomesActive && workspace.get("status") === "active";
+    // Account entitlement stays contribution-based.
     const oldCount = entitlement.get("activeMembershipCount") as number;
     if (!Number.isInteger(oldCount) || oldCount < 0 || oldCount > input.maxMembershipsPerAccount) throw new Error("membership-bound-violated");
     const nextCount = oldCount + Number(newContributes) - Number(oldContributes);
     if (nextCount < 0 || nextCount > input.maxMembershipsPerAccount) throw new Error("membership-bound-violated");
-    const workspaceCount = workspace.get("activeMembershipCount") as number;
-    if (!Number.isInteger(workspaceCount)) throw new Error("workspace-count-malformed");
-    if (workspaceCount < 0 || workspaceCount > input.maxMembershipsPerWorkspace) throw new Error("workspace-membership-bound-violated");
-    const nextWorkspaceCount = workspaceCount + Number(newContributes) - Number(oldContributes);
-    if (nextWorkspaceCount < 0 || nextWorkspaceCount > input.maxMembershipsPerWorkspace) throw new Error("workspace-membership-bound-violated");
+    // Workspace roster: every active relationship, in an active or suspended workspace.
+    const rosterCount = workspace.get("activeRosterCount") as number;
+    if (!Number.isInteger(rosterCount)) throw new Error("workspace-roster-malformed");
+    if (rosterCount < 0 || rosterCount > input.maxMembershipsPerWorkspace) throw new Error("workspace-roster-bound-violated");
+    const nextRosterCount = rosterCount + Number(becomesActive) - Number(wasActive);
+    if (nextRosterCount < 0 || nextRosterCount > input.maxMembershipsPerWorkspace) throw new Error("workspace-roster-bound-violated");
+    // Workspace catalog contributions: a subset of the roster, zero while suspended.
+    const contributionCount = workspace.get("catalogContributionCount") as number;
+    if (!Number.isInteger(contributionCount)) throw new Error("workspace-contribution-malformed");
+    if (contributionCount < 0 || contributionCount > rosterCount) throw new Error("workspace-contribution-bound-violated");
+    const nextContributionCount = contributionCount + Number(newContributes) - Number(oldContributes);
+    if (nextContributionCount < 0 || nextContributionCount > nextRosterCount) throw new Error("workspace-contribution-bound-violated");
     const entitlementStatus: "active" | "inactive" = account.get("accountStatus") === "active" && nextCount > 0 ? "active" : "inactive";
     const membershipRevision = previousRevision + 1;
     const result = { uid: input.uid, activeMembershipCount: nextCount, entitlementStatus, membershipRevision };
@@ -74,7 +87,7 @@ export async function transitionMembership(db: Firestore, input: MembershipTrans
       activeMembershipCount: nextCount,
       revision: FieldValue.increment(1)
     });
-    transaction.update(workspaceRef, { membershipRevision: FieldValue.increment(1), activeMembershipCount: nextWorkspaceCount });
+    transaction.update(workspaceRef, { membershipRevision: FieldValue.increment(1), activeRosterCount: nextRosterCount, catalogContributionCount: nextContributionCount });
     transaction.create(receiptRef, { schemaVersion: 1, requestHash, commandKind: "membership-transition", result, committedAt: FieldValue.serverTimestamp() });
     return { ...result, replayed: false };
   });
@@ -104,16 +117,26 @@ export async function transitionWorkspace(db: Firestore, input: WorkspaceTransit
       return { affected: receipt.get("affected") as number, replayed: true };
     }
     if (!workspace.exists || workspace.get("membershipRevision") !== input.expectedMembershipRevision) throw new Error("stale-revision");
-    const workspaceCount = workspace.get("activeMembershipCount") as number;
-    if (!Number.isInteger(workspaceCount)) throw new Error("workspace-count-malformed");
-    if (workspaceCount < 0 || workspaceCount > input.maxMembershipsPerWorkspace) throw new Error("workspace-membership-bound-violated");
+    const rosterCount = workspace.get("activeRosterCount") as number;
+    if (!Number.isInteger(rosterCount)) throw new Error("workspace-roster-malformed");
+    if (rosterCount < 0 || rosterCount > input.maxMembershipsPerWorkspace) throw new Error("workspace-roster-bound-violated");
+    const contributionCount = workspace.get("catalogContributionCount") as number;
+    if (!Number.isInteger(contributionCount)) throw new Error("workspace-contribution-malformed");
+    if (contributionCount < 0 || contributionCount > rosterCount) throw new Error("workspace-contribution-bound-violated");
     const memberships = await transaction.get(db.collection(`workspaces/${input.workspaceId}/memberships`).where("status", "==", "active"));
-    if (memberships.size > input.maxMembershipsPerWorkspace) throw new Error("workspace-membership-bound-violated");
+    if (memberships.size > input.maxMembershipsPerWorkspace) throw new Error("workspace-roster-bound-violated");
+    // The bounded active-roster scan is authoritative: an already oversized or drifted
+    // roster/contribution state fails closed instead of silently transitioning.
+    if (memberships.size !== rosterCount) throw new Error("workspace-roster-inconsistent");
+    const scannedContributions = memberships.docs.filter((membership) => membership.get("catalogContributionActive") === true).length;
+    if (scannedContributions !== contributionCount) throw new Error("workspace-contribution-inconsistent");
     const estimatedWrites = memberships.size * 2 + 2;
     if (estimatedWrites > input.maxWrites) throw new Error("write-budget-exceeded");
     const entitlementRefs = memberships.docs.map((membership) => db.doc(`users/${membership.id}/authorizations/systemCatalog`));
     const accountRefs = memberships.docs.map((membership) => db.doc(`users/${membership.id}`));
-    const lifecycleDocuments = await transaction.getAll(...entitlementRefs, ...accountRefs);
+    // An empty roster is a valid state: nothing to read or adjust, and the transaction must
+    // still be able to suspend/restore the workspace with zero affected memberships.
+    const lifecycleDocuments = memberships.size === 0 ? [] : await transaction.getAll(...entitlementRefs, ...accountRefs);
     const lifecycleByPath = new Map(lifecycleDocuments.map((document) => [document.ref.path, document]));
     memberships.docs.forEach((membership, index) => {
       const oldContributes = membership.get("catalogContributionActive") === true;
@@ -135,7 +158,14 @@ export async function transitionWorkspace(db: Firestore, input: WorkspaceTransit
         revision: FieldValue.increment(1)
       });
     });
-    transaction.update(workspaceRef, { status: input.nextStatus, membershipRevision: FieldValue.increment(1), activeMembershipCount: input.nextStatus === "active" ? memberships.size : 0 });
+    transaction.update(workspaceRef, {
+      status: input.nextStatus,
+      membershipRevision: FieldValue.increment(1),
+      // Suspension disables contributions without removing active relationships; the
+      // roster count is preserved from the authoritative bounded scan either way.
+      activeRosterCount: memberships.size,
+      catalogContributionCount: input.nextStatus === "active" ? memberships.size : 0
+    });
     transaction.create(receiptRef, { schemaVersion: 1, requestHash, commandKind: "workspace-transition", affected: memberships.size, committedAt: FieldValue.serverTimestamp() });
     return { affected: memberships.size, replayed: false };
   });

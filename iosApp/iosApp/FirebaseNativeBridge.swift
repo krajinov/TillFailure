@@ -1,3 +1,4 @@
+import CoreFoundation
 import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
@@ -102,8 +103,11 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
         firestore.runTransaction({ transaction, errorPointer -> Any? in
             do {
                 let snapshot = try transaction.getDocument(reference)
-                let current = (snapshot.get(field) as? NSNumber)?.int64Value ?? 0
-                transaction.setData([field: current + by], forDocument: reference, merge: true)
+                let current = try Self.counterStartValue(snapshot.get(field))
+                guard let next = CounterValueContract.shared.addExact(left: current, right: by)?.int64Value else {
+                    throw Self.counterFailure("Counter increment overflow for '\(field)'")
+                }
+                transaction.setData([field: next], forDocument: reference, merge: true)
                 return nil
             } catch {
                 errorPointer?.pointee = error as NSError
@@ -290,8 +294,46 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
         NativeFirebaseDocumentResult(document: nil, failure: NativeFirebaseFailure(code: "UNKNOWN", retryable: false))
     }
 
+    private static let counterErrorDomain = "TillFailureCounterValue"
+
+    private static func counterFailure(_ message: String) -> NSError {
+        NSError(domain: counterErrorDomain, code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+    }
+
+    private static func isCounterValueFailure(_ error: NSError) -> Bool {
+        if error.domain == counterErrorDomain { return true }
+        if let underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError, underlying.domain == counterErrorDomain {
+            return true
+        }
+        return false
+    }
+
+    // Canonical shared counter contract: an integral value, a canonical signed integer string,
+    // or a missing/null field starting from zero. Booleans, floating point, malformed strings,
+    // and unsupported Firestore types are rejected instead of silently resetting the counter.
+    private static func counterStartValue(_ stored: Any?) throws -> Int64 {
+        guard let stored, !(stored is NSNull) else { return 0 }
+        if let text = stored as? String {
+            guard let parsed = CounterValueContract.shared.parseCanonicalInt64(text: text) else {
+                throw counterFailure("Stored counter is not a canonical signed integer")
+            }
+            return parsed.int64Value
+        }
+        if let number = stored as? NSNumber {
+            if CFGetTypeID(number) == CFBooleanGetTypeID() {
+                throw counterFailure("Stored counter is a boolean")
+            }
+            if CFNumberIsFloatType(number) {
+                throw counterFailure("Stored counter is not an integer")
+            }
+            return number.int64Value
+        }
+        throw counterFailure("Stored counter type is unsupported")
+    }
+
     private static func mapFailure(_ error: Error) -> NativeFirebaseFailure {
         let nsError = error as NSError
+        if isCounterValueFailure(nsError) { return NativeFirebaseFailure(code: "INVALID_ARGUMENT", retryable: false) }
         let code = FirestoreErrorCode.Code(rawValue: nsError.code)
         switch code {
         case .permissionDenied: return NativeFirebaseFailure(code: "PERMISSION_DENIED", retryable: false)

@@ -98,12 +98,9 @@ class AndroidFirebaseSpikeClient(
         val reference = firestore.document(path)
         firestore.runTransaction { transaction ->
             val snapshot = transaction.get(reference)
-            val current = when (val stored = snapshot.get(field)) {
-                is Number -> stored.toLong()
-                is String -> stored.toLongOrNull() ?: 0L
-                else -> 0L
-            }
-            val next = current + by
+            val current = counterStartValue(snapshot.get(field))
+            val next = CounterValueContract.addExact(current, by)
+                ?: throw CounterValueException("Counter increment overflow for '$field'")
             transaction.set(reference, mapOf(field to next), SetOptions.merge())
             next
         }.addOnSuccessListener {
@@ -177,6 +174,22 @@ class AndroidFirebaseSpikeClient(
             .addOnFailureListener { callback(FirebaseUnitResult(mapFailure(it))) }
     }
 
+    // Canonical shared counter contract: an integral value, a canonical signed integer string,
+    // or a missing/null field starting from zero. Booleans, floating point, malformed strings,
+    // and unsupported Firestore types are rejected instead of silently resetting the counter.
+    private fun counterStartValue(stored: Any?): Long = when (stored) {
+        null -> 0L
+        is Long -> stored
+        is Int -> stored.toLong()
+        is Short -> stored.toLong()
+        is Byte -> stored.toLong()
+        is String -> CounterValueContract.parseCanonicalInt64(stored)
+            ?: throw CounterValueException("Stored counter is not a canonical signed integer")
+        is Boolean -> throw CounterValueException("Stored counter is a boolean")
+        is Double, is Float -> throw CounterValueException("Stored counter is not an integer")
+        else -> throw CounterValueException("Stored counter type is unsupported")
+    }
+
     private fun deliverDocument(
         snapshot: DocumentSnapshot,
         epoch: Long,
@@ -204,6 +217,9 @@ class AndroidFirebaseSpikeClient(
     )
 
     private fun mapFailure(error: Exception): StableFirebaseFailure {
+        if (error is CounterValueException || error.cause is CounterValueException) {
+            return StableFirebaseFailure(StableFirebaseErrorCode.INVALID_ARGUMENT, false)
+        }
         val code = (error as? FirebaseFirestoreException)?.code
         return when (code) {
             FirebaseFirestoreException.Code.PERMISSION_DENIED -> StableFirebaseFailure(StableFirebaseErrorCode.PERMISSION_DENIED, false)
