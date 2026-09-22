@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 import { MembershipTransition, setAccountEnabled, transitionMembership, transitionWorkspace } from "../src/catalog.js";
 import { emulatorFirestore } from "../src/environment.js";
+import { commandId } from "../src/hashing.js";
 
 const db = emulatorFirestore();
 
@@ -110,7 +111,7 @@ describe("system catalog entitlement lifecycle", () => {
   });
 
   it("restores below and exactly at the account cap, but rejects above it atomically", async () => {
-    for (const [uid, startingCount, cap] of [["below", 18, 20], ["exact", 19, 20]] as const) {
+    for (const [uid, startingCount, cap] of [["zero", 0, 20], ["below", 18, 20], ["exact", 19, 20]] as const) {
       await seed(uid, `ws_${uid}`, "suspended");
       await db.doc(`workspaces/ws_${uid}`).update({ activeRosterCount: 1 });
       await db.doc(`workspaces/ws_${uid}/memberships/${uid}`).set({ schemaVersion: 1, workspaceId: `ws_${uid}`, userId: uid, role: "client", status: "active", revision: 1, catalogContributionActive: false });
@@ -136,7 +137,95 @@ describe("system catalog entitlement lifecycle", () => {
     assert.deepEqual((await db.doc("workspaces/ws_above").get()).data(), workspaceBefore);
     assert.deepEqual((await db.doc("workspaces/ws_above/memberships/above").get()).data(), membershipBefore);
     assert.deepEqual((await db.doc("users/above/authorizations/systemCatalog").get()).data(), entitlementBefore);
-    assert.equal((await db.collection("lifecycleCommands").where("commandKind", "==", "workspace-transition").get()).size, 2);
+    await seed("neg", "ws_neg", "suspended");
+    await db.doc("workspaces/ws_neg").update({ activeRosterCount: 1 });
+    await db.doc("workspaces/ws_neg/memberships/neg").set({ schemaVersion: 1, workspaceId: "ws_neg", userId: "neg", role: "client", status: "active", revision: 1, catalogContributionActive: false });
+    await db.doc("users/neg/authorizations/systemCatalog").update({ activeMembershipCount: -1, status: "active", revision: 1 });
+    await assert.rejects(
+      () => transitionWorkspace(db, workspaceTransition("ws_neg", "restore-neg", 1, "active")),
+      /membership-bound-violated/
+    );
+    assert.equal((await db.doc(`lifecycleCommands/${commandId("admin", "restore-neg")}`).get()).exists, false);
+  });
+
+  it("validates every existing entitlement before suspension and preserves all state on rejection", async () => {
+    const rejectedCounts: ReadonlyArray<readonly [string, unknown]> = [
+      ["above-cap", 21],
+      ["negative", -1],
+      ["string", "1"],
+      ["fractional", 1.5]
+    ];
+
+    for (const [caseName, existingCount] of rejectedCounts) {
+      const uid = `susp-${caseName}`;
+      const workspaceId = `ws-susp-${caseName}`;
+      const idempotencyKey = `suspend-${caseName}`;
+      const workspaceRef = db.doc(`workspaces/${workspaceId}`);
+      const membershipRef = db.doc(`workspaces/${workspaceId}/memberships/${uid}`);
+      const accountRef = db.doc(`users/${uid}`);
+      const entitlementRef = db.doc(`users/${uid}/authorizations/systemCatalog`);
+      const receiptRef = db.doc(`lifecycleCommands/${commandId("admin", idempotencyKey)}`);
+
+      await seed(uid, workspaceId, "active");
+      await workspaceRef.update({ activeRosterCount: 1, catalogContributionCount: 1 });
+      await membershipRef.set({
+        schemaVersion: 1,
+        workspaceId,
+        userId: uid,
+        role: "client",
+        status: "active",
+        revision: 1,
+        catalogContributionActive: true
+      });
+      await entitlementRef.update({ activeMembershipCount: existingCount, status: "active", revision: 7 });
+
+      const before = {
+        workspace: (await workspaceRef.get()).data(),
+        membership: (await membershipRef.get()).data(),
+        account: (await accountRef.get()).data(),
+        entitlement: (await entitlementRef.get()).data()
+      };
+      assert.equal((await receiptRef.get()).exists, false);
+
+      await assert.rejects(
+        () => transitionWorkspace(db, workspaceTransition(workspaceId, idempotencyKey, 1, "suspended")),
+        /membership-bound-violated/
+      );
+
+      assert.deepEqual((await workspaceRef.get()).data(), before.workspace);
+      assert.deepEqual((await membershipRef.get()).data(), before.membership);
+      assert.deepEqual((await accountRef.get()).data(), before.account);
+      assert.deepEqual((await entitlementRef.get()).data(), before.entitlement);
+      assert.equal((await receiptRef.get()).exists, false);
+    }
+
+    for (const [caseName, existingCount, expectedCount, expectedStatus] of [
+      ["at-cap", 20, 19, "active"],
+      ["last-contribution", 1, 0, "inactive"]
+    ] as const) {
+      const uid = `valid-${caseName}`;
+      const workspaceId = `ws-valid-${caseName}`;
+      await seed(uid, workspaceId, "active");
+      await db.doc(`workspaces/${workspaceId}`).update({ activeRosterCount: 1, catalogContributionCount: 1 });
+      await db.doc(`workspaces/${workspaceId}/memberships/${uid}`).set({
+        schemaVersion: 1,
+        workspaceId,
+        userId: uid,
+        role: "client",
+        status: "active",
+        revision: 1,
+        catalogContributionActive: true
+      });
+      await db.doc(`users/${uid}/authorizations/systemCatalog`).update({ activeMembershipCount: existingCount, status: "active", revision: 1 });
+
+      const result = await transitionWorkspace(db, workspaceTransition(workspaceId, `suspend-${caseName}`, 1, "suspended"));
+      const entitlement = await db.doc(`users/${uid}/authorizations/systemCatalog`).get();
+      assert.equal(result.affected, 1);
+      assert.equal(entitlement.get("activeMembershipCount"), expectedCount);
+      assert.equal(entitlement.get("status"), expectedStatus);
+      assert.equal(entitlement.get("revision"), 2);
+      assert.deepEqual(await workspaceCounts(workspaceId), { roster: 1, contributions: 0, revision: 2, status: "suspended" });
+    }
   });
 
   it("enforces the workspace roster cap on activation", async () => {

@@ -57,7 +57,7 @@ export async function transitionMembership(db: Firestore, input: MembershipTrans
     const oldCount = entitlement.get("activeMembershipCount") as number;
     if (!Number.isInteger(oldCount) || oldCount < 0 || oldCount > input.maxMembershipsPerAccount) throw new Error("membership-bound-violated");
     const nextCount = oldCount + Number(newContributes) - Number(oldContributes);
-    if (nextCount < 0 || nextCount > input.maxMembershipsPerAccount) throw new Error("membership-bound-violated");
+    if (!Number.isInteger(nextCount) || nextCount < 0 || nextCount > input.maxMembershipsPerAccount) throw new Error("membership-bound-violated");
     // Workspace roster: every active relationship, in an active or suspended workspace.
     const rosterCount = workspace.get("activeRosterCount") as number;
     if (!Number.isInteger(rosterCount)) throw new Error("workspace-roster-malformed");
@@ -147,8 +147,11 @@ export async function transitionWorkspace(db: Firestore, input: WorkspaceTransit
         throw new Error(`lifecycle-source-missing:${entitlementRefs[index]!.path}:${Boolean(entitlement?.exists)}:${accountRefs[index]!.path}:${Boolean(account?.exists)}`);
       }
       const oldCount = entitlement.get("activeMembershipCount") as number;
+      if (!Number.isInteger(oldCount) || oldCount < 0 || oldCount > input.maxMembershipsPerAccount) {
+        throw new Error("membership-bound-violated");
+      }
       const nextCount = oldCount + Number(newContributes) - Number(oldContributes);
-      if (!Number.isInteger(oldCount) || nextCount < 0 || nextCount > input.maxMembershipsPerAccount) {
+      if (!Number.isInteger(nextCount) || nextCount < 0 || nextCount > input.maxMembershipsPerAccount) {
         throw new Error("membership-bound-violated");
       }
       transaction.update(membership.ref, { catalogContributionActive: newContributes, revision: FieldValue.increment(1) });

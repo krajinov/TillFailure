@@ -2,7 +2,7 @@
 
 Status: **locally accepted**
 
-Date: **2026-09-20**
+Date: **2026-09-22**
 
 Branch: `feature/milestone-3-firebase-spike`
 
@@ -15,6 +15,8 @@ Second corrective review start: `9e657fac52eb4384b1ea63f3f5bf93ce40e4b6b2`
 Third corrective review start: `7951445a2586535dab6eb9cc01b4d0fb4497da74`
 
 Fourth corrective review start: `12f268ac6bf69e81100389a1e0015a848d5df2d6`
+
+Fifth corrective review start: `c1f79cbe62c8695ac21ffa84f179d387b515dfb5`
 
 ## Outcome
 
@@ -50,6 +52,11 @@ Fourth round (PR #3 review `pullrequest-review-5261724751`):
 - **Complete Firebase UID domain on both platforms.** iOS recovery validation no longer imposes an `[A-Za-z0-9_-]` whitelist that rejected valid Firebase identifiers such as `user@example.com` and surfaced them as `LOCKED`. Both platforms now validate through the shared `RecoveryUidContract` — non-blank, at most 128 UTF-16 code units (the Firebase Auth/Admin SDK bound, counted identically by Kotlin `String.length` and Swift `utf16.count`) — with no character whitelist, because only the SHA-256 digest names the partition file. Raw UIDs never appear in a path, traversal-like identifiers cannot escape the recovery root, distinct identifiers never normalize into one account, and the UID remains authenticated data so a partition copied under another UID still fails closed.
 - **Canonical incrementable-value contract.** The Apple bridge's increment path previously recognized only `NSNumber`, so a counter stored as the string `"5"` (which the string-typed bridge itself writes) was treated as zero and rewritten as `1` while Android produced `6`. Both platforms now use the shared `CounterValueContract`: an integral stored value, or a canonical signed integer string (`-?[0-9]+`, in `Long` range) is accepted; missing or explicit-null fields start from zero; malformed strings, decimals, whitespace, plus-prefixed strings, booleans, floating point, collections, and other unsupported types are rejected with the stable non-retryable `INVALID_ARGUMENT` failure and never overwrite the stored value; and addition overflow is detected through the shared exact-addition helper. Transaction retry, cancellation, exactly-once delivery, registry cleanup, and epoch fencing are preserved.
 
+Fifth round (PR #3 review `pullrequestreview-5276336981`):
+
+- **Fail-closed entitlement source counts.** Before workspace suspension or restoration applies any membership contribution delta, the fan-out transaction now requires every affected entitlement's existing `activeMembershipCount` to be an integer in the full configured range `0..maxMembershipsPerAccount`; every computed count is independently checked for the same integer shape and bounds before writes. This matches the directly equivalent single-membership transition. Above-cap, negative, string, and fractional stored counts reject atomically; the regression for `21 -> 20` proves that workspace state/revision, membership contribution/revision, account, entitlement status/count/revision, command receipt, and Rules authorization all remain unchanged. Zero and maximum valid boundaries still restore/suspend correctly.
+- Only the Node 22 TypeScript/backend/Rules scope changed and was rerun for this correction. The Android/iOS results below retain their fourth-round attribution; no native build, host, device, simulator, harness, or cold-launch result is claimed as rerun.
+
 ## Runtime and dependency evidence
 
 | Area | Exact version/evidence |
@@ -66,15 +73,15 @@ Fourth round (PR #3 review `pullrequest-review-5261724751`):
 
 ## Backend proof
 
-Final Node 22 emulator run after the fourth corrective round: **48 passed, 0 failed** (the earlier rounds' final runs were 17/17, 31/31, and 43/43).
+Final Node 22 emulator run after the fifth corrective round: **50 passed, 0 failed** (the earlier rounds' final runs were 17/17, 31/31, 43/43, and 48/48).
 
 | Primitive | Tests and result |
 |---|---|
 | Assigned publication | 14/14: atomic replay, deterministic complete zero/one/many-plan inventory, plan-to-snapshot reference integrity (absent/blank/duplicated/mixed rejection with no writes), revision-checked replacement retiring header and discovery index atomically with trainer-discovery exclusion, replacement replay without re-retirement, oversize all-or-none rejection, exact write budget counting both predecessor writes, stale/missing/malformed-request rejection with unchanged state, terminal and already-replaced predecessor rejection, predecessor/index identity and inconsistency rejection, single-winner competing-replacement concurrency, guarded live-to-terminal closure for each terminal reason, terminal/replacement-metadata immutability with receipt replay, and single-winner competing-close concurrency |
 | Booking | 12/12: bucket coverage, first-booking contention, idempotent reschedule/cancel, immutable trainer/client rejection, transaction-budget rejection, same-interval reschedule `utcBucket` preservation, retained/acquired lock schema parity with initial booking plus removed-bucket deletion, lock stability across replay and rejected reschedule, participant authorization rejection matrix (anonymous/disabled/suspended/missing/revoked/cross-workspace/wrong-role/unrelated participant/forged fields) with no partial state, reschedule and cancellation authorization boundary with revoked-membership and non-participant rejection, caller-bound receipt non-replay, and fail-closed concurrent membership revocation |
 | Callable | 4/4: unauthenticated and anonymous-without-authoritative-data rejection with no partial state, seeded trainer end-to-end authorization with idempotent replay and stored `callerUid`, different-caller receipt non-replay through the live Functions emulator, and forged-identifier/malformed-payload rejection at the boundary |
-| Catalog lifecycle | 13/13: count lifecycle without drift on replay/revoke/restore, workspace/account transitions, fan-out rejection, below/exact/above-cap restoration, roster-cap activation below/exactly-at/above cap with unchanged rejected state, roster-cap enforcement for suspended workspaces (including repeated attempts that cannot bypass the cap and a full-roster restoration afterwards), revoke in active and suspended workspaces without drift, roster and contribution counters kept distinct, fail-closed drift/oversized/malformed counters, zero-roster suspension and restoration, complete unchanged-state rejection assertions, independent account-cap and workspace-cap rejection, stale workspace revision, and at-cap suspension and restoration |
-| Firestore/Storage Rules | 5/5: catalog, assigned snapshot/source denial, stable forged-owner denial, server-authoritative lifecycle/count/lock/index/receipt write denial, Storage owner/MIME/metadata/size checks |
+| Catalog lifecycle | 14/14: count lifecycle without drift on replay/revoke/restore, workspace/account transitions, fan-out rejection, below/exact/above-cap restoration, pre-delta rejection of above-cap/negative/malformed entitlement counts during suspension with complete unchanged-state assertions, valid zero/maximum boundaries, roster-cap activation below/exactly-at/above cap with unchanged rejected state, roster-cap enforcement for suspended workspaces (including repeated attempts that cannot bypass the cap and a full-roster restoration afterwards), revoke in active and suspended workspaces without drift, roster and contribution counters kept distinct, fail-closed drift/oversized/malformed counters, zero-roster suspension and restoration, independent account-cap and workspace-cap rejection, stale workspace revision, and at-cap suspension and restoration |
+| Firestore/Storage Rules | 6/6: catalog, above-cap suspension rejection preserving denied catalog authorization and all lifecycle state, assigned snapshot/source denial, stable forged-owner denial, server-authoritative lifecycle/count/lock/index/receipt write denial, Storage owner/MIME/metadata/size checks |
 
 The probes validate the primitives under configured bounds. They do not approve final product caps, booking-rights policy, or a deployed environment.
 
@@ -110,19 +117,21 @@ Future rotation uses a new versioned key identifier, reads old envelopes with th
 
 | Gate | Final result |
 |---|---|
-| Node 22 `npm ci`, TypeScript build, emulator start/stop | PASS (rerun for the fourth corrective round) |
-| Trusted-operation and Rules suite | **48/48 PASS** (fourth corrective round; two consecutive clean runs) |
-| Common metadata + Android/iOS compilation | PASS (common metadata compilation and the shared Kotlin framework compile rerun for the fourth corrective round) |
-| Android host tests | **63/63 PASS** (rerun for the fourth corrective round; includes the shared UID and counter contract tests) |
-| Android connected tests | **66/66 PASS** on API 34 (rerun for the fourth corrective round; common contract tests plus the Firebase adapter and Keystore persistence suites) |
-| Android debug assembly/cold launch | Android debug assembly rerun for the fourth corrective round; cold launch not rerun (no Android app/UI change) |
-| iOS shared simulator tests | **63/63 PASS** (rerun for the fourth corrective round) |
-| Native signed Xcode Debug build | PASS (rerun for the fourth corrective round) |
-| Swift Firebase/recovery harness | PASS; 87 asserted checks (53 Firebase + 34 recovery) including the canonical counter contract, the complete recovery UID domain, registry lifecycle, real Settings background/foreground, and terminate/clear (rerun for the fourth corrective round) |
-| Android/iOS cold launch | iOS Debug cold launch rerun for the fourth corrective round: Foundation Home remained the default destination without the opt-in spike flag; Android cold launch retained from `9e657fa` |
-| Diff/secret/generated/machine-path audit | PASS at the acceptance commit and the second, third, and fourth corrective commits |
+| Node 22 TypeScript build and emulator start/stop | PASS (rerun for the fifth corrective round under Node `22.23.2`; locked dependencies retained) |
+| Trusted-operation and Rules suite | **50/50 PASS** (fifth corrective round) |
+| Common metadata + Android/iOS compilation | PASS retained from the fourth corrective round; not rerun for the backend-only fifth correction |
+| Android host tests | **63/63 PASS** retained from the fourth corrective round; not rerun for the backend-only fifth correction |
+| Android connected tests | **66/66 PASS** on API 34 retained from the fourth corrective round; not rerun for the backend-only fifth correction |
+| Android debug assembly/cold launch | Android debug assembly retained from the fourth corrective round; Android cold launch retained from `9e657fa`; neither rerun for the fifth correction |
+| iOS shared simulator tests | **63/63 PASS** retained from the fourth corrective round; not rerun for the backend-only fifth correction |
+| Native signed Xcode Debug build | PASS retained from the fourth corrective round; not rerun for the backend-only fifth correction |
+| Swift Firebase/recovery harness | PASS; 87 asserted checks (53 Firebase + 34 recovery) retained from the fourth corrective round; not rerun for the backend-only fifth correction |
+| Android/iOS cold launch | iOS Debug cold launch retained from the fourth corrective round; Android cold launch retained from `9e657fa`; neither rerun for the fifth correction |
+| Diff/secret/generated/machine-path audit | PASS at the acceptance commit and the second, third, fourth, and fifth corrective commits |
 
 The fourth corrective round changed `firebase/functions` TypeScript sources/tests, shared Kotlin contracts and their tests, the Android adapter/persistence validation, the Android device-test fixtures, the `iosApp` Swift bridge/harness sources, the shared build file (test-only Firestore dependency for typed fixtures), and documentation: no production dependency, version catalog, or lockfile change. The Android and Apple parity suites were rerun because shared Kotlin, Android adapter, and Swift bridge code changed; the Android cold launch and the Android/iOS visual evidence are preserved from earlier commits with their original attribution.
+
+The fifth corrective round changed only the entitlement lifecycle TypeScript implementation/tests and documentation. It added no dependency, lockfile, native, UI, generated, production-endpoint, credential, deployment, or Milestone 4 change. The complete Node 22 backend/Rules suite was rerun; all native evidence is preserved from the fourth round with its original attribution.
 
 ## Remaining decisions and deferred work
 

@@ -4,7 +4,9 @@ import { after, before, beforeEach, describe, it } from "node:test";
 import { assertFails, assertSucceeds, initializeTestEnvironment, RulesTestEnvironment } from "@firebase/rules-unit-testing";
 import { collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
 import { ref, uploadString } from "firebase/storage";
-import { SPIKE_PROJECT_ID } from "../src/environment.js";
+import { transitionWorkspace } from "../src/catalog.js";
+import { emulatorFirestore, SPIKE_PROJECT_ID } from "../src/environment.js";
+import { commandId } from "../src/hashing.js";
 
 let environment: RulesTestEnvironment;
 
@@ -51,6 +53,56 @@ describe("Firestore and Storage rules", () => {
     await assertSucceeds(getDocs(query(collection(client, "systemExercises"), where("status", "==", "published"))));
     await assertFails(getDocs(collection(client, "systemExercises")));
     await assertFails(setDoc(doc(client, "users/client/authorizations/systemCatalog"), { status: "active", activeMembershipCount: 99 }));
+  });
+
+  it("keeps an above-cap entitlement denied when workspace suspension is rejected atomically", async () => {
+    const workspacePath = "workspaces/ws_above_cap";
+    const membershipPath = `${workspacePath}/memberships/client`;
+    const accountPath = "users/client";
+    const entitlementPath = `${accountPath}/authorizations/systemCatalog`;
+    const receiptPath = `lifecycleCommands/${commandId("admin", "suspend-above-cap")}`;
+
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, accountPath), { schemaVersion: 1, accountStatus: "active", lifecycleRevision: 1 });
+      await setDoc(doc(db, entitlementPath), { schemaVersion: 1, status: "active", activeMembershipCount: 21, revision: 7 });
+      await setDoc(doc(db, workspacePath), { schemaVersion: 1, status: "active", membershipRevision: 1, activeRosterCount: 1, catalogContributionCount: 1 });
+      await setDoc(doc(db, membershipPath), { schemaVersion: 1, workspaceId: "ws_above_cap", userId: "client", role: "client", status: "active", revision: 1, catalogContributionActive: true });
+      await setDoc(doc(db, "systemExercises/published"), { schemaVersion: 1, name: "Squat", status: "published" });
+    });
+
+    const client = environment.authenticatedContext("client").firestore();
+    await assertFails(getDoc(doc(client, "systemExercises/published")));
+
+    const adminDb = emulatorFirestore();
+    const before = {
+      workspace: (await adminDb.doc(workspacePath).get()).data(),
+      membership: (await adminDb.doc(membershipPath).get()).data(),
+      account: (await adminDb.doc(accountPath).get()).data(),
+      entitlement: (await adminDb.doc(entitlementPath).get()).data()
+    };
+    assert.equal((await adminDb.doc(receiptPath).get()).exists, false);
+
+    await assert.rejects(
+      () => transitionWorkspace(adminDb, {
+        callerUid: "admin",
+        idempotencyKey: "suspend-above-cap",
+        workspaceId: "ws_above_cap",
+        nextStatus: "suspended",
+        expectedMembershipRevision: 1,
+        maxMembershipsPerAccount: 20,
+        maxMembershipsPerWorkspace: 20,
+        maxWrites: 200
+      }),
+      /membership-bound-violated/
+    );
+
+    assert.deepEqual((await adminDb.doc(workspacePath).get()).data(), before.workspace);
+    assert.deepEqual((await adminDb.doc(membershipPath).get()).data(), before.membership);
+    assert.deepEqual((await adminDb.doc(accountPath).get()).data(), before.account);
+    assert.deepEqual((await adminDb.doc(entitlementPath).get()).data(), before.entitlement);
+    assert.equal((await adminDb.doc(receiptPath).get()).exists, false);
+    await assertFails(getDoc(doc(client, "systemExercises/published")));
   });
 
   it("gates snapshots by direct account/workspace/membership/assignment checks and hides sources", async () => {
