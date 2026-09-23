@@ -143,6 +143,18 @@ describe("bookAppointmentSpike callable authorization", () => {
       assert.equal(error.code, "functions/invalid-argument");
       return true;
     });
+    // Email-shaped participant UIDs pass the boundary and are decided by authorization instead,
+    // while a separator in any identifier still fails validation before Firestore access.
+    await assert.rejects(() => call(bookingPayload({ trainerId: "trainer@example.com" })), (error: FunctionsError) => {
+      assert.equal(error.code, "functions/permission-denied");
+      return true;
+    });
+    for (const override of [{ clientId: "client/other" }, { trainerId: "trainer/other" }, { appointmentId: "appt/other" }, { idempotencyKey: "key/other" }]) {
+      await assert.rejects(() => call(bookingPayload(override)), (error: FunctionsError) => {
+        assert.equal(error.code, "functions/invalid-argument");
+        return true;
+      });
+    }
     await assert.rejects(() => call(bookingPayload({ startsAtMillis: "tomorrow" })), (error: FunctionsError) => {
       assert.equal(error.code, "functions/invalid-argument");
       return true;

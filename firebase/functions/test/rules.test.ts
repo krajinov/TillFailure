@@ -4,7 +4,7 @@ import { after, before, beforeEach, describe, it } from "node:test";
 import { assertFails, assertSucceeds, initializeTestEnvironment, RulesTestEnvironment } from "@firebase/rules-unit-testing";
 import { collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
 import { ref, uploadString } from "firebase/storage";
-import { transitionWorkspace } from "../src/catalog.js";
+import { transitionAccountLifecycle, transitionWorkspace } from "../src/catalog.js";
 import { emulatorFirestore, SPIKE_PROJECT_ID } from "../src/environment.js";
 import { commandId } from "../src/hashing.js";
 
@@ -103,6 +103,112 @@ describe("Firestore and Storage rules", () => {
     assert.deepEqual((await adminDb.doc(entitlementPath).get()).data(), before.entitlement);
     assert.equal((await adminDb.doc(receiptPath).get()).exists, false);
     await assertFails(getDoc(doc(client, "systemExercises/published")));
+  });
+
+  it("keeps malformed and above-cap entitlements denied when an account enable is rejected atomically", async () => {
+    const cases = [
+      { uid: "client", count: 21, expected: /membership-bound-violated/ },
+      { uid: "other", count: "1", expected: /entitlement-count-malformed/ }
+    ] as const;
+
+    for (const { uid, count, expected } of cases) {
+      const accountPath = `users/${uid}`;
+      const entitlementPath = `${accountPath}/authorizations/systemCatalog`;
+      const idempotencyKey = `enable-${uid}`;
+      const receiptPath = `lifecycleCommands/${commandId("admin", idempotencyKey)}`;
+
+      await environment.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await setDoc(doc(db, accountPath), { schemaVersion: 1, accountStatus: "disabled", lifecycleRevision: 1 });
+        await setDoc(doc(db, entitlementPath), { schemaVersion: 1, status: "inactive", activeMembershipCount: count, revision: 7 });
+        await setDoc(doc(db, "systemExercises/published"), { schemaVersion: 1, name: "Squat", status: "published" });
+      });
+
+      const client = environment.authenticatedContext(uid).firestore();
+      await assertFails(getDoc(doc(client, "systemExercises/published")));
+
+      const adminDb = emulatorFirestore();
+      const before = {
+        account: (await adminDb.doc(accountPath).get()).data(),
+        entitlement: (await adminDb.doc(entitlementPath).get()).data()
+      };
+      assert.equal((await adminDb.doc(receiptPath).get()).exists, false);
+
+      await assert.rejects(
+        () => transitionAccountLifecycle(adminDb, {
+          callerUid: "admin",
+          idempotencyKey,
+          uid,
+          enabled: true,
+          expectedLifecycleRevision: 1,
+          maxMembershipsPerAccount: 20
+        }),
+        expected
+      );
+
+      assert.deepEqual((await adminDb.doc(accountPath).get()).data(), before.account);
+      assert.deepEqual((await adminDb.doc(entitlementPath).get()).data(), before.entitlement);
+      assert.equal((await adminDb.doc(receiptPath).get()).exists, false);
+      await assertFails(getDoc(doc(client, "systemExercises/published")));
+    }
+  });
+
+  it("denies catalog reads after a legitimate account disable and refuses a stale enable", async () => {
+    const accountPath = "users/client";
+    const entitlementPath = `${accountPath}/authorizations/systemCatalog`;
+
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, accountPath), { schemaVersion: 1, accountStatus: "active", lifecycleRevision: 1 });
+      await setDoc(doc(db, entitlementPath), { schemaVersion: 1, status: "active", activeMembershipCount: 1, revision: 1 });
+      await setDoc(doc(db, "systemExercises/published"), { schemaVersion: 1, name: "Squat", status: "published" });
+    });
+
+    const client = environment.authenticatedContext("client").firestore();
+    await assertSucceeds(getDoc(doc(client, "systemExercises/published")));
+
+    const adminDb = emulatorFirestore();
+    // A legitimate disable at the expected revision always removes catalog authorization.
+    const disabled = await transitionAccountLifecycle(adminDb, {
+      callerUid: "admin",
+      idempotencyKey: "disable-client",
+      uid: "client",
+      enabled: false,
+      expectedLifecycleRevision: 1,
+      maxMembershipsPerAccount: 20
+    });
+    assert.equal(disabled.accountStatus, "disabled");
+    assert.equal(disabled.entitlementStatus, "inactive");
+    await assertFails(getDoc(doc(client, "systemExercises/published")));
+
+    // A delayed enable naming the older revision cannot restore catalog access.
+    await assert.rejects(
+      () => transitionAccountLifecycle(adminDb, {
+        callerUid: "admin",
+        idempotencyKey: "stale-enable",
+        uid: "client",
+        enabled: true,
+        expectedLifecycleRevision: 1,
+        maxMembershipsPerAccount: 20
+      }),
+      /stale-revision/
+    );
+    assert.equal((await adminDb.doc(`lifecycleCommands/${commandId("admin", "stale-enable")}`).get()).exists, false);
+    await assertFails(getDoc(doc(client, "systemExercises/published")));
+
+    // The revision-checked enable restores exactly the authorization the stored count supports.
+    const enabled = await transitionAccountLifecycle(adminDb, {
+      callerUid: "admin",
+      idempotencyKey: "valid-enable",
+      uid: "client",
+      enabled: true,
+      expectedLifecycleRevision: 2,
+      maxMembershipsPerAccount: 20
+    });
+    assert.equal(enabled.accountStatus, "active");
+    assert.equal(enabled.entitlementStatus, "active");
+    assert.deepEqual((await adminDb.doc(entitlementPath).get()).data(), { schemaVersion: 1, status: "active", activeMembershipCount: 1, revision: 3 });
+    await assertSucceeds(getDoc(doc(client, "systemExercises/published")));
   });
 
   it("gates snapshots by direct account/workspace/membership/assignment checks and hides sources", async () => {

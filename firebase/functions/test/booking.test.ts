@@ -33,6 +33,18 @@ async function seedBookingWorkspace(workspaceId: string, options: SeedOptions = 
   await batch.commit();
 }
 
+// Authoritative emulator fixture data for email-shaped participant UIDs: the account and
+// membership documents are named after the raw UID, exactly as the trusted bootstrap would.
+async function seedDottedWorkspace(workspaceId: string, trainerUid: string, clientUid: string): Promise<void> {
+  const batch = db.batch();
+  batch.set(db.doc(`users/${trainerUid}`), { schemaVersion: 1, accountStatus: "active", lifecycleRevision: 1 });
+  batch.set(db.doc(`users/${clientUid}`), { schemaVersion: 1, accountStatus: "active", lifecycleRevision: 1 });
+  batch.set(db.doc(`workspaces/${workspaceId}`), { schemaVersion: 1, status: "active", membershipRevision: 1, activeRosterCount: 2, catalogContributionCount: 2 });
+  batch.set(db.doc(`workspaces/${workspaceId}/memberships/${trainerUid}`), { schemaVersion: 1, workspaceId, userId: trainerUid, role: "trainer", status: "active", revision: 1, catalogContributionActive: true });
+  batch.set(db.doc(`workspaces/${workspaceId}/memberships/${clientUid}`), { schemaVersion: 1, workspaceId, userId: clientUid, role: "client", status: "active", revision: 1, catalogContributionActive: true });
+  await batch.commit();
+}
+
 function bookingRequest(workspaceId: string, overrides: Partial<BookingRequest> = {}): BookingRequest {
   const base = Date.UTC(2026, 8, 19, 10, 0);
   return {
@@ -59,6 +71,81 @@ describe("booking contention probe", () => {
   it("outward-rounds the complete buffered UTC interval", () => {
     const base = Date.UTC(2026, 8, 19, 10, 2, 30);
     assert.deepEqual(coveredUtcBucketMinutes({ startsAtMillis: base, endsAtMillis: base + 31 * 60_000, bufferBeforeMinutes: 3, bufferAfterMinutes: 4 }, 5), [29830195, 29830200, 29830205, 29830210, 29830215, 29830220, 29830225, 29830230, 29830235]);
+  });
+
+  it("books, reschedules, and cancels with email-shaped dotted participant UIDs", async () => {
+    const workspaceId = "ws_dotted";
+    const trainerUid = "trainer@example.com";
+    const clientUid = "client.name+booking@example.com";
+    await seedDottedWorkspace(workspaceId, trainerUid, clientUid);
+
+    const base = Date.UTC(2026, 8, 19, 10, 0);
+    const request: BookingRequest = {
+      workspaceId,
+      trainerId: trainerUid,
+      clientId: clientUid,
+      callerUid: clientUid,
+      appointmentId: "appt_dotted",
+      idempotencyKey: "book_dotted",
+      startsAtMillis: base,
+      endsAtMillis: base + 60 * 60_000,
+      bufferBeforeMinutes: 0,
+      bufferAfterMinutes: 0
+    };
+
+    const booked = await bookAppointment(db, request, policy);
+    assert.equal(booked.replayed, false);
+    assert.ok(booked.bucketIds.length > 0);
+    // Slot locks are named from the dotted trainer UID and stay exactly one document ID.
+    const locks = await db.collection(`workspaces/${workspaceId}/bookingSlots`).get();
+    assert.equal(locks.size, booked.bucketIds.length);
+    assert.ok(locks.docs.every((lock) => !lock.id.includes("/") && lock.get("trainerId") === trainerUid));
+
+    // The receipt identity stays deterministic and caller-bound for dotted UIDs.
+    const receipt = await db.doc(`workspaces/${workspaceId}/bookingCommands/${commandId(clientUid, "book_dotted")}`).get();
+    assert.equal(receipt.get("callerUid"), clientUid);
+    assert.equal(receipt.get("appointmentId"), "appt_dotted");
+
+    const replay = await bookAppointment(db, request, policy);
+    assert.equal(replay.replayed, true);
+    assert.deepEqual(replay.bucketIds, booked.bucketIds);
+    assert.equal((await db.collection(`workspaces/${workspaceId}/bookingCommands`).get()).size, 1);
+
+    // A forged email-shaped participant cannot book as another account, and authorization still
+    // reads the authoritative account/membership documents.
+    await assert.rejects(
+      () => bookAppointment(db, { ...request, clientId: "other@example.com", appointmentId: "appt_forged_client", idempotencyKey: "book_forged_client" }, policy),
+      /participant-not-authorized/
+    );
+    await assert.rejects(
+      () => bookAppointment(db, { ...request, trainerId: "other@example.com", appointmentId: "appt_forged_trainer", idempotencyKey: "book_forged_trainer" }, policy),
+      /trainer-not-eligible|participant-not-authorized/
+    );
+    assert.equal((await db.collection(`workspaces/${workspaceId}/appointments`).get()).size, 1);
+
+    // Reschedule and cancellation keep the dotted participants immutable and caller-bound.
+    const moved = await rescheduleAppointment(db, {
+      ...request,
+      idempotencyKey: "move_dotted",
+      expectedRevision: booked.revision,
+      startsAtMillis: base + 2 * 60 * 60_000,
+      endsAtMillis: base + 3 * 60 * 60_000
+    }, policy);
+    assert.equal(moved.revision, 2);
+    const appointment = await db.doc(`workspaces/${workspaceId}/appointments/appt_dotted`).get();
+    assert.equal(appointment.get("trainerId"), trainerUid);
+    assert.equal(appointment.get("clientId"), clientUid);
+
+    const cancelled = await cancelAppointment(db, {
+      workspaceId,
+      appointmentId: "appt_dotted",
+      callerUid: clientUid,
+      idempotencyKey: "cancel_dotted",
+      expectedRevision: moved.revision
+    });
+    assert.equal(cancelled.status, "cancelled");
+    assert.equal((await db.collection(`workspaces/${workspaceId}/bookingSlots`).get()).size, 0);
+    assert.equal((await db.collection(`workspaces/${workspaceId}/bookingCommands`).get()).size, 3);
   });
 
   it("allows at most one overlapping first booking in an empty range", async () => {

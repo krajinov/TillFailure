@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
-import { MembershipTransition, setAccountEnabled, transitionMembership, transitionWorkspace } from "../src/catalog.js";
+import { AccountLifecycleResult, AccountLifecycleTransition, MembershipTransition, transitionAccountLifecycle, transitionMembership, transitionWorkspace } from "../src/catalog.js";
 import { emulatorFirestore } from "../src/environment.js";
 import { commandId } from "../src/hashing.js";
 
@@ -42,6 +42,45 @@ async function accountCount(uid: string): Promise<number> {
 
 function workspaceTransition(workspaceId: string, idempotencyKey: string, expectedMembershipRevision: number, nextStatus: "active" | "suspended", maxMembershipsPerWorkspace = 20, maxMembershipsPerAccount = 20) {
   return { callerUid: "admin", idempotencyKey, workspaceId, nextStatus, expectedMembershipRevision, maxMembershipsPerAccount, maxMembershipsPerWorkspace, maxWrites: 200 };
+}
+
+// Account lifecycle fixtures: the account stores its lifecycle revision and the entitlement
+// document may hold a malformed or out-of-range count on purpose, exactly as a corrupt or
+// legacy record would.
+async function seedAccount(uid: string, entitlement: Record<string, unknown>): Promise<void> {
+  const batch = db.batch();
+  batch.set(db.doc(`users/${uid}`), { schemaVersion: 1, accountStatus: "active", lifecycleRevision: 1 });
+  batch.set(db.doc(`users/${uid}/authorizations/systemCatalog`), { schemaVersion: 1, revision: 1, ...entitlement });
+  await batch.commit();
+}
+
+function accountLifecycle(uid: string, enabled: boolean, expectedLifecycleRevision: number, overrides: Partial<AccountLifecycleTransition> = {}): AccountLifecycleTransition {
+  return {
+    callerUid: "admin",
+    idempotencyKey: `${enabled ? "enable" : "disable"}-${uid}`,
+    uid,
+    enabled,
+    expectedLifecycleRevision,
+    maxMembershipsPerAccount: 20,
+    ...overrides
+  };
+}
+
+async function accountState(uid: string): Promise<{ accountStatus: unknown; lifecycleRevision: unknown }> {
+  const snapshot = await db.doc(`users/${uid}`).get();
+  return { accountStatus: snapshot.get("accountStatus"), lifecycleRevision: snapshot.get("lifecycleRevision") };
+}
+
+async function entitlementState(uid: string): Promise<{ status: unknown; activeMembershipCount: unknown; revision: unknown }> {
+  const snapshot = await db.doc(`users/${uid}/authorizations/systemCatalog`).get();
+  return { status: snapshot.get("status"), activeMembershipCount: snapshot.get("activeMembershipCount"), revision: snapshot.get("revision") };
+}
+
+async function lifecycleSnapshot(uid: string): Promise<Record<string, unknown>> {
+  return {
+    account: JSON.stringify(await accountState(uid)),
+    entitlement: JSON.stringify(await entitlementState(uid))
+  };
 }
 
 function activation(uid: string, workspaceId: string, idempotencyKey: string, expectedRevision: number, expectedWorkspaceRevision: number, overrides: Partial<MembershipTransition> = {}): MembershipTransition {
@@ -94,9 +133,9 @@ describe("system catalog entitlement lifecycle", () => {
     assert.equal(restored.replayed, false);
     assert.equal(await accountCount("client"), 1);
     assert.deepEqual(await workspaceCounts("ws"), { roster: 1, contributions: 1, revision: 4, status: "active" });
-    await setAccountEnabled(db, "client", false);
+    await transitionAccountLifecycle(db, accountLifecycle("client", false, 1));
     assert.equal((await db.doc("users/client/authorizations/systemCatalog").get()).get("status"), "inactive");
-    await setAccountEnabled(db, "client", true);
+    await transitionAccountLifecycle(db, accountLifecycle("client", true, 2));
     assert.equal((await db.doc("users/client/authorizations/systemCatalog").get()).get("status"), "active");
   });
 
@@ -436,5 +475,208 @@ describe("system catalog entitlement lifecycle", () => {
     assert.deepEqual((await db.doc("users/x2/authorizations/systemCatalog").get()).data(), before.entitlement);
     assert.equal((await db.doc("workspaces/ws_atomic/memberships/x2").get()).exists, false);
     assert.equal((await db.collection("lifecycleCommands").get()).size, before.receipts);
+  });
+
+  it("guards account lifecycle commands with revisions, receipts, and idempotent replay", async () => {
+    await seedAccount("acct", { status: "active", activeMembershipCount: 1 });
+
+    // Valid active -> disabled, then valid disabled -> active; each advances the revision once.
+    const disabled = await transitionAccountLifecycle(db, accountLifecycle("acct", false, 1));
+    assert.deepEqual(disabled, { uid: "acct", accountStatus: "disabled", entitlementStatus: "inactive", lifecycleRevision: 2, replayed: false });
+    assert.deepEqual(await accountState("acct"), { accountStatus: "disabled", lifecycleRevision: 2 });
+    assert.deepEqual(await entitlementState("acct"), { status: "inactive", activeMembershipCount: 1, revision: 2 });
+
+    const receiptRef = db.doc(`lifecycleCommands/${commandId("admin", "disable-acct")}`);
+    const receiptBefore = (await receiptRef.get()).data();
+    assert.equal(receiptBefore?.commandKind, "account-lifecycle");
+    assert.equal(receiptBefore?.callerUid, "admin");
+    assert.equal(receiptBefore?.enabled, false);
+    assert.equal(receiptBefore?.expectedLifecycleRevision, 1);
+    assert.equal(receiptBefore?.storedEntitlementCount, 1);
+
+    // The identical command replays without incrementing the revision or rewriting the receipt.
+    const replay = await transitionAccountLifecycle(db, accountLifecycle("acct", false, 1));
+    assert.equal(replay.replayed, true);
+    assert.deepEqual({ ...replay, replayed: false }, disabled);
+    assert.deepEqual(await accountState("acct"), { accountStatus: "disabled", lifecycleRevision: 2 });
+    assert.deepEqual((await receiptRef.get()).data(), receiptBefore);
+    assert.equal((await db.collection("lifecycleCommands").get()).size, 1);
+
+    const enabled = await transitionAccountLifecycle(db, accountLifecycle("acct", true, 2));
+    assert.deepEqual(enabled, { uid: "acct", accountStatus: "active", entitlementStatus: "active", lifecycleRevision: 3, replayed: false });
+    assert.deepEqual(await accountState("acct"), { accountStatus: "active", lifecycleRevision: 3 });
+    assert.deepEqual(await entitlementState("acct"), { status: "active", activeMembershipCount: 1, revision: 3 });
+    assert.equal((await db.collection("lifecycleCommands").get()).size, 2);
+  });
+
+  it("binds account lifecycle commands to their caller and payload", async () => {
+    await seedAccount("acct", { status: "active", activeMembershipCount: 1 });
+    await transitionAccountLifecycle(db, accountLifecycle("acct", false, 1));
+
+    // A different caller reusing the same idempotency key finds no receipt of its own and cannot
+    // observe or replay the first command: it is rejected on the revision it no longer matches.
+    await assert.rejects(
+      () => transitionAccountLifecycle(db, accountLifecycle("acct", false, 1, { callerUid: "other-admin" })),
+      /stale-revision/
+    );
+    assert.equal((await db.doc(`lifecycleCommands/${commandId("other-admin", "disable-acct")}`).get()).exists, false);
+    assert.deepEqual(await accountState("acct"), { accountStatus: "disabled", lifecycleRevision: 2 });
+
+    // The same caller and key with a changed payload must not replay another command.
+    const crossCallerEnable = accountLifecycle("acct", true, 2, { callerUid: "other-admin", idempotencyKey: "other-enable" });
+    assert.equal((await transitionAccountLifecycle(db, crossCallerEnable)).accountStatus, "active");
+    await assert.rejects(
+      () => transitionAccountLifecycle(db, { ...crossCallerEnable, enabled: false }),
+      /idempotency-key-reused/
+    );
+    assert.deepEqual(await accountState("acct"), { accountStatus: "active", lifecycleRevision: 3 });
+    assert.equal((await db.collection("lifecycleCommands").get()).size, 2);
+  });
+
+  it("rejects stale or malformed account lifecycle commands without changing state", async () => {
+    await seedAccount("acct", { status: "active", activeMembershipCount: 1 });
+    // A newer disable commits at revision 1.
+    await transitionAccountLifecycle(db, accountLifecycle("acct", false, 1));
+
+    // A delayed enable naming the older revision must fail instead of restoring access.
+    const beforeStaleEnable = await lifecycleSnapshot("acct");
+    await assert.rejects(() => transitionAccountLifecycle(db, accountLifecycle("acct", true, 1, { idempotencyKey: "delayed-enable" })), /stale-revision/);
+    assert.deepEqual(await lifecycleSnapshot("acct"), beforeStaleEnable);
+    assert.equal((await db.doc(`lifecycleCommands/${commandId("admin", "delayed-enable")}`).get()).exists, false);
+    assert.equal((await accountState("acct")).accountStatus, "disabled");
+
+    // A newer enable commits at revision 2, so a stale disable naming revision 2 must not revoke it.
+    await transitionAccountLifecycle(db, accountLifecycle("acct", true, 2, { idempotencyKey: "newer-enable" }));
+    const beforeStaleDisable = await lifecycleSnapshot("acct");
+    await assert.rejects(() => transitionAccountLifecycle(db, accountLifecycle("acct", false, 2, { idempotencyKey: "late-disable" })), /stale-revision/);
+    assert.deepEqual(await lifecycleSnapshot("acct"), beforeStaleDisable);
+    assert.equal((await db.doc(`lifecycleCommands/${commandId("admin", "late-disable")}`).get()).exists, false);
+    assert.equal((await accountState("acct")).accountStatus, "active");
+
+    // Missing, malformed, negative, and fractional expected revisions are rejected before any write.
+    for (const [key, expected] of [["missing", undefined], ["string", "3"], ["fractional", 3.5], ["negative", -1], ["boolean", true]] as const) {
+      const before = await lifecycleSnapshot("acct");
+      await assert.rejects(
+        () => transitionAccountLifecycle(db, { ...accountLifecycle("acct", true, 3, { idempotencyKey: `malformed-${key}` }), expectedLifecycleRevision: expected as number }),
+        /invalid-expected-revision/
+      );
+      assert.deepEqual(await lifecycleSnapshot("acct"), before);
+      assert.equal((await db.doc(`lifecycleCommands/${commandId("admin", `malformed-${key}`)}`).get()).exists, false);
+    }
+
+    // Lower and higher revisions are both rejected as stale instead of applying last-writer-wins.
+    await assert.rejects(() => transitionAccountLifecycle(db, accountLifecycle("acct", true, 1, { idempotencyKey: "lower" })), /stale-revision/);
+    await assert.rejects(() => transitionAccountLifecycle(db, accountLifecycle("acct", true, 99, { idempotencyKey: "higher" })), /stale-revision/);
+    // A malformed stored account revision fails closed rather than being coerced.
+    await db.doc("users/acct").update({ lifecycleRevision: "3" });
+    await assert.rejects(() => transitionAccountLifecycle(db, accountLifecycle("acct", false, 3, { idempotencyKey: "malformed-stored" })), /account-revision-malformed/);
+    assert.equal((await db.collection("lifecycleCommands").get()).size, 2);
+  });
+
+  it("commits at most one of two concurrent opposite account commands at the same revision", async () => {
+    await seedAccount("acct", { status: "active", activeMembershipCount: 1 });
+    const results = await Promise.allSettled([
+      transitionAccountLifecycle(db, accountLifecycle("acct", true, 1, { callerUid: "admin-a", idempotencyKey: "concurrent-enable" })),
+      transitionAccountLifecycle(db, accountLifecycle("acct", false, 1, { callerUid: "admin-b", idempotencyKey: "concurrent-disable" }))
+    ]);
+    assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
+    assert.equal(results.filter((result) => result.status === "rejected").length, 1);
+    const winner = results.find((result) => result.status === "fulfilled") as PromiseFulfilledResult<AccountLifecycleResult>;
+    const loser = results.find((result) => result.status === "rejected") as PromiseRejectedResult;
+    assert.match(String((loser.reason as Error).message), /stale-revision/);
+    assert.equal(winner.value.lifecycleRevision, 2);
+    assert.deepEqual(await accountState("acct"), { accountStatus: winner.value.accountStatus, lifecycleRevision: 2 });
+    assert.deepEqual(await entitlementState("acct"), { status: winner.value.entitlementStatus, activeMembershipCount: 1, revision: 2 });
+    assert.equal((await db.collection("lifecycleCommands").get()).size, 1);
+
+    // The winning command stays idempotent after the race and never double-applies.
+    const winnerEnabled = winner.value.accountStatus === "active";
+    const replay = await transitionAccountLifecycle(db, accountLifecycle("acct", winnerEnabled, 1, {
+      callerUid: winnerEnabled ? "admin-a" : "admin-b",
+      idempotencyKey: winnerEnabled ? "concurrent-enable" : "concurrent-disable"
+    }));
+    assert.equal(replay.replayed, true);
+    assert.equal((await accountState("acct")).lifecycleRevision, 2);
+  });
+
+  it("validates stored entitlement counts strictly before enabling an account", async () => {
+    // Valid counts inside 0..cap enable the account; only a positive count activates the entitlement.
+    for (const [uid, count, status] of [["zero", 0, "inactive"], ["one", 1, "active"], ["at-cap", 20, "active"]] as const) {
+      await seedAccount(uid, { status: "inactive", activeMembershipCount: count });
+      const result = await transitionAccountLifecycle(db, accountLifecycle(uid, true, 1));
+      assert.deepEqual(result, { uid, accountStatus: "active", entitlementStatus: status, lifecycleRevision: 2, replayed: false });
+      assert.deepEqual(await accountState(uid), { accountStatus: "active", lifecycleRevision: 2 });
+      assert.deepEqual(await entitlementState(uid), { status, activeMembershipCount: count, revision: 2 });
+    }
+
+    // Values the old `count > 0` coercion accepted (or silently repaired) are rejected without
+    // touching the account, the entitlement, or the receipt collection.
+    const rejected: ReadonlyArray<readonly [string, unknown]> = [
+      ["above-cap", 21],
+      ["negative", -1],
+      ["numeric-string", "1"],
+      ["fractional", 1.5],
+      ["boolean", true],
+      ["null", null],
+      ["missing", undefined],
+      ["array", [1]],
+      ["object", { count: 1 }]
+    ];
+    for (const [uid, count] of rejected) {
+      await seedAccount(uid, count === undefined ? { status: "inactive" } : { status: "inactive", activeMembershipCount: count });
+      const before = await lifecycleSnapshot(uid);
+      const outOfRange = typeof count === "number" && Number.isInteger(count);
+      await assert.rejects(
+        () => transitionAccountLifecycle(db, accountLifecycle(uid, true, 1)),
+        outOfRange ? /membership-bound-violated/ : /entitlement-count-malformed/
+      );
+      assert.deepEqual(await lifecycleSnapshot(uid), before);
+      assert.equal((await db.doc(`lifecycleCommands/${commandId("admin", `enable-${uid}`)}`).get()).exists, false);
+    }
+
+    // A malformed or over-large configured maximum is rejected instead of authorizing a state the
+    // Firestore Rules bound cannot support.
+    for (const max of [0, -1, 1.5, "20", true, 21, 100]) {
+      await seedAccount("bound", { status: "inactive", activeMembershipCount: 1 });
+      const before = await lifecycleSnapshot("bound");
+      await assert.rejects(
+        () => transitionAccountLifecycle(db, accountLifecycle("bound", true, 1, { maxMembershipsPerAccount: max as number })),
+        /invalid-maximum-memberships/
+      );
+      assert.deepEqual(await lifecycleSnapshot("bound"), before);
+      assert.equal((await db.doc(`lifecycleCommands/${commandId("admin", "enable-bound")}`).get()).exists, false);
+    }
+  });
+
+  it("keeps disable security-safe and preserves malformed forensic counts", async () => {
+    // A legitimate disable at the expected revision always removes catalog authorization, even when
+    // the stored count is malformed or above the Rules cap, and never repairs the stored value.
+    for (const [uid, count] of [["malformed", "1"], ["above-cap", 21], ["fractional", 1.5], ["missing", undefined]] as const) {
+      await seedAccount(uid, count === undefined ? { status: "active" } : { status: "active", activeMembershipCount: count });
+      const result = await transitionAccountLifecycle(db, accountLifecycle(uid, false, 1));
+      assert.deepEqual(result, { uid, accountStatus: "disabled", entitlementStatus: "inactive", lifecycleRevision: 2, replayed: false });
+      assert.deepEqual(await accountState(uid), { accountStatus: "disabled", lifecycleRevision: 2 });
+      const entitlement = await entitlementState(uid);
+      assert.equal(entitlement.status, "inactive");
+      assert.deepEqual(entitlement.activeMembershipCount, count);
+      assert.equal(entitlement.revision, 2);
+
+      // Malformed state blocks re-enable until a separate trusted reconciliation repairs it, and
+      // the rejected command still changes nothing.
+      const before = await lifecycleSnapshot(uid);
+      await assert.rejects(
+        () => transitionAccountLifecycle(db, accountLifecycle(uid, true, 2)),
+        /entitlement-count-malformed|membership-bound-violated/
+      );
+      assert.deepEqual(await lifecycleSnapshot(uid), before);
+      assert.equal((await db.doc(`lifecycleCommands/${commandId("admin", `enable-${uid}`)}`).get()).exists, false);
+    }
+
+    // The valid path still round-trips: disable preserves the count and re-enable restores it.
+    await seedAccount("valid", { status: "active", activeMembershipCount: 1 });
+    await transitionAccountLifecycle(db, accountLifecycle("valid", false, 1));
+    assert.deepEqual(await entitlementState("valid"), { status: "inactive", activeMembershipCount: 1, revision: 2 });
+    await transitionAccountLifecycle(db, accountLifecycle("valid", true, 2));
+    assert.deepEqual(await entitlementState("valid"), { status: "active", activeMembershipCount: 1, revision: 3 });
   });
 });

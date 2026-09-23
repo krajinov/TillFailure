@@ -24,7 +24,47 @@ export interface CatalogTransitionResult {
   readonly replayed: boolean;
 }
 
+// The Firestore Rules entitlement check accepts an integer count in 1..20; trusted commands must
+// never emit an entitlement state those Rules cannot authorize, so the configured account cap is
+// validated against the same documented ceiling. The workspace roster ceiling is derived from the
+// documented transaction write budget ((200 - 2) / 2 membership/entitlement pairs).
+export const RULES_ENTITLEMENT_COUNT_MAX = 20;
+export const WORKSPACE_ROSTER_COUNT_MAX = 99;
+
+interface CounterBounds {
+  readonly max: number;
+  readonly malformed: string;
+  readonly outOfRange: string;
+}
+
+// One strict integer/bound validator for every lifecycle counter so membership, workspace, and
+// account transitions cannot diverge: stored and computed values must be actual integers inside
+// the configured bound. Strings, decimals, booleans, nulls, arrays, and objects are rejected
+// instead of being coerced.
+function strictCounter(value: unknown, bounds: CounterBounds): number {
+  if (typeof value !== "number" || !Number.isInteger(value)) throw new Error(bounds.malformed);
+  if (value < 0 || value > bounds.max) throw new Error(bounds.outOfRange);
+  return value;
+}
+
+// Configured caps are trusted input, but they are validated as positive bounded integers so an
+// unvalidated ceiling can never authorize a state the Rules or the write budget cannot support.
+function strictConfiguredBound(value: unknown, max: number, failure: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > max) throw new Error(failure);
+  return value;
+}
+
+// Every lifecycle command is receipt-backed and caller-bound: the receipt identity is derived from
+// the caller and the idempotency key, so both must be present before any transaction work.
+function requireCommandIdentity(input: { readonly callerUid: string; readonly idempotencyKey: string }): void {
+  if (typeof input.callerUid !== "string" || input.callerUid.length === 0) throw new Error("caller-required");
+  if (typeof input.idempotencyKey !== "string" || input.idempotencyKey.length === 0) throw new Error("idempotency-key-required");
+}
+
 export async function transitionMembership(db: Firestore, input: MembershipTransition): Promise<CatalogTransitionResult> {
+  requireCommandIdentity(input);
+  strictConfiguredBound(input.maxMembershipsPerAccount, RULES_ENTITLEMENT_COUNT_MAX, "invalid-maximum-memberships");
+  strictConfiguredBound(input.maxMembershipsPerWorkspace, WORKSPACE_ROSTER_COUNT_MAX, "invalid-maximum-workspace-memberships");
   const requestHash = stableHash(input);
   const receiptRef = db.doc(`lifecycleCommands/${commandId(input.callerUid, input.idempotencyKey)}`);
   const accountRef = db.doc(`users/${input.uid}`);
@@ -54,22 +94,17 @@ export async function transitionMembership(db: Firestore, input: MembershipTrans
     const oldContributes = membership.exists && membership.get("catalogContributionActive") === true;
     const newContributes = becomesActive && workspace.get("status") === "active";
     // Account entitlement stays contribution-based.
-    const oldCount = entitlement.get("activeMembershipCount") as number;
-    if (!Number.isInteger(oldCount) || oldCount < 0 || oldCount > input.maxMembershipsPerAccount) throw new Error("membership-bound-violated");
-    const nextCount = oldCount + Number(newContributes) - Number(oldContributes);
-    if (!Number.isInteger(nextCount) || nextCount < 0 || nextCount > input.maxMembershipsPerAccount) throw new Error("membership-bound-violated");
+    const accountCountBounds: CounterBounds = { max: input.maxMembershipsPerAccount, malformed: "membership-bound-violated", outOfRange: "membership-bound-violated" };
+    const oldCount = strictCounter(entitlement.get("activeMembershipCount"), accountCountBounds);
+    const nextCount = strictCounter(oldCount + Number(newContributes) - Number(oldContributes), accountCountBounds);
     // Workspace roster: every active relationship, in an active or suspended workspace.
-    const rosterCount = workspace.get("activeRosterCount") as number;
-    if (!Number.isInteger(rosterCount)) throw new Error("workspace-roster-malformed");
-    if (rosterCount < 0 || rosterCount > input.maxMembershipsPerWorkspace) throw new Error("workspace-roster-bound-violated");
-    const nextRosterCount = rosterCount + Number(becomesActive) - Number(wasActive);
-    if (nextRosterCount < 0 || nextRosterCount > input.maxMembershipsPerWorkspace) throw new Error("workspace-roster-bound-violated");
+    const rosterBounds: CounterBounds = { max: input.maxMembershipsPerWorkspace, malformed: "workspace-roster-malformed", outOfRange: "workspace-roster-bound-violated" };
+    const rosterCount = strictCounter(workspace.get("activeRosterCount"), rosterBounds);
+    const nextRosterCount = strictCounter(rosterCount + Number(becomesActive) - Number(wasActive), rosterBounds);
     // Workspace catalog contributions: a subset of the roster, zero while suspended.
-    const contributionCount = workspace.get("catalogContributionCount") as number;
-    if (!Number.isInteger(contributionCount)) throw new Error("workspace-contribution-malformed");
-    if (contributionCount < 0 || contributionCount > rosterCount) throw new Error("workspace-contribution-bound-violated");
-    const nextContributionCount = contributionCount + Number(newContributes) - Number(oldContributes);
-    if (nextContributionCount < 0 || nextContributionCount > nextRosterCount) throw new Error("workspace-contribution-bound-violated");
+    const contributionBounds: CounterBounds = { max: rosterCount, malformed: "workspace-contribution-malformed", outOfRange: "workspace-contribution-bound-violated" };
+    const contributionCount = strictCounter(workspace.get("catalogContributionCount"), contributionBounds);
+    const nextContributionCount = strictCounter(contributionCount + Number(newContributes) - Number(oldContributes), { ...contributionBounds, max: nextRosterCount });
     const entitlementStatus: "active" | "inactive" = account.get("accountStatus") === "active" && nextCount > 0 ? "active" : "inactive";
     const membershipRevision = previousRevision + 1;
     const result = { uid: input.uid, activeMembershipCount: nextCount, entitlementStatus, membershipRevision };
@@ -105,6 +140,9 @@ export interface WorkspaceTransition {
 }
 
 export async function transitionWorkspace(db: Firestore, input: WorkspaceTransition): Promise<{ affected: number; replayed: boolean }> {
+  requireCommandIdentity(input);
+  strictConfiguredBound(input.maxMembershipsPerAccount, RULES_ENTITLEMENT_COUNT_MAX, "invalid-maximum-memberships");
+  strictConfiguredBound(input.maxMembershipsPerWorkspace, WORKSPACE_ROSTER_COUNT_MAX, "invalid-maximum-workspace-memberships");
   const requestHash = stableHash(input);
   const receiptRef = db.doc(`lifecycleCommands/${commandId(input.callerUid, input.idempotencyKey)}`);
   const workspaceRef = db.doc(`workspaces/${input.workspaceId}`);
@@ -117,12 +155,9 @@ export async function transitionWorkspace(db: Firestore, input: WorkspaceTransit
       return { affected: receipt.get("affected") as number, replayed: true };
     }
     if (!workspace.exists || workspace.get("membershipRevision") !== input.expectedMembershipRevision) throw new Error("stale-revision");
-    const rosterCount = workspace.get("activeRosterCount") as number;
-    if (!Number.isInteger(rosterCount)) throw new Error("workspace-roster-malformed");
-    if (rosterCount < 0 || rosterCount > input.maxMembershipsPerWorkspace) throw new Error("workspace-roster-bound-violated");
-    const contributionCount = workspace.get("catalogContributionCount") as number;
-    if (!Number.isInteger(contributionCount)) throw new Error("workspace-contribution-malformed");
-    if (contributionCount < 0 || contributionCount > rosterCount) throw new Error("workspace-contribution-bound-violated");
+    const rosterBounds: CounterBounds = { max: input.maxMembershipsPerWorkspace, malformed: "workspace-roster-malformed", outOfRange: "workspace-roster-bound-violated" };
+    const rosterCount = strictCounter(workspace.get("activeRosterCount"), rosterBounds);
+    const contributionCount = strictCounter(workspace.get("catalogContributionCount"), { ...rosterBounds, malformed: "workspace-contribution-malformed", outOfRange: "workspace-contribution-bound-violated", max: rosterCount });
     const memberships = await transaction.get(db.collection(`workspaces/${input.workspaceId}/memberships`).where("status", "==", "active"));
     if (memberships.size > input.maxMembershipsPerWorkspace) throw new Error("workspace-roster-bound-violated");
     // The bounded active-roster scan is authoritative: an already oversized or drifted
@@ -146,14 +181,9 @@ export async function transitionWorkspace(db: Firestore, input: WorkspaceTransit
       if (!entitlement?.exists || !account?.exists) {
         throw new Error(`lifecycle-source-missing:${entitlementRefs[index]!.path}:${Boolean(entitlement?.exists)}:${accountRefs[index]!.path}:${Boolean(account?.exists)}`);
       }
-      const oldCount = entitlement.get("activeMembershipCount") as number;
-      if (!Number.isInteger(oldCount) || oldCount < 0 || oldCount > input.maxMembershipsPerAccount) {
-        throw new Error("membership-bound-violated");
-      }
-      const nextCount = oldCount + Number(newContributes) - Number(oldContributes);
-      if (!Number.isInteger(nextCount) || nextCount < 0 || nextCount > input.maxMembershipsPerAccount) {
-        throw new Error("membership-bound-violated");
-      }
+      const accountCountBounds: CounterBounds = { max: input.maxMembershipsPerAccount, malformed: "membership-bound-violated", outOfRange: "membership-bound-violated" };
+      const oldCount = strictCounter(entitlement.get("activeMembershipCount"), accountCountBounds);
+      const nextCount = strictCounter(oldCount + Number(newContributes) - Number(oldContributes), accountCountBounds);
       transaction.update(membership.ref, { catalogContributionActive: newContributes, revision: FieldValue.increment(1) });
       transaction.update(entitlement.ref, {
         activeMembershipCount: nextCount,
@@ -174,17 +204,81 @@ export async function transitionWorkspace(db: Firestore, input: WorkspaceTransit
   });
 }
 
-export async function setAccountEnabled(db: Firestore, uid: string, enabled: boolean): Promise<void> {
-  const accountRef = db.doc(`users/${uid}`);
-  const entitlementRef = db.doc(`users/${uid}/authorizations/systemCatalog`);
-  await db.runTransaction(async (transaction) => {
-    const documents = await transaction.getAll(accountRef, entitlementRef);
-    const account = documents[0]!;
-    const entitlement = documents[1]!;
+export type AccountLifecycleStatus = "active" | "disabled";
+
+export interface AccountLifecycleTransition {
+  readonly callerUid: string;
+  readonly idempotencyKey: string;
+  readonly uid: string;
+  readonly enabled: boolean;
+  readonly expectedLifecycleRevision: number;
+  readonly maxMembershipsPerAccount: number;
+}
+
+export interface AccountLifecycleResult {
+  readonly uid: string;
+  readonly accountStatus: AccountLifecycleStatus;
+  readonly entitlementStatus: "active" | "inactive";
+  readonly lifecycleRevision: number;
+  readonly replayed: boolean;
+}
+
+// Revision-checked, receipt-backed account enable/disable. The previous unconditional update was
+// last-writer-wins, so a delayed or retried enable could reactivate an account and its catalog
+// entitlement after a newer disable had committed. Every command now names the expected lifecycle
+// revision, is bound to its caller and idempotency key, and commits account state, entitlement
+// state, the lifecycle revision, and the receipt in one transaction.
+export async function transitionAccountLifecycle(db: Firestore, input: AccountLifecycleTransition): Promise<AccountLifecycleResult> {
+  requireCommandIdentity(input);
+  if (typeof input.uid !== "string" || input.uid.length === 0) throw new Error("account-uid-required");
+  if (!Number.isInteger(input.expectedLifecycleRevision) || input.expectedLifecycleRevision < 0) throw new Error("invalid-expected-revision");
+  strictConfiguredBound(input.maxMembershipsPerAccount, RULES_ENTITLEMENT_COUNT_MAX, "invalid-maximum-memberships");
+  const requestHash = stableHash(input);
+  const receiptRef = db.doc(`lifecycleCommands/${commandId(input.callerUid, input.idempotencyKey)}`);
+  const accountRef = db.doc(`users/${input.uid}`);
+  const entitlementRef = db.doc(`users/${input.uid}/authorizations/systemCatalog`);
+  return db.runTransaction(async (transaction) => {
+    const documents = await transaction.getAll(receiptRef, accountRef, entitlementRef);
+    const receipt = documents[0]!;
+    const account = documents[1]!;
+    const entitlement = documents[2]!;
+    if (receipt.exists) {
+      if (receipt.get("requestHash") !== requestHash) throw new Error("idempotency-key-reused");
+      return { ...(receipt.get("result") as Omit<AccountLifecycleResult, "replayed">), replayed: true };
+    }
     if (!account.exists || !entitlement.exists) throw new Error("lifecycle-source-missing");
-    const accountStatus = enabled ? "active" : "disabled";
-    const count = entitlement.get("activeMembershipCount") as number;
-    transaction.update(accountRef, { accountStatus, lifecycleRevision: FieldValue.increment(1) });
-    transaction.update(entitlementRef, { status: enabled && count > 0 ? "active" : "inactive", revision: FieldValue.increment(1) });
+    const storedRevision = account.get("lifecycleRevision");
+    if (!Number.isInteger(storedRevision)) throw new Error("account-revision-malformed");
+    if (storedRevision !== input.expectedLifecycleRevision) throw new Error("stale-revision");
+    const storedCount = entitlement.get("activeMembershipCount");
+    // Security-first disable: catalog authorization always becomes inactive, and the stored count
+    // is preserved verbatim (never coerced, clamped, or repaired) for investigation/restoration.
+    // Enabling instead requires a strictly valid integer count inside the configured cap, so a
+    // malformed or above-cap source can never mark the account and entitlement active while the
+    // Rules still deny every catalog read; that state needs a separate trusted reconciliation.
+    const entitlementStatus: "active" | "inactive" = input.enabled
+      ? strictCounter(storedCount, { max: input.maxMembershipsPerAccount, malformed: "entitlement-count-malformed", outOfRange: "membership-bound-violated" }) > 0
+        ? "active"
+        : "inactive"
+      : "inactive";
+    const accountStatus: AccountLifecycleStatus = input.enabled ? "active" : "disabled";
+    const lifecycleRevision = (storedRevision as number) + 1;
+    transaction.update(accountRef, { accountStatus, lifecycleRevision });
+    transaction.update(entitlementRef, { status: entitlementStatus, revision: FieldValue.increment(1) });
+    const result: Omit<AccountLifecycleResult, "replayed"> = { uid: input.uid, accountStatus, entitlementStatus, lifecycleRevision };
+    transaction.create(receiptRef, {
+      schemaVersion: 1,
+      commandKind: "account-lifecycle",
+      commandVersion: 1,
+      callerUid: input.callerUid,
+      uid: input.uid,
+      enabled: input.enabled,
+      expectedLifecycleRevision: input.expectedLifecycleRevision,
+      storedEntitlementCount: storedCount === undefined ? null : storedCount,
+      requestHash,
+      result,
+      committedAt: FieldValue.serverTimestamp()
+    });
+    return { ...result, replayed: false };
   });
 }
