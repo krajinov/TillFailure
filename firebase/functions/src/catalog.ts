@@ -61,6 +61,24 @@ function requireCommandIdentity(input: { readonly callerUid: string; readonly id
   if (typeof input.idempotencyKey !== "string" || input.idempotencyKey.length === 0) throw new Error("idempotency-key-required");
 }
 
+// The current Firestore Rules authorize catalog access only for `schemaVersion == 1` account and
+// entitlement documents (`activeAccount` and `catalogEntitled`). A trusted command must never
+// write or report an authorization state those Rules deny, and an unknown version is rejected
+// rather than silently migrated.
+const CURRENT_SCHEMA_VERSION = 1;
+
+function requireCurrentSchema(snapshot: FirebaseFirestore.DocumentSnapshot, failure: string): void {
+  if (snapshot.get("schemaVersion") !== CURRENT_SCHEMA_VERSION) throw new Error(failure);
+}
+
+// Applied whenever a command is about to report catalog access as active: the account and its
+// entitlement must both be on the current schema. Deactivation paths deliberately skip this check
+// so access can always be revoked, even for records whose schema is unknown or damaged.
+function requireAuthorizableSchema(account: FirebaseFirestore.DocumentSnapshot, entitlement: FirebaseFirestore.DocumentSnapshot): void {
+  requireCurrentSchema(account, "account-schema-unsupported");
+  requireCurrentSchema(entitlement, "entitlement-schema-unsupported");
+}
+
 export async function transitionMembership(db: Firestore, input: MembershipTransition): Promise<CatalogTransitionResult> {
   requireCommandIdentity(input);
   strictConfiguredBound(input.maxMembershipsPerAccount, RULES_ENTITLEMENT_COUNT_MAX, "invalid-maximum-memberships");
@@ -106,6 +124,9 @@ export async function transitionMembership(db: Firestore, input: MembershipTrans
     const contributionCount = strictCounter(workspace.get("catalogContributionCount"), contributionBounds);
     const nextContributionCount = strictCounter(contributionCount + Number(newContributes) - Number(oldContributes), { ...contributionBounds, max: nextRosterCount });
     const entitlementStatus: "active" | "inactive" = account.get("accountStatus") === "active" && nextCount > 0 ? "active" : "inactive";
+    // Reporting catalog access as active requires the schema the Rules authorize; a deactivation
+    // transition is always allowed so access can still be revoked.
+    if (entitlementStatus === "active") requireAuthorizableSchema(account, entitlement);
     const membershipRevision = previousRevision + 1;
     const result = { uid: input.uid, activeMembershipCount: nextCount, entitlementStatus, membershipRevision };
     transaction.set(membershipRef, {
@@ -184,10 +205,14 @@ export async function transitionWorkspace(db: Firestore, input: WorkspaceTransit
       const accountCountBounds: CounterBounds = { max: input.maxMembershipsPerAccount, malformed: "membership-bound-violated", outOfRange: "membership-bound-violated" };
       const oldCount = strictCounter(entitlement.get("activeMembershipCount"), accountCountBounds);
       const nextCount = strictCounter(oldCount + Number(newContributes) - Number(oldContributes), accountCountBounds);
+      const entitlementActive = account.get("accountStatus") === "active" && nextCount > 0;
+      // An active entitlement may only be reported for schema-current documents, so a restore or
+      // suspension can never publish access the Rules would deny. Deactivation is always allowed.
+      if (entitlementActive) requireAuthorizableSchema(account, entitlement);
       transaction.update(membership.ref, { catalogContributionActive: newContributes, revision: FieldValue.increment(1) });
       transaction.update(entitlement.ref, {
         activeMembershipCount: nextCount,
-        status: account.get("accountStatus") === "active" && nextCount > 0 ? "active" : "inactive",
+        status: entitlementActive ? "active" : "inactive",
         revision: FieldValue.increment(1)
       });
     });
@@ -250,6 +275,11 @@ export async function transitionAccountLifecycle(db: Firestore, input: AccountLi
     const storedRevision = account.get("lifecycleRevision");
     if (!Number.isInteger(storedRevision)) throw new Error("account-revision-malformed");
     if (storedRevision !== input.expectedLifecycleRevision) throw new Error("stale-revision");
+    // Enabling requires the schema versions the current Rules authorize on both documents, so a
+    // missing, malformed, or unsupported version fails closed instead of reporting restored access
+    // that Rules would still deny. Unknown data is never silently migrated here, and disable
+    // deliberately skips this check so revocation stays possible for damaged records.
+    if (input.enabled) requireAuthorizableSchema(account, entitlement);
     const storedCount = entitlement.get("activeMembershipCount");
     // Security-first disable: catalog authorization always becomes inactive, and the stored count
     // is preserved verbatim (never coerced, clamped, or repaired) for investigation/restoration.

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { after, before, beforeEach, describe, it } from "node:test";
 import { assertFails, assertSucceeds, initializeTestEnvironment, RulesTestEnvironment } from "@firebase/rules-unit-testing";
-import { collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { ref, uploadString } from "firebase/storage";
 import { transitionAccountLifecycle, transitionWorkspace } from "../src/catalog.js";
 import { emulatorFirestore, SPIKE_PROJECT_ID } from "../src/environment.js";
@@ -209,6 +209,85 @@ describe("Firestore and Storage rules", () => {
     assert.equal(enabled.entitlementStatus, "active");
     assert.deepEqual((await adminDb.doc(entitlementPath).get()).data(), { schemaVersion: 1, status: "active", activeMembershipCount: 1, revision: 3 });
     await assertSucceeds(getDoc(doc(client, "systemExercises/published")));
+  });
+
+  it("keeps catalog reads denied when an enable is rejected for an unsupported lifecycle schema", async () => {
+    const scenarios = [
+      { uid: "client", corruption: "account-missing", expected: /account-schema-unsupported/ },
+      { uid: "other", corruption: "account-malformed", expected: /account-schema-unsupported/ },
+      { uid: "third", corruption: "entitlement-unsupported", expected: /entitlement-schema-unsupported/ }
+    ] as const;
+
+    for (const { uid, corruption, expected } of scenarios) {
+      const accountPath = `users/${uid}`;
+      const entitlementPath = `${accountPath}/authorizations/systemCatalog`;
+      const idempotencyKey = `schema-enable-${uid}`;
+      const receiptPath = `lifecycleCommands/${commandId("admin", idempotencyKey)}`;
+
+      await environment.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await setDoc(doc(db, accountPath), corruption === "account-missing"
+          ? { accountStatus: "disabled", lifecycleRevision: 1 }
+          : { schemaVersion: corruption === "account-malformed" ? "1" : 1, accountStatus: "disabled", lifecycleRevision: 1 });
+        await setDoc(doc(db, entitlementPath), { schemaVersion: corruption === "entitlement-unsupported" ? 4 : 1, status: "inactive", activeMembershipCount: 1, revision: 7 });
+        await setDoc(doc(db, "systemExercises/published"), { schemaVersion: 1, name: "Squat", status: "published" });
+      });
+
+      const client = environment.authenticatedContext(uid).firestore();
+      await assertFails(getDoc(doc(client, "systemExercises/published")));
+
+      const adminDb = emulatorFirestore();
+      const before = {
+        account: (await adminDb.doc(accountPath).get()).data(),
+        entitlement: (await adminDb.doc(entitlementPath).get()).data()
+      };
+      assert.equal((await adminDb.doc(receiptPath).get()).exists, false);
+
+      // A rejected enable must never report success while Rules deny catalog access.
+      await assert.rejects(
+        () => transitionAccountLifecycle(adminDb, {
+          callerUid: "admin",
+          idempotencyKey,
+          uid,
+          enabled: true,
+          expectedLifecycleRevision: 1,
+          maxMembershipsPerAccount: 20
+        }),
+        expected
+      );
+      assert.deepEqual((await adminDb.doc(accountPath).get()).data(), before.account);
+      assert.deepEqual((await adminDb.doc(entitlementPath).get()).data(), before.entitlement);
+      assert.equal((await adminDb.doc(receiptPath).get()).exists, false);
+      await assertFails(getDoc(doc(client, "systemExercises/published")));
+
+      // Deactivation remains possible for the damaged record, and restoring the schema the Rules
+      // require is what makes a later enable readable again.
+      await transitionAccountLifecycle(adminDb, {
+        callerUid: "admin",
+        idempotencyKey: `schema-disable-${uid}`,
+        uid,
+        enabled: false,
+        expectedLifecycleRevision: 1,
+        maxMembershipsPerAccount: 20
+      });
+      await assertFails(getDoc(doc(client, "systemExercises/published")));
+
+      await environment.withSecurityRulesDisabled(async (context) => {
+        await updateDoc(doc(context.firestore(), accountPath), { schemaVersion: 1 });
+        await updateDoc(doc(context.firestore(), entitlementPath), { schemaVersion: 1 });
+      });
+      const repaired = await transitionAccountLifecycle(adminDb, {
+        callerUid: "admin",
+        idempotencyKey: `schema-repair-${uid}`,
+        uid,
+        enabled: true,
+        expectedLifecycleRevision: 2,
+        maxMembershipsPerAccount: 20
+      });
+      assert.equal(repaired.accountStatus, "active");
+      assert.equal(repaired.entitlementStatus, "active");
+      await assertSucceeds(getDoc(doc(client, "systemExercises/published")));
+    }
   });
 
   it("gates snapshots by direct account/workspace/membership/assignment checks and hides sources", async () => {

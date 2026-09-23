@@ -64,6 +64,29 @@ enum RecoveryPersistenceSpikeHarness {
             let wrongKey = RecoveryPersistenceBridge(rootURL: root, keyIdentifier: "\(keyIdentifier).wrong")
             record("wrongKeyFailsClosed", wrongKey.read(uid: firstUid).failureCode == "LOCKED")
 
+            // Commit atomicity: a failure while configuring the required file metadata must abort
+            // before the replacement, so the previous committed record stays byte-identical, the new
+            // payload is never committed, and the temporary file is removed.
+            let committedRaw = try bridge.debugRawData(uid: firstUid)
+            let uncommitted = "{\"uid\":\"\(firstUid)\",\"payload\":\"uncommitted-replacement\"}"
+            bridge.debugFailMetadataSetup = true
+            let failedWrite = bridge.write(uid: firstUid, plaintext: uncommitted)
+            bridge.debugFailMetadataSetup = false
+            record("commitMetadataFailureReported", failedWrite.failureCode == "LOCKED")
+            let preservedRaw = try bridge.debugRawData(uid: firstUid)
+            record("commitMetadataFailurePreservesCommittedBytes", preservedRaw == committedRaw)
+            record("commitMetadataFailurePreservesPayload", bridge.read(uid: firstUid).payload == plaintext)
+            record("commitMetadataFailureNotCommitted", bridge.read(uid: firstUid).payload != uncommitted)
+            record("commitMetadataFailureCleansTemporaryFiles", bridge.debugTemporaryFileCount() == 0)
+
+            // The same partition still commits normally afterwards and survives a restart.
+            let recovered = "{\"uid\":\"\(firstUid)\",\"payload\":\"replacement-after-metadata-failure\"}"
+            record("commitAfterMetadataFailure", bridge.write(uid: firstUid, plaintext: recovered).failureCode == nil && bridge.read(uid: firstUid).payload == recovered)
+            let restartedAfterFailure = RecoveryPersistenceBridge(rootURL: root, keyIdentifier: keyIdentifier)
+            record("commitAfterMetadataFailureRestart", restartedAfterFailure.read(uid: firstUid).payload == recovered)
+            record("commitMetadataRetainedBackupExclusion", bridge.debugIsExcludedFromBackup(uid: firstUid))
+            record("commitMetadataRetainedProtection", bridge.debugProtectionConfigurationAccepted(uid: firstUid))
+
             // Complete Firebase UID domain: email-shaped, punctuated, Unicode, maximum-length, and
             // traversal-like identifiers all round-trip because only the digest names the file.
             record("emailUidRoundTrip", bridge.write(uid: emailUid, plaintext: "email-account").failureCode == nil && bridge.read(uid: emailUid).payload == "email-account")
@@ -84,8 +107,13 @@ enum RecoveryPersistenceSpikeHarness {
 
             var tamperedObject = try jsonObject(secondRaw)
             let ciphertext = tamperedObject["ciphertext"] as? String ?? ""
-            tamperedObject["ciphertext"] = ciphertext.isEmpty ? "A" : "A" + ciphertext.dropFirst()
+            // Flip the first base64 character to a *different* one: writing a fixed replacement can be a
+            // no-op when the ciphertext already starts with that character, which would leave the record
+            // readable and make this assertion flaky.
+            let flipped = ciphertext.hasPrefix("A") ? "B" : "A"
+            tamperedObject["ciphertext"] = ciphertext.isEmpty ? flipped : flipped + ciphertext.dropFirst()
             let tampered = try JSONSerialization.data(withJSONObject: tamperedObject, options: [.sortedKeys])
+            record("tamperInjectionChangedBytes", tampered != secondRaw)
             try bridge.debugOverwrite(uid: firstUid, data: tampered)
             record("tamperFailsClosed", bridge.read(uid: firstUid).failureCode == "LOCKED")
             record("lockedDeletePreserves", bridge.delete(uid_: firstUid).failureCode == "LOCKED" && bridge.debugFileExists(uid: firstUid))

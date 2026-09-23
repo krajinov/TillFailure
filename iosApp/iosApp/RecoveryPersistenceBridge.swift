@@ -116,19 +116,41 @@ final class RecoveryPersistenceBridge: NSObject, NativeRecoveryPersistenceBridge
         if fileManager.fileExists(atPath: temporary.path) {
             try fileManager.removeItem(at: temporary)
         }
-        try data.write(to: temporary, options: .completeFileProtectionUntilFirstUserAuthentication)
-        let handle = try FileHandle(forWritingTo: temporary)
-        try handle.synchronize()
-        try handle.close()
-        guard rename(temporary.path, target.path) == 0 else { throw PersistenceError.atomicReplacementFailed }
+        do {
+            try data.write(to: temporary, options: .completeFileProtectionUntilFirstUserAuthentication)
+            let handle = try FileHandle(forWritingTo: temporary)
+            defer { try? handle.close() }
+            try handle.synchronize()
+            // Every required file attribute is applied to the temporary file before the rename, so a
+            // metadata failure aborts the write while the previously committed record is untouched.
+            try applyCommitMetadata(to: temporary)
+        } catch {
+            try? fileManager.removeItem(at: temporary)
+            throw error
+        }
+        // The rename below is the commit point. No fallible work runs after it, so a write either
+        // reports failure with the previous record intact or success with the new record committed.
+        guard rename(temporary.path, target.path) == 0 else {
+            try? fileManager.removeItem(at: temporary)
+            throw PersistenceError.atomicReplacementFailed
+        }
+    }
+
+    // Required commit metadata for a recovery partition: `completeUntilFirstUserAuthentication`
+    // protection and backup exclusion. Both are configured on the temporary file so that the
+    // atomic replacement is the only step that can make the new payload visible.
+    private func applyCommitMetadata(to url: URL) throws {
+        #if DEBUG
+        if debugFailMetadataSetup { throw PersistenceError.atomicReplacementFailed }
+        #endif
         try fileManager.setAttributes(
             [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
-            ofItemAtPath: target.path
+            ofItemAtPath: url.path
         )
         var values = URLResourceValues()
         values.isExcludedFromBackup = true
-        var mutableTarget = target
-        try mutableTarget.setResourceValues(values)
+        var mutableURL = url
+        try mutableURL.setResourceValues(values)
     }
 
     private func prepareRoot() throws {
@@ -209,6 +231,11 @@ final class RecoveryPersistenceBridge: NSObject, NativeRecoveryPersistenceBridge
     }
 
     #if DEBUG
+    /// Test-only injection: when set, configuring the required commit metadata for the temporary
+    /// file throws, so the harness can prove that a pre-commit failure preserves the previously
+    /// committed record, never commits the new payload, and removes the temporary file.
+    var debugFailMetadataSetup = false
+
     func debugRawData(uid: String) throws -> Data { try Data(contentsOf: fileURL(for: uid)) }
 
     func debugPartitionFileName(uid: String) -> String { fileURL(for: uid).lastPathComponent }

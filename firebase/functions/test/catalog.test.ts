@@ -83,6 +83,15 @@ async function lifecycleSnapshot(uid: string): Promise<Record<string, unknown>> 
   };
 }
 
+// Full document comparison for assertions that must include every stored field, such as the
+// lifecycle schema version.
+async function lifecycleDocuments(uid: string): Promise<{ account: unknown; entitlement: unknown }> {
+  return {
+    account: (await db.doc(`users/${uid}`).get()).data(),
+    entitlement: (await db.doc(`users/${uid}/authorizations/systemCatalog`).get()).data()
+  };
+}
+
 function activation(uid: string, workspaceId: string, idempotencyKey: string, expectedRevision: number, expectedWorkspaceRevision: number, overrides: Partial<MembershipTransition> = {}): MembershipTransition {
   return {
     callerUid: "admin",
@@ -678,5 +687,100 @@ describe("system catalog entitlement lifecycle", () => {
     assert.deepEqual(await entitlementState("valid"), { status: "inactive", activeMembershipCount: 1, revision: 2 });
     await transitionAccountLifecycle(db, accountLifecycle("valid", true, 2));
     assert.deepEqual(await entitlementState("valid"), { status: "active", activeMembershipCount: 1, revision: 3 });
+  });
+
+  it("rejects enabling while a lifecycle schema is missing, malformed, or unsupported", async () => {
+    const corruptions: ReadonlyArray<readonly [string, RegExp]> = [
+      ["account-missing", /account-schema-unsupported/],
+      ["account-string", /account-schema-unsupported/],
+      ["account-future", /account-schema-unsupported/],
+      ["entitlement-missing", /entitlement-schema-unsupported/],
+      ["entitlement-string", /entitlement-schema-unsupported/],
+      ["entitlement-future", /entitlement-schema-unsupported/]
+    ];
+    const corrupt = async (uid: string, name: string): Promise<void> => {
+      const corruptSchema = name.endsWith("string") ? "1" : 4;
+      if (name.startsWith("account")) {
+        if (name.endsWith("missing")) {
+          // Overwrite without a schema version, exactly as a foreign or partially migrated record.
+          await db.doc(`users/${uid}`).set({ accountStatus: "active", lifecycleRevision: 1 });
+        } else {
+          await db.doc(`users/${uid}`).update({ schemaVersion: corruptSchema });
+        }
+      } else if (name.endsWith("missing")) {
+        await db.doc(`users/${uid}/authorizations/systemCatalog`).set({ status: "inactive", activeMembershipCount: 1, revision: 1 });
+      } else {
+        await db.doc(`users/${uid}/authorizations/systemCatalog`).update({ schemaVersion: corruptSchema });
+      }
+    };
+
+    for (const [name, expected] of corruptions) {
+      const uid = `schema_${name.replace("-", "_")}`;
+      await seedAccount(uid, { status: "inactive", activeMembershipCount: 1 });
+      await corrupt(uid, name);
+      const before = await lifecycleDocuments(uid);
+      await assert.rejects(() => transitionAccountLifecycle(db, accountLifecycle(uid, true, 1)), expected);
+      assert.deepEqual(await lifecycleDocuments(uid), before, `${name} must stay unchanged`);
+      assert.equal((await db.doc(`lifecycleCommands/${commandId("admin", `enable-${uid}`)}`).get()).exists, false);
+    }
+  });
+
+  it("never publishes active access for a schema-damaged document but still allows deactivation", async () => {
+    // Membership activation would publish an active entitlement, so an unsupported account schema
+    // fails closed before any write.
+    await seed("schema_member", "ws_schema_member");
+    await db.doc("users/schema_member").update({ schemaVersion: 2 });
+    const workspaceBefore = await workspaceCounts("ws_schema_member");
+    const accountBefore = await lifecycleDocuments("schema_member");
+    await assert.rejects(() => transitionMembership(db, activation("schema_member", "ws_schema_member", "schema-member", 0, 1)), /account-schema-unsupported/);
+    assert.deepEqual(await workspaceCounts("ws_schema_member"), workspaceBefore);
+    assert.deepEqual(await lifecycleDocuments("schema_member"), accountBefore);
+    assert.equal((await db.doc("workspaces/ws_schema_member/memberships/schema_member").get()).exists, false);
+    assert.equal((await db.collection("lifecycleCommands").get()).size, 0);
+
+    // The same command succeeds once the schema is current.
+    await db.doc("users/schema_member").update({ schemaVersion: 1 });
+    assert.equal((await transitionMembership(db, activation("schema_member", "ws_schema_member", "schema-member", 0, 1))).entitlementStatus, "active");
+
+    // Damaging the schema afterwards never blocks revoking that relationship.
+    await db.doc("users/schema_member").update({ schemaVersion: 5 });
+    const revoked = await transitionMembership(db, activation("schema_member", "ws_schema_member", "schema-member-revoke", 1, 2, { nextStatus: "revoked" }));
+    assert.equal(revoked.entitlementStatus, "inactive");
+    assert.equal((await entitlementState("schema_member")).status, "inactive");
+    assert.equal(await accountCount("schema_member"), 0);
+
+    // Workspace suspension is a deactivation path and stays possible, while restoring would publish
+    // active access and therefore fails closed until the schema is repaired.
+    await seed("schema_suspend", "ws_schema_suspend");
+    await transitionMembership(db, activation("schema_suspend", "ws_schema_suspend", "schema-suspend-activate", 0, 1));
+    await db.doc("users/schema_suspend").update({ schemaVersion: 9 });
+    const suspended = await transitionWorkspace(db, workspaceTransition("ws_schema_suspend", "schema-suspend", 2, "suspended"));
+    assert.equal(suspended.affected, 1);
+    assert.deepEqual(await workspaceCounts("ws_schema_suspend"), { roster: 1, contributions: 0, revision: 3, status: "suspended" });
+    assert.equal((await entitlementState("schema_suspend")).status, "inactive");
+    const suspendedBefore = await lifecycleDocuments("schema_suspend");
+    await assert.rejects(() => transitionWorkspace(db, workspaceTransition("ws_schema_suspend", "schema-restore", 3, "active")), /account-schema-unsupported/);
+    assert.deepEqual(await lifecycleDocuments("schema_suspend"), suspendedBefore);
+    assert.deepEqual(await workspaceCounts("ws_schema_suspend"), { roster: 1, contributions: 0, revision: 3, status: "suspended" });
+
+    // Account disable still revokes access for schema-damaged records and never repairs them.
+    await seedAccount("schema_disable", { status: "active", activeMembershipCount: 1 });
+    await db.doc("users/schema_disable").update({ schemaVersion: 6 });
+    await db.doc("users/schema_disable/authorizations/systemCatalog").update({ schemaVersion: 6 });
+    const disableBefore = await lifecycleDocuments("schema_disable");
+    assert.deepEqual(await transitionAccountLifecycle(db, accountLifecycle("schema_disable", false, 1)), { uid: "schema_disable", accountStatus: "disabled", entitlementStatus: "inactive", lifecycleRevision: 2, replayed: false });
+    const disableAfter = await lifecycleDocuments("schema_disable");
+    assert.notDeepEqual(disableAfter, disableBefore);
+    assert.equal((disableAfter.account as Record<string, unknown>).schemaVersion, 6);
+    assert.equal((disableAfter.account as Record<string, unknown>).lifecycleRevision, 2);
+    assert.equal((disableAfter.entitlement as Record<string, unknown>).schemaVersion, 6);
+    assert.equal((disableAfter.entitlement as Record<string, unknown>).status, "inactive");
+    assert.equal((disableAfter.entitlement as Record<string, unknown>).activeMembershipCount, 1);
+
+    // Re-enabling stays blocked until a trusted process restores the current schema.
+    await assert.rejects(() => transitionAccountLifecycle(db, accountLifecycle("schema_disable", true, 2)), /account-schema-unsupported/);
+    await db.doc("users/schema_disable").update({ schemaVersion: 1 });
+    await db.doc("users/schema_disable/authorizations/systemCatalog").update({ schemaVersion: 1 });
+    assert.equal((await transitionAccountLifecycle(db, accountLifecycle("schema_disable", true, 2))).entitlementStatus, "active");
   });
 });
