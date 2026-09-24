@@ -802,6 +802,74 @@ describe("system catalog entitlement lifecycle", () => {
     assert.equal((await db.doc(`lifecycleCommands/${commandId("admin", "suspend-multi-a-restore")}`).get()).get("commandKind"), "workspace-transition");
   });
 
+  it("preserves a drifted inactive entitlement through zero-delta lifecycle changes", async () => {
+    // A revocation in a suspended workspace changes no contribution at all (an active relationship
+    // there contributes nothing). With a drifted `inactive` status and a positive count contributed
+    // by another workspace, that neutral command must preserve `inactive` instead of granting
+    // catalog access as a side effect of a revocation.
+    const uid = "neutral_revoke";
+    const suspendedWorkspace = "ws_neutral_suspended";
+    const contributingWorkspace = "ws_neutral_contributing";
+    await seed(uid, suspendedWorkspace);
+    await seed(uid, contributingWorkspace);
+    await transitionMembership(db, activation(uid, suspendedWorkspace, "neutral-suspend-activate", 0, 1));
+    await transitionWorkspace(db, workspaceTransition(suspendedWorkspace, "neutral-suspend", 2, "suspended"));
+    await transitionMembership(db, activation(uid, contributingWorkspace, "neutral-contribute", 0, 1));
+    await db.doc(`users/${uid}/authorizations/systemCatalog`).update({ status: "inactive" });
+    const entitlementBefore = await db.doc(`users/${uid}/authorizations/systemCatalog`).get();
+    assert.equal(entitlementBefore.get("activeMembershipCount"), 1, "another workspace keeps the count positive");
+    assert.equal(entitlementBefore.get("status"), "inactive", "drifted status under test");
+
+    const revoked = await transitionMembership(db, activation(uid, suspendedWorkspace, "neutral-revoke", 2, 3, { nextStatus: "revoked" }));
+    assert.equal(revoked.activeMembershipCount, 1, "the zero delta keeps the other contribution");
+    assert.equal(revoked.entitlementStatus, "inactive", "a zero contribution delta never activates");
+    const entitlementAfter = await db.doc(`users/${uid}/authorizations/systemCatalog`).get();
+    assert.equal(entitlementAfter.get("status"), "inactive");
+    assert.equal(entitlementAfter.get("activeMembershipCount"), 1);
+    assert.equal(entitlementAfter.get("revision"), entitlementBefore.get("revision") as number + 1);
+    const membership = await db.doc(`workspaces/${suspendedWorkspace}/memberships/${uid}`).get();
+    assert.equal(membership.get("status"), "revoked");
+    assert.equal(membership.get("catalogContributionActive"), false);
+    assert.equal(membership.get("revision"), 3);
+    assert.deepEqual(await workspaceCounts(suspendedWorkspace), { roster: 0, contributions: 0, revision: 4, status: "suspended" });
+    assert.deepEqual(await workspaceCounts(contributingWorkspace), { roster: 1, contributions: 1, revision: 2, status: "active" });
+    assert.equal((await db.doc(`lifecycleCommands/${commandId("admin", "neutral-revoke")}`).get()).get("commandKind"), "membership-transition");
+
+    // Replay is idempotent and reports the same preserved state without rewriting revisions.
+    const replayed = await transitionMembership(db, activation(uid, suspendedWorkspace, "neutral-revoke", 2, 3, { nextStatus: "revoked" }));
+    assert.equal(replayed.replayed, true);
+    assert.equal(replayed.activeMembershipCount, 1);
+    assert.equal(replayed.entitlementStatus, "inactive");
+    assert.equal((await db.doc(`users/${uid}/authorizations/systemCatalog`).get()).get("revision"), entitlementAfter.get("revision"));
+
+    // The workspace path uses the same derivation: re-suspending an already suspended workspace is
+    // a zero contribution delta for that member and must not activate the drifted entitlement.
+    const workspaceUid = "neutral_workspace";
+    const alreadySuspended = "ws_neutral_already_suspended";
+    const workspaceContributor = "ws_neutral_workspace_contributor";
+    await seed(workspaceUid, alreadySuspended);
+    await seed(workspaceUid, workspaceContributor);
+    await transitionMembership(db, activation(workspaceUid, alreadySuspended, "neutral-ws-activate", 0, 1));
+    await transitionWorkspace(db, workspaceTransition(alreadySuspended, "neutral-ws-suspend", 2, "suspended"));
+    await transitionMembership(db, activation(workspaceUid, workspaceContributor, "neutral-ws-contribute", 0, 1));
+    await db.doc(`users/${workspaceUid}/authorizations/systemCatalog`).update({ status: "inactive" });
+    assert.equal((await db.doc(`users/${workspaceUid}/authorizations/systemCatalog`).get()).get("status"), "inactive");
+    assert.equal((await transitionWorkspace(db, workspaceTransition(alreadySuspended, "neutral-ws-resuspend", 3, "suspended"))).affected, 1);
+    const workspaceEntitlement = await db.doc(`users/${workspaceUid}/authorizations/systemCatalog`).get();
+    assert.equal(workspaceEntitlement.get("status"), "inactive", "the workspace path preserves the drifted status");
+    assert.equal(workspaceEntitlement.get("activeMembershipCount"), 1);
+    assert.deepEqual(await workspaceCounts(alreadySuspended), { roster: 1, contributions: 0, revision: 4, status: "suspended" });
+
+    // A genuine addition still grants access: activating a new contribution re-derives `active`.
+    // Only the workspace is seeded here so the drifted account/entitlement state stays untouched.
+    await db.doc("workspaces/ws_neutral_new").set({ schemaVersion: 1, status: "active", membershipRevision: 1, activeRosterCount: 0, catalogContributionCount: 0 });
+    const activated = await transitionMembership(db, activation(uid, "ws_neutral_new", "neutral-activate-new", 0, 1));
+    assert.equal(activated.activeMembershipCount, 2);
+    assert.equal(activated.entitlementStatus, "active");
+    assert.equal((await entitlementState(uid)).status, "active");
+    assert.deepEqual(await workspaceCounts("ws_neutral_new"), { roster: 1, contributions: 1, revision: 2, status: "active" });
+  });
+
   it("guards account lifecycle commands with revisions, receipts, and idempotent replay", async () => {
     await seedAccount("acct", { status: "active", activeMembershipCount: 1 });
 

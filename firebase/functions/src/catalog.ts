@@ -134,10 +134,13 @@ function requireValidScannedMembership(membership: FirebaseFirestore.QueryDocume
 
 // One classification of a membership contribution change, shared by the membership command and the
 // workspace scan so the two paths cannot diverge. Only an addition (a new contribution or a
-// restoration) increases access; a removal is a deactivation. A removal may keep a positive
-// remaining count, but it must never elevate access: it preserves an already-active entitlement or
-// deactivates it, and it never rewrites the stored schema, so a damaged record stays exactly as
-// damaged — and exactly as unreadable under Rules — as it was.
+// restoration) may publish access, so only an addition may raise the stored entitlement status. A
+// removal that keeps a positive remaining count preserves an already-active entitlement, and a
+// neutral change (a zero contribution delta, e.g. revoking an active relationship in a suspended
+// workspace, or re-suspending an already suspended workspace) preserves whatever status is stored —
+// including a drifted `inactive` one, which such a command must never turn into access as a side
+// effect. No path rewrites the stored schema, so a damaged record stays exactly as damaged — and
+// exactly as unreadable under Rules — as it was.
 interface ContributionChange {
   readonly adds: boolean;
   readonly removes: boolean;
@@ -157,16 +160,19 @@ function contributionChange(
   const removes = oldContributes && !newContributes;
   const storedEntitlementActive = entitlement.get("status") === "active";
   const wouldBeActive = account.get("accountStatus") === "active" && nextCount > 0;
-  const status: "active" | "inactive" = wouldBeActive && (!removes || storedEntitlementActive) ? "active" : "inactive";
+  // Access is only ever raised by an addition; everything else preserves the stored status or
+  // deactivates (zero/disabled account or no remaining contribution).
+  const status: "active" | "inactive" = wouldBeActive && (adds || storedEntitlementActive) ? "active" : "inactive";
   return { adds, removes, entitlementActive: status === "active", storedEntitlementActive, status };
 }
 
 // Adding a contribution, or reporting active access the stored entitlement did not already have,
-// requires the schema the Rules authorize. A pure removal is a deactivation and therefore stays
-// possible while the account or entitlement schema is damaged: Rules already deny those reads
-// (they require `schemaVersion == 1`), the command only lowers access, and nothing is repaired,
-// activated, or broadened. A positive remaining count on a damaged record is safe to carry for the
-// same reason — it is not readable until a separate trusted reconciliation repairs the schema.
+// requires the schema the Rules authorize. A removal or a neutral change is a deactivation or a
+// status-preserving operation and therefore stays possible while the account or entitlement schema
+// is damaged: Rules already deny those reads (they require `schemaVersion == 1`), the command never
+// raises access, and nothing is repaired, activated, or broadened. A positive remaining count on a
+// damaged record is safe to carry for the same reason — it is not readable until a separate
+// trusted reconciliation repairs the schema.
 function requireSchemaForContributionChange(
   account: FirebaseFirestore.DocumentSnapshot,
   entitlement: FirebaseFirestore.DocumentSnapshot,

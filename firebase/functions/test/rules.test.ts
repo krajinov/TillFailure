@@ -272,6 +272,65 @@ describe("Firestore and Storage rules", () => {
     await assertSucceeds(getDoc(doc(driftClient, "systemExercises/published")));
   });
 
+  it("keeps catalog reads denied when a zero-delta revocation preserves a drifted inactive entitlement", async () => {
+    const adminDb = emulatorFirestore();
+    const uid = "neutral_rules";
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, `users/${uid}`), { schemaVersion: 1, accountStatus: "active", lifecycleRevision: 1 });
+      // Drifted state: a positive count contributed elsewhere with an inactive stored status.
+      await setDoc(doc(db, `users/${uid}/authorizations/systemCatalog`), { schemaVersion: 1, status: "inactive", activeMembershipCount: 1, revision: 5 });
+      await setDoc(doc(db, "workspaces/ws_neutral_contributing"), { schemaVersion: 1, status: "active", membershipRevision: 2, activeRosterCount: 1, catalogContributionCount: 1 });
+      await setDoc(doc(db, `workspaces/ws_neutral_contributing/memberships/${uid}`), { schemaVersion: 1, workspaceId: "ws_neutral_contributing", userId: uid, role: "client", status: "active", revision: 1, catalogContributionActive: true });
+      await setDoc(doc(db, "workspaces/ws_neutral_suspended"), { schemaVersion: 1, status: "suspended", membershipRevision: 3, activeRosterCount: 1, catalogContributionCount: 0 });
+      await setDoc(doc(db, `workspaces/ws_neutral_suspended/memberships/${uid}`), { schemaVersion: 1, workspaceId: "ws_neutral_suspended", userId: uid, role: "client", status: "active", revision: 3, catalogContributionActive: false });
+      await setDoc(doc(db, "systemExercises/published"), { schemaVersion: 1, name: "Squat", status: "published" });
+    });
+    const client = environment.authenticatedContext(uid).firestore();
+    await assertFails(getDoc(doc(client, "systemExercises/published")));
+
+    // Revoking the non-contributing relationship in the suspended workspace is a zero contribution
+    // delta: it must succeed, keep the positive count, and leave the entitlement inactive.
+    const revoked = await transitionMembership(adminDb, {
+      callerUid: "admin",
+      idempotencyKey: "neutral-rules-revoke",
+      workspaceId: "ws_neutral_suspended",
+      uid,
+      role: "client",
+      nextStatus: "revoked",
+      expectedRevision: 3,
+      expectedWorkspaceRevision: 3,
+      maxMembershipsPerAccount: 20,
+      maxMembershipsPerWorkspace: 20
+    });
+    assert.equal(revoked.activeMembershipCount, 1);
+    assert.equal(revoked.entitlementStatus, "inactive");
+    const entitlement = await adminDb.doc(`users/${uid}/authorizations/systemCatalog`).get();
+    assert.equal(entitlement.get("status"), "inactive");
+    assert.equal(entitlement.get("activeMembershipCount"), 1);
+    await assertFails(getDoc(doc(client, "systemExercises/published")));
+
+    // Only a genuine contribution addition grants catalog access again.
+    await environment.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "workspaces/ws_neutral_new"), { schemaVersion: 1, status: "active", membershipRevision: 1, activeRosterCount: 0, catalogContributionCount: 0 });
+    });
+    const activated = await transitionMembership(adminDb, {
+      callerUid: "admin",
+      idempotencyKey: "neutral-rules-activate",
+      workspaceId: "ws_neutral_new",
+      uid,
+      role: "client",
+      nextStatus: "active",
+      expectedRevision: 0,
+      expectedWorkspaceRevision: 1,
+      maxMembershipsPerAccount: 20,
+      maxMembershipsPerWorkspace: 20
+    });
+    assert.equal(activated.activeMembershipCount, 2);
+    assert.equal(activated.entitlementStatus, "active");
+    await assertSucceeds(getDoc(doc(client, "systemExercises/published")));
+  });
+
   it("keeps malformed and above-cap entitlements denied when an account enable is rejected atomically", async () => {
     const cases = [
       { uid: "client", count: 21, expected: /membership-bound-violated/ },
