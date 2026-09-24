@@ -10,6 +10,7 @@ enum FirebaseSpikeHarness {
     private static var stalledProbe: StalledPendingWriteProbe?
     private static var registryProbe: RegistryLifecycleProbe?
     private static var counterProbe: CounterParityProbe?
+    private static var terminationRecreationProbe: TerminationRecreationProbe?
 
     static func runIfRequested(bridge: FirebaseNativeBridge) {
         guard ProcessInfo.processInfo.environment["TILLFAILURE_FIREBASE_SPIKE"] == "1" else { return }
@@ -78,6 +79,13 @@ enum FirebaseSpikeHarness {
                                             print("M3_FIREBASE_SPIKE terminateAndClear=\(clearResult.failure == nil ? "PASS" : "FAIL")")
                                             print("M3_FIREBASE_SPIKE oneShotRegistryTerminated=\(bridge.debugCancellationCount == 0 ? "PASS" : "FAIL")")
                                             lifecycleProbe = nil
+                                            terminationRecreationProbe = TerminationRecreationProbe(
+                                                retiredBridge: bridge,
+                                                retiredEpoch: epoch + 1,
+                                                projectID: "demo-tillfailure-m3"
+                                            ) {
+                                                terminationRecreationProbe = nil
+                                            }
                                         }
                                     }
                                     print("M3_FIREBASE_SPIKE awaitingBackgroundForeground=READY")
@@ -619,6 +627,107 @@ enum FirebaseSpikeHarness {
 
         deinit {
             removeObservers()
+        }
+    }
+
+    /// Same-process termination/recreation regression:
+    ///
+    ///  1. the retired bridge must answer later operations with a non-retryable FAILED_PRECONDITION
+    ///     failure and must never deliver a document again;
+    ///  2. two terminate/recreate cycles plus a final live client prove that constructing a bridge
+    ///     for the same project in the same process obtains a fresh, usable SDK instance every time;
+    ///  3. callbacks issued with the retired epoch must never reach a newer bridge.
+    private final class TerminationRecreationProbe {
+        private let retiredBridge: FirebaseNativeBridge
+        private let retiredEpoch: Int64
+        private let projectID: String
+        private let completion: () -> Void
+        private var stage = 0
+        private var operationsCompleted = 0
+        /// Mirrors how the app keeps its bridge alive for the lifetime of an account session, so a
+        /// cycle's client is never released while its teardown is still completing.
+        private var activeBridge: FirebaseNativeBridge?
+
+        init(retiredBridge: FirebaseNativeBridge, retiredEpoch: Int64, projectID: String, completion: @escaping () -> Void) {
+            self.retiredBridge = retiredBridge
+            self.retiredEpoch = retiredEpoch
+            self.projectID = projectID
+            self.completion = completion
+            assertRetiredClientFailsClosed()
+        }
+
+        private func assertRetiredClientFailsClosed() {
+            _ = retiredBridge.getDocument(path: "spikeEcho/retired/documents/native-ios", accountEpoch: retiredEpoch) { [weak self] result in
+                guard let self else { return }
+                let unusable = result.failure?.code == "FAILED_PRECONDITION" && result.failure?.retryable == false && result.document == nil
+                print("M3_FIREBASE_SPIKE retiredClientUnusable=\(unusable ? "PASS" : "FAIL")")
+                _ = self.retiredBridge.writeDocument(
+                    path: "spikeEcho/retired/documents/native-ios",
+                    fields: ["ownerUid": "retired", "value": "stale", "counter": "0"],
+                    accountEpoch: self.retiredEpoch
+                ) { writeResult in
+                    let denied = writeResult.failure?.code == "FAILED_PRECONDITION"
+                    print("M3_FIREBASE_SPIKE retiredClientWritesDenied=\(denied ? "PASS" : "FAIL")")
+                    self.nextStage()
+                }
+            }
+        }
+
+        private func nextStage() {
+            let terminateAfterOperation = stage < 2
+            let epoch = Int64(1_000 + Int64(stage) * 10)
+            let bridge = FirebaseNativeBridge(host: "127.0.0.1", projectID: projectID)
+            activeBridge = bridge
+            bridge.signInAnonymously { [weak self] result in
+                guard let self else { return }
+                switch result {
+                case .failure(let error):
+                    print("M3_FIREBASE_SPIKE recreatedBridgeOperation=FAIL stage=\(self.stage) code=\((error as NSError).code)")
+                    self.completion()
+                case .success(let uid):
+                    let path = "spikeEcho/\(uid)/documents/native-ios-recreated-\(self.stage)"
+                    _ = bridge.writeDocument(
+                        path: path,
+                        fields: ["ownerUid": uid, "value": "recreated", "counter": "0"],
+                        accountEpoch: epoch
+                    ) { writeResult in
+                        guard writeResult.failure == nil else {
+                            print("M3_FIREBASE_SPIKE recreatedBridgeOperation=FAIL stage=\(self.stage) code=\(writeResult.failure?.code ?? "UNKNOWN")")
+                            self.completion()
+                            return
+                        }
+                        _ = bridge.getDocument(path: path, accountEpoch: epoch) { readResult in
+                            let operated = readResult.document?.exists == true && readResult.document?.isFromCache == false
+                            print("M3_FIREBASE_SPIKE recreatedBridgeOperation=\(operated ? "PASS" : "FAIL") stage=\(self.stage)")
+                            self.assertRetiredEpochFenced(bridge: bridge, path: path)
+                            self.operationsCompleted += 1
+                            guard terminateAfterOperation else {
+                                print("M3_FIREBASE_SPIKE repeatedRecreate=\(self.operationsCompleted >= 3 ? "PASS" : "FAIL")")
+                                self.completion()
+                                return
+                            }
+                            bridge.terminateAndClear { clearResult in
+                                print("M3_FIREBASE_SPIKE recreatedBridgeTerminate=\(clearResult.failure == nil ? "PASS" : "FAIL") stage=\(self.stage)")
+                                self.stage += 1
+                                self.nextStage()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        /// A callback requested with the retired generation's epoch must never be delivered by a newer
+        /// bridge, so an old client can never reach the new instance's callbacks.
+        private func assertRetiredEpochFenced(bridge: FirebaseNativeBridge, path: String) {
+            var delivered = false
+            let deadline = Date().addingTimeInterval(2)
+            _ = bridge.getDocument(path: path, accountEpoch: retiredEpoch) { _ in
+                delivered = true
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                print("M3_FIREBASE_SPIKE retiredEpochFenced=\(!delivered && Date() >= deadline ? "PASS" : "FAIL")")
+            }
         }
     }
 }

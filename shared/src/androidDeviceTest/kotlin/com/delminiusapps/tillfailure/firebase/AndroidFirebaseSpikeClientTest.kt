@@ -264,7 +264,7 @@ class AndroidFirebaseSpikeClientTest {
         await(authObserved, "auth-state observer")
         val uid = assertNotNull(observedUid.get())
         val path = "spikeEcho/$uid/documents/native-android-counter"
-        val firestore = FirebaseFirestore.getInstance(FirebaseApp.getInstance("tillfailure-${configuration.projectId}"))
+        val firestore = FirebaseFirestore.getInstance(client.firebaseApp)
 
         fun seedCounter(value: Any?) {
             val finished = CountDownLatch(1)
@@ -345,6 +345,137 @@ class AndroidFirebaseSpikeClientTest {
         // Current-value and addition overflow are rejected without overwriting.
         seedCounter("9223372036854775807")
         assertIncrementRejected("9223372036854775807")
+    }
+
+    @Test
+    fun terminatedClientIsRetiredAndARecreatedClientForTheSameProjectWorks() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val configuration = FirebaseEmulatorConfiguration(host = "10.0.2.2")
+        // One account fence for the whole process, exactly as the app uses it: epochs increase
+        // monotonically, so an epoch retired by teardown can never be accepted again.
+        val fence = AccountCallbackFence()
+
+        // 1. First client: sign in, write, and read a document back from the server.
+        val firstEpoch = fence.advance()
+        val first = AndroidFirebaseSpikeClient(context, configuration, fence)
+        val firstUid = signInAndReadUid(first, firstEpoch)
+        val firstPath = "spikeEcho/$firstUid/documents/native-android-recreated-first"
+        writeAndAssert(first, firstPath, firstUid, firstEpoch)
+        assertEquals(FirebaseDataOrigin.SERVER, readServer(first, firstPath, firstEpoch).document?.origin)
+
+        // 2. Terminate and clear; a repeated teardown is deterministic and idempotent.
+        terminateAndAssert(first)
+        terminateAndAssert(first)
+
+        // 3. The retired client stays unusable: operations fail closed with a non-retryable
+        // FAILED_PRECONDITION and never deliver a document, and late callbacks cannot arrive.
+        val retiredRead = readServer(first, firstPath, firstEpoch)
+        assertEquals(StableFirebaseErrorCode.FAILED_PRECONDITION, retiredRead.failure?.code)
+        assertEquals(false, retiredRead.failure?.retryable)
+        assertNull(retiredRead.document)
+        val retiredWrite = AtomicReference<FirebaseUnitResult>()
+        val retiredWriteFinished = CountDownLatch(1)
+        first.writeDocument(
+            firstPath,
+            mapOf("ownerUid" to firstUid, "value" to "stale", "counter" to "0"),
+            firstEpoch,
+        ) {
+            retiredWrite.set(it)
+            retiredWriteFinished.countDown()
+        }
+        await(retiredWriteFinished, "retired-client write")
+        assertEquals(StableFirebaseErrorCode.FAILED_PRECONDITION, assertNotNull(retiredWrite.get()).failure?.code)
+        val retiredCallbacks = AtomicInteger(0)
+        first.listenDocument(firstPath, firstEpoch) { retiredCallbacks.incrementAndGet() }
+        first.observeSession(firstEpoch) { retiredCallbacks.incrementAndGet() }
+
+        // 4. A new client for the same project in the same process obtains a fresh SDK instance.
+        val secondEpoch = fence.advance()
+        val second = AndroidFirebaseSpikeClient(context, configuration, fence)
+        val secondUid = signInAndReadUid(second, secondEpoch)
+        val secondPath = "spikeEcho/$secondUid/documents/native-android-recreated-second"
+        writeAndAssert(second, secondPath, secondUid, secondEpoch)
+        assertEquals(FirebaseDataOrigin.SERVER, readServer(second, secondPath, secondEpoch).document?.origin)
+
+        // 5. Retired-epoch callbacks cannot reach the new client.
+        val crossedEpoch = AtomicBoolean(false)
+        second.getDocument(secondPath, firstEpoch) { crossedEpoch.set(true) }
+        Thread.sleep(500)
+        assertFalse(crossedEpoch.get(), "A retired-epoch callback crossed into the recreated client")
+
+        // 6. Repeated cleanup/recreation is deterministic: two more cycles, then a final live client.
+        repeat(2) { index ->
+            val cycleEpoch = fence.advance()
+            val cycle = AndroidFirebaseSpikeClient(context, configuration, fence)
+            val cycleUid = signInAndReadUid(cycle, cycleEpoch)
+            val cyclePath = "spikeEcho/$cycleUid/documents/native-android-recreated-cycle-$index"
+            writeAndAssert(cycle, cyclePath, cycleUid, cycleEpoch)
+            assertEquals(FirebaseDataOrigin.SERVER, readServer(cycle, cyclePath, cycleEpoch).document?.origin)
+            terminateAndAssert(cycle)
+        }
+        val finalEpoch = fence.advance()
+        val finalClient = AndroidFirebaseSpikeClient(context, configuration, fence)
+        val finalUid = signInAndReadUid(finalClient, finalEpoch)
+        val finalPath = "spikeEcho/$finalUid/documents/native-android-recreated-final"
+        writeAndAssert(finalClient, finalPath, finalUid, finalEpoch)
+        assertEquals(FirebaseDataOrigin.SERVER, readServer(finalClient, finalPath, finalEpoch).document?.origin)
+        assertEquals(0, retiredCallbacks.get(), "The retired client delivered callbacks after teardown")
+        terminateAndAssert(finalClient)
+    }
+
+    private fun signInAndReadUid(client: AndroidFirebaseSpikeClient, epoch: Long): String {
+        val signedIn = AtomicReference<FirebaseUnitResult>()
+        val signInFinished = CountDownLatch(1)
+        client.signInAnonymously(epoch) {
+            signedIn.set(it)
+            signInFinished.countDown()
+        }
+        await(signInFinished, "anonymous sign-in")
+        assertTrue(assertNotNull(signedIn.get()).isSuccess, "anonymous sign-in failed: ${signedIn.get()?.failure}")
+        val uid = AtomicReference<String>()
+        val observed = CountDownLatch(1)
+        val session = client.observeSession(epoch) { authSession ->
+            authSession.uid?.let {
+                uid.set(it)
+                observed.countDown()
+            }
+        }
+        await(observed, "auth-state observer after sign-in")
+        session.cancel()
+        return assertNotNull(uid.get())
+    }
+
+    private fun writeAndAssert(client: AndroidFirebaseSpikeClient, path: String, uid: String, epoch: Long) {
+        val result = AtomicReference<FirebaseUnitResult>()
+        val finished = CountDownLatch(1)
+        client.writeDocument(path, mapOf("ownerUid" to uid, "value" to "recreated", "counter" to "0"), epoch) {
+            result.set(it)
+            finished.countDown()
+        }
+        await(finished, "write $path")
+        assertTrue(assertNotNull(result.get()).isSuccess, "write failed: ${result.get()?.failure}")
+    }
+
+    private fun readServer(client: AndroidFirebaseSpikeClient, path: String, epoch: Long): FirebaseDocumentResult {
+        val result = AtomicReference<FirebaseDocumentResult>()
+        val finished = CountDownLatch(1)
+        client.getDocument(path, epoch) {
+            result.set(it)
+            finished.countDown()
+        }
+        await(finished, "server read $path")
+        return assertNotNull(result.get())
+    }
+
+    private fun terminateAndAssert(client: AndroidFirebaseSpikeClient) {
+        val result = AtomicReference<FirebaseUnitResult>()
+        val finished = CountDownLatch(1)
+        client.terminateAndClear {
+            result.set(it)
+            finished.countDown()
+        }
+        await(finished, "terminate and clear persistence")
+        assertTrue(assertNotNull(result.get()).isSuccess, "terminate failed: ${result.get()?.failure}")
     }
 
     private fun await(latch: CountDownLatch, operation: String) {
