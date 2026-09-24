@@ -162,4 +162,23 @@ describe("bookAppointmentSpike callable authorization", () => {
     assert.equal((await db.collection("workspaces/ws_callable/appointments").get()).size, 0);
     assert.equal((await db.collection("workspaces/ws_callable/bookingSlots").get()).size, 0);
   });
+
+  it("denies a path-correct membership whose stored tenant identity names another workspace", async () => {
+    const clientUid = await freshAnonymousUid();
+    await seedMember(clientUid, "client");
+    await seedMember("trainer-fixture", "trainer");
+
+    // The membership occupies the requested path but its immutable tenant identity names another
+    // workspace. The callable must surface that as an authorization denial, not as an internal
+    // failure, and it must leave no appointment, lock, or receipt behind.
+    await db.doc(`workspaces/ws_callable/memberships/${clientUid}`).update({ workspaceId: "ws_other" });
+    await assert.rejects(() => call(bookingPayload({ clientId: clientUid })), (error: FunctionsError) => {
+      assert.equal(error.code, "functions/permission-denied");
+      assert.match(error.message, /caller-membership-identity-mismatch/);
+      return true;
+    });
+    assert.equal((await db.collection("workspaces/ws_callable/appointments").get()).size, 0);
+    assert.equal((await db.collection("workspaces/ws_callable/bookingSlots").get()).size, 0);
+    assert.equal((await db.collection("workspaces/ws_callable/bookingCommands").get()).size, 0);
+  });
 });

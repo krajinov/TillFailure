@@ -75,8 +75,22 @@ function requireActiveAccount(snapshot: FirebaseFirestore.DocumentSnapshot, fail
   if (!snapshot.exists || snapshot.get("schemaVersion") !== 1 || snapshot.get("accountStatus") !== "active") throw new Error(failure);
 }
 
-function requireActiveMembership(snapshot: FirebaseFirestore.DocumentSnapshot, uid: string, failure: string): void {
-  if (!snapshot.exists || snapshot.get("schemaVersion") !== 1 || snapshot.get("userId") !== uid || snapshot.get("status") !== "active") throw new Error(failure);
+// Trusted-path membership authorization validates the stored tenant identity as well as the account
+// identity. Memberships are addressed through `workspaces/{workspaceId}/memberships/{uid}`, so a
+// path-correct document whose stored `workspaceId` names a different workspace (imported, legacy, or
+// damaged data) would otherwise authorize booking, rescheduling, and cancellation inside a workspace
+// the membership does not belong to; the catalog lifecycle validator rejects that same mismatch. Both
+// immutable identity fields are checked before any appointment, lock, or receipt is written or
+// released, and an identity mismatch fails closed with its own failure name instead of being treated
+// as a merely inactive relationship.
+function requireActiveMembership(
+  snapshot: FirebaseFirestore.DocumentSnapshot,
+  expected: { readonly uid: string; readonly workspaceId: string },
+  failure: string,
+  identityFailure: string
+): void {
+  if (!snapshot.exists || snapshot.get("schemaVersion") !== 1 || snapshot.get("status") !== "active") throw new Error(failure);
+  if (snapshot.get("userId") !== expected.uid || snapshot.get("workspaceId") !== expected.workspaceId) throw new Error(identityFailure);
 }
 
 function requireActiveWorkspace(snapshot: FirebaseFirestore.DocumentSnapshot): void {
@@ -103,7 +117,14 @@ function authorizeBookingCaller(
 ): BookingParticipantRole {
   requireActiveAccount(callerAccount, "caller-account-inactive");
   requireActiveWorkspace(workspace);
-  requireActiveMembership(callerMembership, request.callerUid, "caller-membership-inactive");
+  // The membership path is built from the requested workspace, so the stored tenant identity must
+  // agree with it before any lock, appointment, or receipt is touched.
+  requireActiveMembership(
+    callerMembership,
+    { uid: request.callerUid, workspaceId: request.workspaceId },
+    "caller-membership-inactive",
+    "caller-membership-identity-mismatch"
+  );
   const callerRole = requireCallerRole(callerMembership);
   if (callerRole === "trainer" ? request.trainerId !== request.callerUid : request.clientId !== request.callerUid) {
     throw new Error("participant-not-authorized");
@@ -112,17 +133,27 @@ function authorizeBookingCaller(
 }
 
 function authorizeBookingCounterparts(
-  request: Pick<BookingRequest, "trainerId" | "clientId">,
+  request: Pick<BookingRequest, "workspaceId" | "trainerId" | "clientId">,
   trainerAccount: FirebaseFirestore.DocumentSnapshot,
   trainerMembership: FirebaseFirestore.DocumentSnapshot,
   clientAccount: FirebaseFirestore.DocumentSnapshot,
   clientMembership: FirebaseFirestore.DocumentSnapshot
 ): void {
   requireActiveAccount(trainerAccount, "trainer-not-eligible");
-  requireActiveMembership(trainerMembership, request.trainerId, "trainer-not-eligible");
+  requireActiveMembership(
+    trainerMembership,
+    { uid: request.trainerId, workspaceId: request.workspaceId },
+    "trainer-not-eligible",
+    "trainer-membership-identity-mismatch"
+  );
   if (trainerMembership.get("role") !== "trainer") throw new Error("trainer-not-eligible");
   requireActiveAccount(clientAccount, "client-not-eligible");
-  requireActiveMembership(clientMembership, request.clientId, "client-not-eligible");
+  requireActiveMembership(
+    clientMembership,
+    { uid: request.clientId, workspaceId: request.workspaceId },
+    "client-not-eligible",
+    "client-membership-identity-mismatch"
+  );
   if (clientMembership.get("role") !== "client") throw new Error("client-not-eligible");
 }
 
@@ -277,7 +308,14 @@ export async function cancelAppointment(db: Firestore, request: CancelRequest, m
     const [callerAccount, workspace, callerMembership, receipt, appointment] = documents;
     requireActiveAccount(callerAccount!, "caller-account-inactive");
     requireActiveWorkspace(workspace!);
-    requireActiveMembership(callerMembership!, request.callerUid, "caller-membership-inactive");
+    // Cancellation authorizes only the caller, who must be the stored trainer or client participant,
+    // so the same tenant/account identity checks apply to that membership.
+    requireActiveMembership(
+      callerMembership!,
+      { uid: request.callerUid, workspaceId: request.workspaceId },
+      "caller-membership-inactive",
+      "caller-membership-identity-mismatch"
+    );
     const callerRole = requireCallerRole(callerMembership!);
     if (!appointment!.exists) throw new Error("appointment-not-live");
     if (callerRole === "trainer" ? appointment!.get("trainerId") !== request.callerUid : appointment!.get("clientId") !== request.callerUid) {
@@ -299,12 +337,28 @@ export async function cancelAppointment(db: Firestore, request: CancelRequest, m
   });
 }
 
+// Only a status the current schema explicitly recognizes as terminal may release leftover capacity
+// locks. Milestone 3 implements the live `confirmed` state and the single terminal transition
+// `cancelled`; a missing, malformed, unknown, or not-yet-implemented status is treated as potentially
+// live and fails closed, because deleting the locks of an appointment that may still be live would
+// let a conflicting booking occupy the same trainer bucket while that appointment still exists.
+// Trusted repair never infers a release from elapsed wall time or from the absence of a recognized
+// status, and it leaves receipts untouched.
+const LIVE_APPOINTMENT_STATUSES: readonly string[] = ["confirmed"];
+const TERMINAL_APPOINTMENT_STATUSES: readonly string[] = ["cancelled"];
+
 export async function cleanupTerminalAppointmentLocks(db: Firestore, workspaceId: string, appointmentId: string): Promise<number> {
   const appointmentRef = db.doc(`workspaces/${workspaceId}/appointments/${appointmentId}`);
   return db.runTransaction(async (transaction) => {
     const appointment = await transaction.get(appointmentRef);
     if (!appointment.exists) throw new Error("appointment-missing");
-    if (appointment.get("status") === "confirmed") throw new Error("live-appointment-locks-protected");
+    if (appointment.get("schemaVersion") !== 1) throw new Error("appointment-schema-unsupported");
+    // The appointment path is built from the requested workspace, so its stored tenant identity must
+    // agree with it before its locks count as owned by this workspace.
+    if (appointment.get("workspaceId") !== workspaceId) throw new Error("appointment-workspace-mismatch");
+    const status = appointment.get("status");
+    if (LIVE_APPOINTMENT_STATUSES.includes(status)) throw new Error("live-appointment-locks-protected");
+    if (typeof status !== "string" || !TERMINAL_APPOINTMENT_STATUSES.includes(status)) throw new Error("appointment-status-unrecognized");
     const query = db.collection(`workspaces/${workspaceId}/bookingSlots`).where("appointmentId", "==", appointmentId);
     const locks = await transaction.get(query);
     locks.docs.forEach((lock) => transaction.delete(lock.ref));

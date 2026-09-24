@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
+import { FieldValue } from "firebase-admin/firestore";
 import { bookAppointment, BookingRequest, cancelAppointment, cleanupTerminalAppointmentLocks, coveredUtcBucketMinutes, rescheduleAppointment } from "../src/booking.js";
 import { emulatorFirestore } from "../src/environment.js";
 import { commandId } from "../src/hashing.js";
@@ -442,5 +443,167 @@ describe("booking contention probe", () => {
       await assert.rejects(() => bookAppointment(db, bookingRequest("ws_race", { appointmentId: "appt-2", idempotencyKey: "book-2" }), policy), /caller-membership-inactive/);
       assert.equal((await db.doc("workspaces/ws_race/appointments/appt-2").get()).exists, false);
     }
+  });
+
+  it("rejects path-correct memberships whose stored tenant identity names another workspace", async () => {
+    const workspaceId = "ws_tenant";
+    const request = bookingRequest(workspaceId);
+    const assertNoBookingState = async () => {
+      assert.equal((await db.doc(`workspaces/${workspaceId}/appointments/appt`).get()).exists, false);
+      assert.equal((await db.collection(`workspaces/${workspaceId}/bookingSlots`).get()).size, 0);
+      assert.equal((await db.collection(`workspaces/${workspaceId}/bookingCommands`).get()).size, 0);
+    };
+
+    // Same-path, wrong-tenant caller membership: the document occupies the requested membership path
+    // but its immutable tenant identity names another workspace. The catalog lifecycle validator
+    // already rejects this shape, and booking must too, before any lock, appointment, or receipt exists.
+    await seedBookingWorkspace(workspaceId);
+    await db.doc(`workspaces/${workspaceId}/memberships/client`).update({ workspaceId: "ws_other" });
+    await assert.rejects(() => bookAppointment(db, request, policy), /caller-membership-identity-mismatch/);
+    await assertNoBookingState();
+
+    // The trainer participant membership is validated against the same requested workspace.
+    await db.doc(`workspaces/${workspaceId}/memberships/client`).update({ workspaceId });
+    await db.doc(`workspaces/${workspaceId}/memberships/trainer`).update({ workspaceId: "ws_other" });
+    await assert.rejects(() => bookAppointment(db, request, policy), /trainer-membership-identity-mismatch/);
+    await assertNoBookingState();
+
+    // The client participant membership likewise; a trainer caller keeps the client a counterpart.
+    await db.doc(`workspaces/${workspaceId}/memberships/trainer`).update({ workspaceId });
+    await db.doc(`workspaces/${workspaceId}/memberships/client`).update({ workspaceId: "ws_other" });
+    await assert.rejects(() => bookAppointment(db, { ...request, callerUid: "trainer" }, policy), /client-membership-identity-mismatch/);
+    await assertNoBookingState();
+
+    // A stored userId that disagrees with the membership path fails through the same identity check.
+    await db.doc(`workspaces/${workspaceId}/memberships/client`).update({ workspaceId, userId: "someone-else" });
+    await assert.rejects(() => bookAppointment(db, request, policy), /caller-membership-identity-mismatch/);
+    await assertNoBookingState();
+
+    // Restoring the authoritative identities preserves valid booking and idempotent replay.
+    await db.doc(`workspaces/${workspaceId}/memberships/client`).update({ userId: "client" });
+    const booked = await bookAppointment(db, request, policy);
+    assert.equal(booked.replayed, false);
+    assert.equal((await db.collection(`workspaces/${workspaceId}/bookingSlots`).get()).size, booked.bucketIds.length);
+    const replay = await bookAppointment(db, request, policy);
+    assert.equal(replay.replayed, true);
+    assert.deepEqual(replay.bucketIds, booked.bucketIds);
+    assert.equal((await db.collection(`workspaces/${workspaceId}/bookingCommands`).get()).size, 1);
+    assert.equal((await db.collection(`workspaces/${workspaceId}/appointments`).get()).size, 1);
+  });
+
+  it("enforces membership tenant identity on reschedule and cancellation", async () => {
+    const workspaceId = "ws_tenant_lifecycle";
+    const base = Date.UTC(2026, 8, 19, 10, 0);
+    const request = bookingRequest(workspaceId);
+    await seedBookingWorkspace(workspaceId);
+    const booked = await bookAppointment(db, request, policy);
+    const appointmentPath = `workspaces/${workspaceId}/appointments/appt`;
+    const appointmentBefore = (await db.doc(appointmentPath).get()).data();
+    const captureLocks = async () => (await db.collection(`workspaces/${workspaceId}/bookingSlots`).orderBy("__name__").get()).docs.map((document) => [document.id, document.data()]);
+    const locksBefore = await captureLocks();
+    const receiptCountBefore = (await db.collection(`workspaces/${workspaceId}/bookingCommands`).get()).size;
+    const move = { ...request, expectedRevision: 1, startsAtMillis: base + 2 * 60 * 60_000, endsAtMillis: base + 3 * 60 * 60_000 };
+    const assertUntouched = async () => {
+      assert.deepEqual((await db.doc(appointmentPath).get()).data(), appointmentBefore);
+      assert.deepEqual(await captureLocks(), locksBefore);
+      assert.equal((await db.collection(`workspaces/${workspaceId}/bookingCommands`).get()).size, receiptCountBefore);
+    };
+
+    // Client caller: a tenant-mismatched caller membership rejects both commands without releasing or
+    // acquiring a single lock, and without advancing the appointment revision or writing a receipt.
+    await db.doc(`workspaces/${workspaceId}/memberships/client`).update({ workspaceId: "ws_other" });
+    await assert.rejects(() => rescheduleAppointment(db, { ...move, idempotencyKey: "move-tenant-caller" }, policy), /caller-membership-identity-mismatch/);
+    await assert.rejects(() => cancelAppointment(db, { workspaceId, appointmentId: "appt", callerUid: "client", idempotencyKey: "cancel-tenant-caller", expectedRevision: 1 }), /caller-membership-identity-mismatch/);
+    await assertUntouched();
+
+    // Trainer participant: reschedule reads every participant membership, so a tenant-mismatched
+    // trainer rejects even while the caller's own membership stays intact.
+    await db.doc(`workspaces/${workspaceId}/memberships/client`).update({ workspaceId });
+    await db.doc(`workspaces/${workspaceId}/memberships/trainer`).update({ workspaceId: "ws_other" });
+    await assert.rejects(() => rescheduleAppointment(db, { ...move, idempotencyKey: "move-tenant-trainer" }, policy), /trainer-membership-identity-mismatch/);
+    await assertUntouched();
+
+    // Trainer caller: cancellation authorizes only the caller, so the same tenant mismatch rejects it.
+    await assert.rejects(() => cancelAppointment(db, { workspaceId, appointmentId: "appt", callerUid: "trainer", idempotencyKey: "cancel-tenant-trainer", expectedRevision: 1 }), /caller-membership-identity-mismatch/);
+    await assertUntouched();
+
+    // Client participant with an authorized trainer caller.
+    await db.doc(`workspaces/${workspaceId}/memberships/trainer`).update({ workspaceId });
+    await db.doc(`workspaces/${workspaceId}/memberships/client`).update({ workspaceId: "ws_other" });
+    await assert.rejects(() => rescheduleAppointment(db, { ...move, callerUid: "trainer", idempotencyKey: "move-tenant-client" }, policy), /client-membership-identity-mismatch/);
+    await assertUntouched();
+
+    // Restoring the authoritative tenant identity restores reschedule and cancellation.
+    await db.doc(`workspaces/${workspaceId}/memberships/client`).update({ workspaceId });
+    const moved = await rescheduleAppointment(db, { ...move, idempotencyKey: "move-restored" }, policy);
+    assert.equal(moved.revision, 2);
+    assert.ok(booked.bucketIds.length > 0);
+    const cancelled = await cancelAppointment(db, { workspaceId, appointmentId: "appt", callerUid: "client", idempotencyKey: "cancel-restored", expectedRevision: 2 });
+    assert.equal(cancelled.status, "cancelled");
+    assert.equal((await db.collection(`workspaces/${workspaceId}/bookingSlots`).get()).size, 0);
+  });
+
+  it("releases capacity locks only for an explicitly recognized terminal appointment status", async () => {
+    const workspaceId = "ws_cleanup";
+    await seedBookingWorkspace(workspaceId);
+    const booked = await bookAppointment(db, bookingRequest(workspaceId), policy);
+    assert.ok(booked.bucketIds.length > 0);
+    const appointmentRef = db.doc(`workspaces/${workspaceId}/appointments/appt`);
+    const lockCount = async () => (await db.collection(`workspaces/${workspaceId}/bookingSlots`).get()).size;
+    const lockSnapshot = async () => (await db.collection(`workspaces/${workspaceId}/bookingSlots`).orderBy("__name__").get()).docs.map((document) => [document.id, document.data()]);
+    const receiptSnapshot = async () => (await db.collection(`workspaces/${workspaceId}/bookingCommands`).orderBy("__name__").get()).docs.map((document) => [document.id, document.data()]);
+    const locksBefore = await lockSnapshot();
+    const receiptsBefore = await receiptSnapshot();
+    const conflictingBooking = bookingRequest(workspaceId, { callerUid: "trainer", appointmentId: "appt-conflict", idempotencyKey: "conflict" });
+
+    // The one recognized live status is never releasable, and its locks keep refusing a conflicting
+    // booking for the same trainer interval.
+    await assert.rejects(() => cleanupTerminalAppointmentLocks(db, workspaceId, "appt"), /live-appointment-locks-protected/);
+    assert.equal(await lockCount(), booked.bucketIds.length);
+    await assert.rejects(() => bookAppointment(db, conflictingBooking, policy), /slot-conflict/);
+
+    // Missing, malformed, unknown, and not-yet-implemented statuses are all potentially live: repair
+    // fails closed, changes no lock and no receipt, and cannot turn a live lock into a bookable bucket.
+    const unrecognizedStatuses: readonly [string, unknown][] = [
+      ["missing status", FieldValue.delete()],
+      ["null status", null],
+      ["numeric status", 7],
+      ["blank status", ""],
+      ["collection status", { value: "cancelled" }],
+      ["unknown status", "pending"],
+      ["not-yet-implemented terminal status", "completed"],
+      ["transient pre-cancel status", "cancelling"]
+    ];
+    for (const [label, status] of unrecognizedStatuses) {
+      await appointmentRef.update({ status });
+      await assert.rejects(() => cleanupTerminalAppointmentLocks(db, workspaceId, "appt"), /appointment-status-unrecognized/, label);
+      assert.deepEqual(await lockSnapshot(), locksBefore, label);
+      assert.deepEqual(await receiptSnapshot(), receiptsBefore, label);
+      await assert.rejects(() => bookAppointment(db, conflictingBooking, policy), /slot-conflict/, label);
+    }
+
+    // An appointment whose stored tenant identity names another workspace, or whose schema version is
+    // unknown, is not a releasable cleanup target either.
+    await appointmentRef.update({ status: "cancelled", workspaceId: "ws_other" });
+    await assert.rejects(() => cleanupTerminalAppointmentLocks(db, workspaceId, "appt"), /appointment-workspace-mismatch/);
+    assert.deepEqual(await lockSnapshot(), locksBefore);
+    await appointmentRef.update({ workspaceId, schemaVersion: 2 });
+    await assert.rejects(() => cleanupTerminalAppointmentLocks(db, workspaceId, "appt"), /appointment-schema-unsupported/);
+    assert.deepEqual(await lockSnapshot(), locksBefore);
+
+    // A missing appointment is reported instead of being treated as releasable.
+    await assert.rejects(() => cleanupTerminalAppointmentLocks(db, workspaceId, "appt-absent"), /appointment-missing/);
+
+    // Only the recognized terminal status releases the leftover locks, and only then does the same
+    // interval become bookable again for a different appointment.
+    await appointmentRef.update({ schemaVersion: 1, status: "cancelled" });
+    assert.equal(await cleanupTerminalAppointmentLocks(db, workspaceId, "appt"), booked.bucketIds.length);
+    assert.equal(await lockCount(), 0);
+    assert.deepEqual(await receiptSnapshot(), receiptsBefore);
+    const replacement = await bookAppointment(db, conflictingBooking, policy);
+    assert.equal(replacement.replayed, false);
+    assert.ok(replacement.bucketIds.length > 0);
+    assert.equal(await lockCount(), replacement.bucketIds.length);
+    assert.ok(replacement.bucketIds.every((id) => booked.bucketIds.includes(id)));
   });
 });

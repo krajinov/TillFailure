@@ -10,10 +10,13 @@ const AUTHORIZATION_FAILURES = new Set([
   "caller-account-inactive",
   "workspace-inactive",
   "caller-membership-inactive",
+  "caller-membership-identity-mismatch",
   "caller-role-unsupported",
   "participant-not-authorized",
   "trainer-not-eligible",
-  "client-not-eligible"
+  "trainer-membership-identity-mismatch",
+  "client-not-eligible",
+  "client-membership-identity-mismatch"
 ]);
 
 export const bookAppointmentSpike = onCall(async (request) => {
