@@ -105,6 +105,71 @@ describe("Firestore and Storage rules", () => {
     await assertFails(getDoc(doc(client, "systemExercises/published")));
   });
 
+  it("cannot grant catalog access indirectly through a restoration that rejects a malformed membership", async () => {
+    const workspacePath = "workspaces/ws_malformed_scan";
+    const membershipPath = `${workspacePath}/memberships/client`;
+    const accountPath = "users/client";
+    const entitlementPath = `${accountPath}/authorizations/systemCatalog`;
+    const receiptPath = `lifecycleCommands/${commandId("admin", "restore-malformed-scan")}`;
+
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, accountPath), { schemaVersion: 1, accountStatus: "active", lifecycleRevision: 1 });
+      await setDoc(doc(db, entitlementPath), { schemaVersion: 1, status: "inactive", activeMembershipCount: 0, revision: 1 });
+      await setDoc(doc(db, workspacePath), { schemaVersion: 1, status: "suspended", membershipRevision: 1, activeRosterCount: 1, catalogContributionCount: 0 });
+      // Document ID `client` with a stored identity pointing at another account: the workspace
+      // Rules reject this shape, yet a restore that trusted the path alone could still publish a
+      // `users/client` entitlement that Rules would then honor for catalog reads.
+      await setDoc(doc(db, membershipPath), { schemaVersion: 1, workspaceId: "ws_malformed_scan", userId: "intruder", role: "client", status: "active", revision: 1, catalogContributionActive: false });
+      await setDoc(doc(db, "systemExercises/published"), { schemaVersion: 1, name: "Squat", status: "published" });
+    });
+
+    const client = environment.authenticatedContext("client").firestore();
+    await assertFails(getDoc(doc(client, "systemExercises/published")));
+
+    const adminDb = emulatorFirestore();
+    const restore = () => transitionWorkspace(adminDb, {
+      callerUid: "admin",
+      idempotencyKey: "restore-malformed-scan",
+      workspaceId: "ws_malformed_scan",
+      nextStatus: "active",
+      expectedMembershipRevision: 1,
+      maxMembershipsPerAccount: 20,
+      maxMembershipsPerWorkspace: 20,
+      maxWrites: 200
+    });
+    const before = {
+      workspace: (await adminDb.doc(workspacePath).get()).data(),
+      membership: (await adminDb.doc(membershipPath).get()).data(),
+      account: (await adminDb.doc(accountPath).get()).data(),
+      entitlement: (await adminDb.doc(entitlementPath).get()).data()
+    };
+
+    // The identity scan rejects before any entitlement delta, status change, or receipt commits.
+    await assert.rejects(restore, /membership-user-mismatch/);
+    assert.deepEqual((await adminDb.doc(workspacePath).get()).data(), before.workspace);
+    assert.deepEqual((await adminDb.doc(membershipPath).get()).data(), before.membership);
+    assert.deepEqual((await adminDb.doc(accountPath).get()).data(), before.account);
+    assert.deepEqual((await adminDb.doc(entitlementPath).get()).data(), before.entitlement);
+    assert.equal((await adminDb.doc(receiptPath).get()).exists, false);
+
+    // No entitlement was published, so the malformed membership cannot indirectly authorize the
+    // catalog read that Rules gates on trusted `systemCatalog` entitlement state.
+    await assertFails(getDoc(doc(client, "systemExercises/published")));
+
+    // Once the stored identity matches its document path again, the same restoration succeeds
+    // and only then does the entitlement authorize the read (the rejection had left no receipt).
+    await environment.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), membershipPath), { schemaVersion: 1, workspaceId: "ws_malformed_scan", userId: "client", role: "client", status: "active", revision: 1, catalogContributionActive: false });
+    });
+    const restored = await restore();
+    assert.equal(restored.affected, 1);
+    assert.equal((await adminDb.doc(entitlementPath).get()).get("status"), "active");
+    assert.equal((await adminDb.doc(entitlementPath).get()).get("activeMembershipCount"), 1);
+    assert.equal((await adminDb.doc(receiptPath).get()).exists, true);
+    await assertSucceeds(getDoc(doc(client, "systemExercises/published")));
+  });
+
   it("keeps malformed and above-cap entitlements denied when an account enable is rejected atomically", async () => {
     const cases = [
       { uid: "client", count: 21, expected: /membership-bound-violated/ },

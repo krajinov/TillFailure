@@ -79,6 +79,43 @@ function requireAuthorizableSchema(account: FirebaseFirestore.DocumentSnapshot, 
   requireCurrentSchema(entitlement, "entitlement-schema-unsupported");
 }
 
+// The bounded active-roster scan feeds both the counter consistency checks and the derivation of
+// every affected account/entitlement reference, so each scanned membership must first prove it is
+// a well-formed member of *this* workspace. The membership document ID is the account path segment
+// used for `users/{uid}`, so the stored `userId` must equal it and the stored `workspaceId` must
+// equal the workspace being transitioned; otherwise a malformed document could redirect an
+// entitlement delta into another account just by occupying a plausible path. An unknown schema
+// version, a role outside the documented `trainer`/`client` set, a non-boolean contribution flag,
+// and an invalid lifecycle status/revision fail closed instead of being silently repaired, so no
+// path-only authorization inference and no cross-account entitlement contamination is possible.
+// Failures include the offending path so a bounded roster can be reconciled without guessing.
+function requireValidScannedMembership(membership: FirebaseFirestore.QueryDocumentSnapshot, workspaceId: string): void {
+  if (membership.get("schemaVersion") !== CURRENT_SCHEMA_VERSION) {
+    throw new Error(`membership-schema-unsupported:${membership.ref.path}`);
+  }
+  if (membership.get("workspaceId") !== workspaceId) {
+    throw new Error(`membership-workspace-mismatch:${membership.ref.path}`);
+  }
+  if (membership.get("userId") !== membership.id) {
+    throw new Error(`membership-user-mismatch:${membership.ref.path}`);
+  }
+  if (membership.get("role") !== "trainer" && membership.get("role") !== "client") {
+    throw new Error(`membership-role-invalid:${membership.ref.path}`);
+  }
+  if (typeof membership.get("catalogContributionActive") !== "boolean") {
+    throw new Error(`membership-contribution-malformed:${membership.ref.path}`);
+  }
+  // The scan query constrains `status == "active"` today; keep the identity check self-contained
+  // so a future change to the scan filter cannot silently widen which lifecycles are transitioned.
+  if (membership.get("status") !== "active") {
+    throw new Error(`membership-status-invalid:${membership.ref.path}`);
+  }
+  const revision = membership.get("revision");
+  if (typeof revision !== "number" || !Number.isInteger(revision) || revision < 0) {
+    throw new Error(`membership-revision-malformed:${membership.ref.path}`);
+  }
+}
+
 export async function transitionMembership(db: Firestore, input: MembershipTransition): Promise<CatalogTransitionResult> {
   requireCommandIdentity(input);
   strictConfiguredBound(input.maxMembershipsPerAccount, RULES_ENTITLEMENT_COUNT_MAX, "invalid-maximum-memberships");
@@ -181,6 +218,12 @@ export async function transitionWorkspace(db: Firestore, input: WorkspaceTransit
     const contributionCount = strictCounter(workspace.get("catalogContributionCount"), { ...rosterBounds, malformed: "workspace-contribution-malformed", outOfRange: "workspace-contribution-bound-violated", max: rosterCount });
     const memberships = await transaction.get(db.collection(`workspaces/${input.workspaceId}/memberships`).where("status", "==", "active"));
     if (memberships.size > input.maxMembershipsPerWorkspace) throw new Error("workspace-roster-bound-violated");
+    // Validate every scanned membership's identity, schema, role, contribution flag, and lifecycle
+    // state before the consistency math and before any account/entitlement reference is derived
+    // from a membership path or any delta is applied. The same shared scan guards suspension and
+    // restoration, and a single malformed member rejects the whole transition atomically: no write
+    // (workspace status/revision, memberships, entitlements, receipt) commits on failure.
+    memberships.docs.forEach((membership) => requireValidScannedMembership(membership, input.workspaceId));
     // The bounded active-roster scan is authoritative: an already oversized or drifted
     // roster/contribution state fails closed instead of silently transitioning.
     if (memberships.size !== rosterCount) throw new Error("workspace-roster-inconsistent");

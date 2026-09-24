@@ -486,6 +486,100 @@ describe("system catalog entitlement lifecycle", () => {
     assert.equal((await db.collection("lifecycleCommands").get()).size, before.receipts);
   });
 
+  it("validates every scanned membership identity before deriving account entitlements", async () => {
+    // A second account represents the identity a malformed membership claims to point at; its
+    // entitlement must never be touched by a scan of another workspace's document either.
+    await db.doc("users/other").set({ schemaVersion: 1, accountStatus: "active", lifecycleRevision: 1 });
+    await db.doc("users/other/authorizations/systemCatalog").set({ schemaVersion: 1, status: "inactive", activeMembershipCount: 0, revision: 1 });
+
+    const validMembership = (workspaceId: string, uid: string) => ({
+      schemaVersion: 1, workspaceId, userId: uid, role: "client", status: "active", revision: 1, catalogContributionActive: false
+    });
+    // Each case writes one malformed membership document (everything else stays well formed) and
+    // expects the shared suspension/restoration scan to reject the whole transition for that defect.
+    const cases: ReadonlyArray<readonly [string, RegExp, (workspaceId: string, uid: string) => Record<string, unknown>]> = [
+      ["user-mismatch", /membership-user-mismatch/, (workspaceId, uid) => ({ ...validMembership(workspaceId, uid), userId: "other" })],
+      ["workspace-mismatch", /membership-workspace-mismatch/, (workspaceId) => ({ ...validMembership(workspaceId, "ignored"), workspaceId: "ws_elsewhere" })],
+      ["schema-missing", /membership-schema-unsupported/, (workspaceId, uid) => ({ workspaceId, userId: uid, role: "client", status: "active", revision: 1, catalogContributionActive: false })],
+      ["schema-unsupported", /membership-schema-unsupported/, (workspaceId, uid) => ({ ...validMembership(workspaceId, uid), schemaVersion: 2 })],
+      ["role-invalid", /membership-role-invalid/, (workspaceId, uid) => ({ ...validMembership(workspaceId, uid), role: "owner" })],
+      ["contribution-non-boolean", /membership-contribution-malformed/, (workspaceId, uid) => ({ ...validMembership(workspaceId, uid), catalogContributionActive: "true" })],
+      ["revision-malformed", /membership-revision-malformed/, (workspaceId, uid) => ({ ...validMembership(workspaceId, uid), revision: "1" })]
+    ];
+
+    for (const [caseName, expected, malformed] of cases) {
+      const uid = `scan_${caseName.replace(/-/g, "_")}`;
+      const workspaceId = `ws_scan_${caseName.replace(/-/g, "_")}`;
+      const workspaceRef = db.doc(`workspaces/${workspaceId}`);
+      const membershipRef = db.doc(`workspaces/${workspaceId}/memberships/${uid}`);
+      const idempotencyKey = `restore-${caseName}`;
+
+      // Suspended workspace with one active member, the normal pre-restoration state.
+      await seed(uid, workspaceId, "suspended");
+      await workspaceRef.update({ activeRosterCount: 1 });
+      await membershipRef.set(malformed(workspaceId, uid));
+
+      const before = {
+        workspace: (await workspaceRef.get()).data(),
+        membership: (await membershipRef.get()).data(),
+        account: (await db.doc(`users/${uid}`).get()).data(),
+        entitlement: (await db.doc(`users/${uid}/authorizations/systemCatalog`).get()).data(),
+        otherEntitlement: (await db.doc("users/other/authorizations/systemCatalog").get()).data()
+      };
+
+      await assert.rejects(() => transitionWorkspace(db, workspaceTransition(workspaceId, idempotencyKey, 1, "active")), expected);
+
+      // Atomic rejection: workspace status/revision, the malformed membership, both the path
+      // account and the claimed account's entitlements, and the command receipt all stay put.
+      assert.deepEqual((await workspaceRef.get()).data(), before.workspace, `${caseName}: workspace must stay unchanged`);
+      assert.deepEqual((await membershipRef.get()).data(), before.membership, `${caseName}: membership must stay unchanged`);
+      assert.deepEqual((await db.doc(`users/${uid}`).get()).data(), before.account, `${caseName}: account must stay unchanged`);
+      assert.deepEqual((await db.doc(`users/${uid}/authorizations/systemCatalog`).get()).data(), before.entitlement, `${caseName}: entitlement must stay unchanged`);
+      assert.deepEqual((await db.doc("users/other/authorizations/systemCatalog").get()).data(), before.otherEntitlement, `${caseName}: must not touch the claimed account`);
+      assert.equal((await db.doc(`lifecycleCommands/${commandId("admin", idempotencyKey)}`).get()).exists, false, `${caseName}: must not record a receipt`);
+      assert.equal((await db.collection("lifecycleCommands").get()).size, 0, `${caseName}: must record no receipts`);
+      // Authorization state specifically: no rejection may publish an active entitlement.
+      assert.equal((await entitlementState(uid)).status, "inactive");
+      assert.equal(await accountCount(uid), 0);
+    }
+
+    // The same shared scan guards suspension: a malformed member rejects before any write too.
+    await seed("scan_suspend", "ws_scan_suspend", "active");
+    const suspendWorkspaceRef = db.doc("workspaces/ws_scan_suspend");
+    const suspendMembershipRef = db.doc("workspaces/ws_scan_suspend/memberships/scan_suspend");
+    const suspendEntitlementRef = db.doc("users/scan_suspend/authorizations/systemCatalog");
+    await suspendWorkspaceRef.update({ activeRosterCount: 1, catalogContributionCount: 1 });
+    await suspendEntitlementRef.update({ activeMembershipCount: 1, status: "active" });
+    await suspendMembershipRef.set({ schemaVersion: 1, workspaceId: "ws_scan_suspend", userId: "scan_suspend", role: "client", status: "active", revision: 1, catalogContributionActive: true });
+    await suspendMembershipRef.update({ userId: "other" });
+    const suspendBefore = {
+      workspace: (await suspendWorkspaceRef.get()).data(),
+      membership: (await suspendMembershipRef.get()).data(),
+      entitlement: (await suspendEntitlementRef.get()).data()
+    };
+    await assert.rejects(
+      () => transitionWorkspace(db, workspaceTransition("ws_scan_suspend", "suspend-user-mismatch", 1, "suspended")),
+      /membership-user-mismatch/
+    );
+    assert.deepEqual((await suspendWorkspaceRef.get()).data(), suspendBefore.workspace, "suspension: workspace must stay unchanged");
+    assert.deepEqual((await suspendMembershipRef.get()).data(), suspendBefore.membership, "suspension: membership must stay unchanged");
+    assert.deepEqual((await suspendEntitlementRef.get()).data(), suspendBefore.entitlement, "suspension: entitlement must stay unchanged");
+    assert.equal((await db.collection("lifecycleCommands").get()).size, 0, "suspension: must record no receipt");
+
+    // A fully valid membership restores normally, proving validation never rejects good data.
+    await seed("scan_valid", "ws_scan_valid", "suspended");
+    await db.doc("workspaces/ws_scan_valid").update({ activeRosterCount: 1 });
+    await db.doc("workspaces/ws_scan_valid/memberships/scan_valid").set({ schemaVersion: 1, workspaceId: "ws_scan_valid", userId: "scan_valid", role: "trainer", status: "active", revision: 1, catalogContributionActive: false });
+    const restored = await transitionWorkspace(db, workspaceTransition("ws_scan_valid", "restore-valid", 1, "active"));
+    assert.equal(restored.affected, 1);
+    assert.deepEqual(await workspaceCounts("ws_scan_valid"), { roster: 1, contributions: 1, revision: 2, status: "active" });
+    assert.equal(await accountCount("scan_valid"), 1);
+    assert.equal((await entitlementState("scan_valid")).status, "active");
+    assert.equal((await db.doc("workspaces/ws_scan_valid/memberships/scan_valid").get()).get("catalogContributionActive"), true);
+    assert.equal((await db.doc(`lifecycleCommands/${commandId("admin", "restore-valid")}`).get()).get("commandKind"), "workspace-transition");
+    assert.equal((await db.collection("lifecycleCommands").get()).size, 1);
+  });
+
   it("guards account lifecycle commands with revisions, receipts, and idempotent replay", async () => {
     await seedAccount("acct", { status: "active", activeMembershipCount: 1 });
 
