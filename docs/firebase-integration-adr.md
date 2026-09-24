@@ -1,13 +1,13 @@
 # ADR-001: Firebase client integration
 
-Status: **conditional proposal — approval and native Firebase parity spike required**
-Date: **2026-09-01**
+Status: **accepted — official Android SDK + official Apple SDK + narrow Swift bridge**
+Date: **2026-09-20**
 
 ## Decision
 
-Provisionally select **official Firebase Android and Apple SDKs behind TillFailure-owned interfaces and platform bindings** for the MVP (option B). The decision becomes accepted only if the spike below proves that the Swift/Kotlin bridge is maintainable and behaviorally matches Android for the exact required APIs.
+Select **official Firebase Android and Apple SDKs behind TillFailure-owned interfaces and platform bindings** for the MVP (option B). Milestone 3 proved the narrow Swift/Kotlin bridge and Android adapter through the same emulator-backed runtime surface.
 
-Feature/domain repository contracts live in `shared/commonMain`. Android Firebase adapters can live in `shared/androidMain`. Apple Firebase is consumed through Swift Package Manager by `iosApp`; Swift implementations satisfy a **small, callback-oriented native bridge**, which `shared/iosMain` adapts to shared repository contracts. This placement is proposed, not proven. Exporting Kotlin `suspend`/`Flow` contracts for Swift to implement is not assumed to be straightforward and is not the bridge design.
+Feature/domain repository contracts live in `shared/commonMain`. Android Firebase adapters live in `shared/androidMain`. Apple Firebase is consumed through Swift Package Manager by `iosApp`; Swift implementations satisfy a **small, callback-oriented native bridge**, which `shared/iosMain` adapts to shared repository contracts. This placement is implemented and runtime-proven for the spike surface. Exporting Kotlin `suspend`/`Flow` contracts for Swift to implement is not the bridge design.
 
 This is a mixed setup only in the ordinary sense that initialization, APNs/FCM, Analytics, and Crashlytics must be platform-native. It does not mix two Firebase abstraction libraries for the same product.
 
@@ -16,20 +16,20 @@ This is a mixed setup only in the ordinary sense that initialization, APNs/FCM, 
 | Criterion | A. GitLive Firebase Kotlin SDK | B. Official SDKs + platform adapters |
 |---|---|---|
 | Maintenance | Active community project; stable `2.6.0` released 2026-08-05, but one additional compatibility owner. | First-party release cadence and support; TillFailure owns small adapters. |
-| Required API fit | Must prove Auth observation; document listeners with `fromCache`/`hasPendingWrites`; cache-only/server reads; ordinary write acknowledgement/rejection; listener removal; emulator routing; Storage upload recovery; and any needed `waitForPendingWrites`/termination/cache controls. Native setup is still needed for APNs/FCM, Crashlytics and Analytics. | Vendor APIs document these capabilities, but the project-owned Android and Swift bridges still must prove them end-to-end. |
+| Required API fit | Source exposes Auth observation, get/listen/write/transactions, metadata, typed rejection codes, `waitForPendingWrites`, termination, cache clearing, and emulator routing. | The same Auth/Firestore/lifecycle surface passed through both native runtimes. Storage upload recovery was not evaluated. |
 | Platform parity | One Kotlin-facing API can reduce bridge surface, provided every required metadata/cancellation API exists in `2.6.0`. | Deliberately different native implementations; greater risk of semantic drift across the Swift/Kotlin boundary. |
 | Offline behavior | Delegates to native SDKs and exposes persistent-cache settings. | Uses documented native Firestore persistence and native pending-write metadata directly. |
 | Testability | Easy to wrap, but Firebase types can leak if used directly. | Project interfaces/fakes make common tests Firebase-free; adapter/rule tests use emulators. |
 | Integration effort | Lower common-code effort, extra iOS linking/version alignment. | More adapter code, but native setup is required anyway for notifications/observability. |
-| Upgrade risk | Adds GitLive Kotlin metadata plus Android/Apple SDK alignment; `2.6.0` builds against Kotlin 2.2.21, Android BoM 34.17.0, Apple 11.8.0 while current first-party Apple is 12.18.0. | Native SDK changes are isolated behind adapters; no community wrapper lag. |
+| Upgrade risk | Adds GitLive Kotlin metadata plus Android/Apple SDK alignment; `2.6.0` builds against Kotlin 2.2.21, Android BoM 34.17.0, and CocoaPods Apple SDK 11.8.0. | Native SDK changes are isolated behind adapters; Milestone 3 verified Android BoM 34.19.0 and Apple SPM 12.19.2. |
 
 ## Rationale
 
-TillFailure relies heavily on offline Firestore metadata, rejected-write recovery, media tasks, notification registration, Analytics, and Crashlytics. Direct first-party APIs provide the clearest vendor behavior and isolate SDK changes behind adapters, but the Swift bridge cost is material. That trade-off—not overall product-coverage percentages—is why option B is only provisional.
+TillFailure relies heavily on offline Firestore metadata and rejected-write recovery. Direct first-party APIs provide the clearest vendor behavior and isolate SDK changes behind adapters. The Swift bridge cost is material but remained small and concrete in the spike.
 
-GitLive remains a credible alternative. During the spike, evaluate `2.6.0` against the exact API-fit row above and record any missing or behaviorally different API. If GitLive satisfies the required Firestore/Auth/Storage surface with less lifecycle risk, update this ADR rather than forcing the provisional selection.
+GitLive remains a credible alternative and its stable `2.6.0` common API covers the required Auth/Firestore surface. It was not selected because it does not remove TillFailure-owned fencing/persistence policy and its exact stable build adds a wrapper compatibility owner while lagging the verified Apple SDK/integration model. Revisit if that alignment changes materially.
 
-## Proposed Apple bridge boundary
+## Apple bridge boundary
 
 - `commonMain`: Firebase-free domain models, repository interfaces, `SyncStatus`, domain failures, use cases, and MVI consumers.
 - `iosApp` Swift: initialize Firebase; own Auth observers, Firestore `ListenerRegistration`, write Tasks/async calls, Storage upload tasks, and vendor errors. Implement concrete narrow bridge objects.
@@ -41,12 +41,12 @@ GitLive remains a credible alternative. During the spike, evaluate `2.6.0` again
 
 The bridge design follows the Compose skill’s Swift-interop guidance: keep the exported API small/concrete, make cancellation explicit, and avoid assuming automatic coroutine/Flow implementation from Swift.
 
-## Planned bindings
+## Bindings
 
 | Boundary | `commonMain` contract | Platform implementation/entry responsibility |
 |---|---|---|
 | Identity | `AuthSessionRepository` | Android adapter in `androidMain`; Swift Auth observer bridge in `iosApp`, wrapped by `iosMain`; app entries initialize Firebase. |
-| Documents | Feature repositories and `SyncStatus` | Android Firestore adapter in `androidMain`; Apple Swift binding injected by `iosApp` (interop alternative unresolved). |
+| Documents | Feature repositories and `SyncStatus` | Android Firestore adapter in `androidMain`; concrete Swift Firestore bridge injected by `iosApp` and adapted in `iosMain`. |
 | Media | `MediaRepository`, opaque `MediaId` | Android native adapter; Swift Storage bridge + `iosMain` wrapper; picker remains a separate platform service. |
 | Push | `PushRegistration`, `NotificationRouter` | Android notification channel/service and iOS APNs delegate; token persistence through repository. |
 | Diagnostics | `Diagnostics`, `AnalyticsTracker` | Privacy-filtered Crashlytics/Analytics implementations. |
@@ -59,9 +59,9 @@ The bridge design follows the Compose skill’s Swift-interop guidance: keep the
 - Account switching follows the canonical protocol in [offline-sync.md](offline-sync.md). Disposing Koin does not isolate Firestore persistence; pending writes must be synchronized or explicitly discarded before cache cleanup.
 - Apple dependencies use Swift Package Manager; Android uses the Firebase BoM. No Firebase resources are created by this ADR.
 
-## Mandatory spike and decision criteria
+## Completed spike and decision criteria
 
-In an emulator/non-production environment, prove on both platforms:
+The emulator/non-production spike proved on both platforms:
 
 1. Auth state observation and cancellation.
 2. One Firestore document listener including cache/server and pending-write metadata.
@@ -71,7 +71,7 @@ In an emulator/non-production environment, prove on both platforms:
 6. Account-scope disposal, late-callback epoch fencing, `waitForPendingWrites`, termination, and cleanup behavior.
 7. The same repository contract scenarios on Android and iOS.
 
-Also compare GitLive `2.6.0` for those seven requirements. ADR acceptance requires an iOS application build/launch using the Swift bridge, not only Kotlin/Native tests. If the bridge cannot meet cancellation, metadata, error, or ownership requirements cleanly, ADR-001 remains unresolved.
+GitLive `2.6.0` was compared against those requirements. ADR acceptance includes a signed iOS application build/launch using the Swift bridge, not only Kotlin/Native tests. Both native adapters deliberately stalled a valid pending write with networking disabled and proved independent timeout and explicit-cancellation results exactly once, late-completion suppression, metadata acknowledgement after reconnect, and UID/epoch fencing.
 
 ## Test boundaries
 
@@ -81,6 +81,8 @@ Also compare GitLive `2.6.0` for those seven requirements. ADR acceptance requir
 - A full iOS application build and launch verifies Swift Package Manager linkage, Firebase initialization, DI injection, Compose hosting, and lifecycle. These are separate evidence items.
 
 ## Evidence
+
+Milestone 3 evidence is recorded in [the milestone report](milestones/milestone-3-report.md). Android instrumentation and the actual signed Swift implementation passed Auth observation, accepted/server reads and writes, Rules rejection mapping, pending/cache-to-server metadata transitions, transactions, stalled cancellation/timeout, epoch fencing, and terminate/clear. Swift also passed a real Settings background/foreground transition. Platform recovery records are AES-GCM encrypted with Android Keystore or Apple Keychain keys; hardware backing, secure erase, physical-device Data Protection, production key rotation, and native Storage recovery are not claimed.
 
 - [GitLive 2.6.0 coordinates, coverage, and iOS linking](https://github.com/GitLiveApp/firebase-kotlin-sdk/blob/v2.6.0/README.md)
 - [GitLive 2.6.0 build versions](https://github.com/GitLiveApp/firebase-kotlin-sdk/blob/v2.6.0/gradle/libs.versions.toml)

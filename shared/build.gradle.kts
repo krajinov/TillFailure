@@ -44,6 +44,22 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.compose.uiTooling)
+            implementation(project.dependencies.platform(libs.firebase.bom))
+            implementation(libs.firebase.auth)
+            implementation(libs.firebase.firestore)
+            implementation(libs.firebase.storage)
+        }
+        getByName("androidDeviceTest").dependencies {
+            // Test-only fixture access: typed Firestore values (booleans, doubles, lists) that the
+            // string-typed bridge cannot write are seeded directly through the official SDK so the
+            // adapter's rejection paths can be exercised against the emulator.
+            implementation(project.dependencies.platform(libs.firebase.bom))
+            implementation(libs.firebase.auth)
+            implementation(libs.firebase.firestore)
+            implementation(libs.kotlin.test)
+            implementation(libs.kotlin.testJunit)
+            implementation(libs.androidx.testExt.junit)
+            implementation(libs.androidx.test.runner)
         }
         commonMain.dependencies {
             implementation(libs.compose.runtime)
@@ -61,6 +77,7 @@ kotlin {
             implementation(libs.koin.compose.viewmodel)
             implementation(libs.navigation3.ui)
             implementation(libs.serialization.core)
+            implementation(libs.serialization.json)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
