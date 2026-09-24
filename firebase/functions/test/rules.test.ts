@@ -5,7 +5,7 @@ import { assertFails, assertSucceeds, initializeTestEnvironment, RulesTestEnviro
 import { collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { ref, uploadString } from "firebase/storage";
 import { publishAssignment } from "../src/assigned-program.js";
-import { transitionAccountLifecycle, transitionWorkspace } from "../src/catalog.js";
+import { transitionAccountLifecycle, transitionMembership, transitionWorkspace } from "../src/catalog.js";
 import { emulatorFirestore, SPIKE_PROJECT_ID } from "../src/environment.js";
 import { commandId } from "../src/hashing.js";
 
@@ -169,6 +169,107 @@ describe("Firestore and Storage rules", () => {
     assert.equal((await adminDb.doc(entitlementPath).get()).get("activeMembershipCount"), 1);
     assert.equal((await adminDb.doc(receiptPath).get()).exists, true);
     await assertSucceeds(getDoc(doc(client, "systemExercises/published")));
+  });
+
+  it("keeps catalog reads denied after a partial deactivation while the schema stays damaged", async () => {
+    const adminDb = emulatorFirestore();
+    // Two contributions for one account in two active workspaces, with a published exercise that
+    // Rules authorize only through a schema-current active account and entitlement.
+    const seedPartial = async (uid: string, workspaceA: string, workspaceB: string, entitlementStatus: string): Promise<void> => {
+      await environment.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await setDoc(doc(db, `users/${uid}`), { schemaVersion: 1, accountStatus: "active", lifecycleRevision: 1 });
+        await setDoc(doc(db, `users/${uid}/authorizations/systemCatalog`), { schemaVersion: 1, status: entitlementStatus, activeMembershipCount: 2, revision: 1 });
+        for (const workspaceId of [workspaceA, workspaceB]) {
+          await setDoc(doc(db, `workspaces/${workspaceId}`), { schemaVersion: 1, status: "active", membershipRevision: 1, activeRosterCount: 1, catalogContributionCount: 1 });
+          await setDoc(doc(db, `workspaces/${workspaceId}/memberships/${uid}`), { schemaVersion: 1, workspaceId, userId: uid, role: "client", status: "active", revision: 1, catalogContributionActive: true });
+        }
+        await setDoc(doc(db, "systemExercises/published"), { schemaVersion: 1, name: "Squat", status: "published" });
+      });
+    };
+    const revokeOne = (uid: string, workspaceId: string, idempotencyKey: string) => transitionMembership(adminDb, {
+      callerUid: "admin",
+      idempotencyKey,
+      workspaceId,
+      uid,
+      role: "client",
+      nextStatus: "revoked",
+      expectedRevision: 1,
+      expectedWorkspaceRevision: 1,
+      maxMembershipsPerAccount: 20,
+      maxMembershipsPerWorkspace: 20
+    });
+
+    // Damaging the account schema and, separately, the entitlement schema must not block the
+    // removal — and must never leave the damaged record readable.
+    for (const damageAccountSchema of [true, false]) {
+      const suffix = damageAccountSchema ? "account" : "entitlement";
+      const uid = `partial_${suffix}`;
+      const workspaceA = `ws_partial_${suffix}_a`;
+      const workspaceB = `ws_partial_${suffix}_b`;
+      await seedPartial(uid, workspaceA, workspaceB, "active");
+      const client = environment.authenticatedContext(uid).firestore();
+      await assertSucceeds(getDoc(doc(client, "systemExercises/published")));
+      await environment.withSecurityRulesDisabled(async (context) => {
+        const path = damageAccountSchema ? `users/${uid}` : `users/${uid}/authorizations/systemCatalog`;
+        await updateDoc(doc(context.firestore(), path), { schemaVersion: 5 });
+      });
+
+      const revoked = await revokeOne(uid, workspaceA, `revoke-${suffix}`);
+      assert.equal(revoked.activeMembershipCount, 1);
+      assert.equal(revoked.entitlementStatus, "active");
+      const entitlement = await adminDb.doc(`users/${uid}/authorizations/systemCatalog`).get();
+      assert.equal(entitlement.get("activeMembershipCount"), 1);
+      assert.equal(entitlement.get("status"), "active");
+      assert.equal(entitlement.get("schemaVersion"), damageAccountSchema ? 1 : 5);
+      assert.equal((await adminDb.doc(`workspaces/${workspaceB}/memberships/${uid}`).get()).get("catalogContributionActive"), true);
+
+      // A positive count and an "active" status grant nothing while the schema is damaged.
+      await assertFails(getDoc(doc(client, "systemExercises/published")));
+
+      // A separate trusted repair restores exactly the readable state the remaining contribution
+      // implies: the removal itself neither repaired nor activated anything.
+      await environment.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await updateDoc(doc(db, `users/${uid}`), { schemaVersion: 1 });
+        await updateDoc(doc(db, `users/${uid}/authorizations/systemCatalog`), { schemaVersion: 1 });
+      });
+      await assertSucceeds(getDoc(doc(client, "systemExercises/published")));
+    }
+
+    // A removal never activates a drifted entitlement: a stored "inactive" status stays inactive
+    // even after the schema is repaired, so only a genuine addition grants access again.
+    const driftUid = "partial_drift";
+    await seedPartial(driftUid, "ws_partial_drift_a", "ws_partial_drift_b", "inactive");
+    const driftClient = environment.authenticatedContext(driftUid).firestore();
+    await assertFails(getDoc(doc(driftClient, "systemExercises/published")));
+    await environment.withSecurityRulesDisabled(async (context) => {
+      await updateDoc(doc(context.firestore(), `users/${driftUid}/authorizations/systemCatalog`), { schemaVersion: 5 });
+    });
+    const driftRevoked = await revokeOne(driftUid, "ws_partial_drift_a", "revoke-drift");
+    assert.equal(driftRevoked.activeMembershipCount, 1);
+    assert.equal(driftRevoked.entitlementStatus, "inactive");
+    assert.equal((await adminDb.doc(`users/${driftUid}/authorizations/systemCatalog`).get()).get("status"), "inactive");
+    await environment.withSecurityRulesDisabled(async (context) => {
+      await updateDoc(doc(context.firestore(), `users/${driftUid}/authorizations/systemCatalog`), { schemaVersion: 1 });
+    });
+    await assertFails(getDoc(doc(driftClient, "systemExercises/published")));
+
+    // Only the genuine addition — re-activating the revoked membership — grants catalog access.
+    await transitionMembership(adminDb, {
+      callerUid: "admin",
+      idempotencyKey: "reactivate-drift",
+      workspaceId: "ws_partial_drift_a",
+      uid: driftUid,
+      role: "client",
+      nextStatus: "active",
+      expectedRevision: 2,
+      expectedWorkspaceRevision: 2,
+      maxMembershipsPerAccount: 20,
+      maxMembershipsPerWorkspace: 20
+    });
+    assert.equal((await adminDb.doc(`users/${driftUid}/authorizations/systemCatalog`).get()).get("status"), "active");
+    await assertSucceeds(getDoc(doc(driftClient, "systemExercises/published")));
   });
 
   it("keeps malformed and above-cap entitlements denied when an account enable is rejected atomically", async () => {

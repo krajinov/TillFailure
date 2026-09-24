@@ -653,6 +653,155 @@ describe("system catalog entitlement lifecycle", () => {
     assert.equal((await db.doc(`lifecycleCommands/${commandId("admin", "delta-valid-restore")}`).get()).get("commandKind"), "membership-transition");
   });
 
+  it("permits a partial deactivation while the account or entitlement schema is damaged", async () => {
+    // Revoking one of two contributions must stay possible for a schema-damaged account or
+    // entitlement: the command only lowers access, so Rules keep denying the damaged record even
+    // though a positive count remains. Adding a contribution back requires the schema again.
+    const cases: ReadonlyArray<readonly [string, (uid: string) => Promise<void>, "active" | "inactive"]> = [
+      ["account-schema", async (uid) => { await db.doc(`users/${uid}`).update({ schemaVersion: 5 }); }, "active"],
+      ["entitlement-schema", async (uid) => { await db.doc(`users/${uid}/authorizations/systemCatalog`).update({ schemaVersion: 5 }); }, "active"],
+      ["entitlement-inactive-drift", async (uid) => { await db.doc(`users/${uid}/authorizations/systemCatalog`).update({ schemaVersion: 5, status: "inactive" }); }, "inactive"]
+    ];
+
+    for (const [caseName, damage, expectedStatus] of cases) {
+      const uid = `deact_${caseName.replace(/-/g, "_")}`;
+      const workspaceA = `ws_${uid}_a`;
+      const workspaceB = `ws_${uid}_b`;
+      const revokeKey = `${caseName}-revoke`;
+      await seed(uid, workspaceA);
+      await seed(uid, workspaceB);
+      await transitionMembership(db, activation(uid, workspaceA, `${caseName}-a`, 0, 1));
+      await transitionMembership(db, activation(uid, workspaceB, `${caseName}-b`, 0, 1));
+      assert.equal((await entitlementState(uid)).activeMembershipCount, 2, `${caseName}: two contributions before removal`);
+      await damage(uid);
+      const damaged = {
+        account: (await db.doc(`users/${uid}`).get()).data(),
+        entitlement: (await db.doc(`users/${uid}/authorizations/systemCatalog`).get()).data()
+      };
+
+      const revoked = await transitionMembership(db, activation(uid, workspaceA, revokeKey, 1, 2, { nextStatus: "revoked" }));
+      assert.equal(revoked.activeMembershipCount, 1, `${caseName}: one contribution remains`);
+      assert.equal(revoked.entitlementStatus, expectedStatus, `${caseName}: stored status is preserved, never elevated`);
+      const membership = await db.doc(`workspaces/${workspaceA}/memberships/${uid}`).get();
+      assert.equal(membership.get("status"), "revoked");
+      assert.equal(membership.get("catalogContributionActive"), false);
+      assert.equal(membership.get("revision"), 2);
+      const entitlementAfter = await db.doc(`users/${uid}/authorizations/systemCatalog`).get();
+      assert.equal(entitlementAfter.get("activeMembershipCount"), 1);
+      assert.equal(entitlementAfter.get("status"), expectedStatus);
+      // The damaged documents stay exactly as damaged as they were: no repair, no activation.
+      assert.equal(entitlementAfter.get("schemaVersion"), damaged.entitlement!.schemaVersion, `${caseName}: entitlement schema is not repaired`);
+      assert.equal((await db.doc(`users/${uid}`).get()).get("schemaVersion"), damaged.account!.schemaVersion, `${caseName}: account schema is not repaired`);
+      assert.deepEqual(await workspaceCounts(workspaceA), { roster: 0, contributions: 0, revision: 3, status: "active" });
+      assert.deepEqual(await workspaceCounts(workspaceB), { roster: 1, contributions: 1, revision: 2, status: "active" });
+      assert.equal((await db.doc(`lifecycleCommands/${commandId("admin", revokeKey)}`).get()).get("commandKind"), "membership-transition", `${caseName}: the removal is receipt-backed`);
+
+      // Replay stays idempotent: the same recorded result, no extra revision or write.
+      const replayed = await transitionMembership(db, activation(uid, workspaceA, revokeKey, 1, 2, { nextStatus: "revoked" }));
+      assert.equal(replayed.replayed, true, `${caseName}: replay is reported`);
+      assert.equal(replayed.activeMembershipCount, 1, `${caseName}: replay keeps the recorded result`);
+      assert.equal(
+        (await db.doc(`users/${uid}/authorizations/systemCatalog`).get()).get("revision"),
+        entitlementAfter.get("revision"),
+        `${caseName}: replay rewrites no entitlement revision`
+      );
+      assert.equal((await db.doc(`workspaces/${workspaceA}/memberships/${uid}`).get()).get("revision"), 2, `${caseName}: replay rewrites no membership revision`);
+
+      // Adding a contribution on the same damaged record still rejects atomically.
+      const beforeAdd = {
+        workspace: (await db.doc(`workspaces/${workspaceA}`).get()).data(),
+        membership: (await db.doc(`workspaces/${workspaceA}/memberships/${uid}`).get()).data(),
+        account: (await db.doc(`users/${uid}`).get()).data(),
+        entitlement: (await db.doc(`users/${uid}/authorizations/systemCatalog`).get()).data(),
+        receipts: (await db.collection("lifecycleCommands").get()).size
+      };
+      await assert.rejects(
+        () => transitionMembership(db, activation(uid, workspaceA, `${caseName}-reactivate`, 2, 3)),
+        /schema-unsupported/,
+        `${caseName}: an addition still needs the schema`
+      );
+      assert.deepEqual((await db.doc(`workspaces/${workspaceA}`).get()).data(), beforeAdd.workspace, `${caseName}: rejected addition leaves the workspace unchanged`);
+      assert.deepEqual((await db.doc(`workspaces/${workspaceA}/memberships/${uid}`).get()).data(), beforeAdd.membership, `${caseName}: rejected addition leaves the membership unchanged`);
+      assert.deepEqual((await db.doc(`users/${uid}`).get()).data(), beforeAdd.account, `${caseName}: rejected addition leaves the account unchanged`);
+      assert.deepEqual((await db.doc(`users/${uid}/authorizations/systemCatalog`).get()).data(), beforeAdd.entitlement, `${caseName}: rejected addition leaves the entitlement unchanged`);
+      assert.equal((await db.collection("lifecycleCommands").get()).size, beforeAdd.receipts, `${caseName}: rejected addition records no receipt`);
+
+      // After a separate trusted repair the same addition (same key — no receipt was written)
+      // commits normally, proving valid-schema transitions are unaffected.
+      await db.doc(`users/${uid}`).update({ schemaVersion: 1 });
+      await db.doc(`users/${uid}/authorizations/systemCatalog`).update({ schemaVersion: 1 });
+      const reactivated = await transitionMembership(db, activation(uid, workspaceA, `${caseName}-reactivate`, 2, 3));
+      assert.equal(reactivated.activeMembershipCount, 2, `${caseName}: the repaired schema allows the addition`);
+      assert.equal(reactivated.entitlementStatus, "active");
+      assert.deepEqual(await workspaceCounts(workspaceA), { roster: 1, contributions: 1, revision: 4, status: "active" });
+      assert.equal(
+        (await db.doc(`lifecycleCommands/${commandId("admin", `${caseName}-reactivate`)}`).get()).get("commandKind"),
+        "membership-transition",
+        `${caseName}: the addition is receipt-backed`
+      );
+    }
+  });
+
+  it("permits suspending a workspace while the account keeps a contribution elsewhere despite a damaged schema", async () => {
+    await seed("suspend_multi", "ws_suspend_a");
+    await seed("suspend_multi", "ws_suspend_b");
+    await transitionMembership(db, activation("suspend_multi", "ws_suspend_a", "suspend-multi-a", 0, 1));
+    await transitionMembership(db, activation("suspend_multi", "ws_suspend_b", "suspend-multi-b", 0, 1));
+    assert.equal((await entitlementState("suspend_multi")).activeMembershipCount, 2);
+    // Damage the account schema: suspending one workspace must still withdraw that workspace's
+    // contribution even though the member keeps a positive count in another workspace.
+    await db.doc("users/suspend_multi").update({ schemaVersion: 7 });
+    const entitlementBefore = (await db.doc("users/suspend_multi/authorizations/systemCatalog").get()).data();
+
+    const suspended = await transitionWorkspace(db, workspaceTransition("ws_suspend_a", "suspend-multi-a-suspend", 2, "suspended"));
+    assert.equal(suspended.affected, 1);
+    const membership = await db.doc("workspaces/ws_suspend_a/memberships/suspend_multi").get();
+    assert.equal(membership.get("status"), "active", "the relationship survives suspension");
+    assert.equal(membership.get("catalogContributionActive"), false);
+    assert.equal(membership.get("revision"), 2);
+    const entitlementAfter = await db.doc("users/suspend_multi/authorizations/systemCatalog").get();
+    assert.equal(entitlementAfter.get("activeMembershipCount"), 1, "the retained contribution keeps a positive count");
+    assert.equal(entitlementAfter.get("status"), "active", "the stored status is preserved, never elevated");
+    assert.equal(entitlementAfter.get("schemaVersion"), entitlementBefore!.schemaVersion, "the entitlement schema is not repaired");
+    assert.equal((await db.doc("users/suspend_multi").get()).get("schemaVersion"), 7, "the account schema is not repaired");
+    assert.deepEqual(await workspaceCounts("ws_suspend_a"), { roster: 1, contributions: 0, revision: 3, status: "suspended" });
+    assert.deepEqual(await workspaceCounts("ws_suspend_b"), { roster: 1, contributions: 1, revision: 2, status: "active" });
+
+    // Restoration adds contributions, so the damaged schema still blocks it atomically.
+    const beforeRestore = {
+      workspace: (await db.doc("workspaces/ws_suspend_a").get()).data(),
+      membership: (await db.doc("workspaces/ws_suspend_a/memberships/suspend_multi").get()).data(),
+      account: (await db.doc("users/suspend_multi").get()).data(),
+      entitlement: (await db.doc("users/suspend_multi/authorizations/systemCatalog").get()).data(),
+      receipts: (await db.collection("lifecycleCommands").get()).size
+    };
+    await assert.rejects(
+      () => transitionWorkspace(db, workspaceTransition("ws_suspend_a", "suspend-multi-a-restore", 3, "active")),
+      /account-schema-unsupported/
+    );
+    assert.deepEqual((await db.doc("workspaces/ws_suspend_a").get()).data(), beforeRestore.workspace, "rejected restore leaves the workspace unchanged");
+    assert.deepEqual((await db.doc("workspaces/ws_suspend_a/memberships/suspend_multi").get()).data(), beforeRestore.membership, "rejected restore leaves the membership unchanged");
+    assert.deepEqual((await db.doc("users/suspend_multi").get()).data(), beforeRestore.account, "rejected restore leaves the account unchanged");
+    assert.deepEqual((await db.doc("users/suspend_multi/authorizations/systemCatalog").get()).data(), beforeRestore.entitlement, "rejected restore leaves the entitlement unchanged");
+    assert.equal((await db.collection("lifecycleCommands").get()).size, beforeRestore.receipts, "rejected restore records no receipt");
+
+    // Suspending the second workspace removes the last contribution: a full deactivation that is
+    // always allowed, leaving an inactive entitlement with a zero count.
+    assert.equal((await transitionWorkspace(db, workspaceTransition("ws_suspend_b", "suspend-multi-b-suspend", 2, "suspended"))).affected, 1);
+    assert.equal((await entitlementState("suspend_multi")).status, "inactive");
+    assert.equal((await entitlementState("suspend_multi")).activeMembershipCount, 0);
+
+    // After a separate trusted repair the same restore (same key — no receipt was written) commits
+    // and the retained contribution returns.
+    await db.doc("users/suspend_multi").update({ schemaVersion: 1 });
+    const restored = await transitionWorkspace(db, workspaceTransition("ws_suspend_a", "suspend-multi-a-restore", 3, "active"));
+    assert.equal(restored.affected, 1);
+    assert.deepEqual(await workspaceCounts("ws_suspend_a"), { roster: 1, contributions: 1, revision: 4, status: "active" });
+    assert.equal((await entitlementState("suspend_multi")).activeMembershipCount, 1);
+    assert.equal((await entitlementState("suspend_multi")).status, "active");
+    assert.equal((await db.doc(`lifecycleCommands/${commandId("admin", "suspend-multi-a-restore")}`).get()).get("commandKind"), "workspace-transition");
+  });
+
   it("guards account lifecycle commands with revisions, receipts, and idempotent replay", async () => {
     await seedAccount("acct", { status: "active", activeMembershipCount: 1 });
 

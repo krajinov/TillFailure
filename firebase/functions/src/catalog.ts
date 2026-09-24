@@ -132,6 +132,51 @@ function requireValidScannedMembership(membership: FirebaseFirestore.QueryDocume
   requireValidMembership(membership, workspaceId, SCANNED_MEMBERSHIP_STATUSES);
 }
 
+// One classification of a membership contribution change, shared by the membership command and the
+// workspace scan so the two paths cannot diverge. Only an addition (a new contribution or a
+// restoration) increases access; a removal is a deactivation. A removal may keep a positive
+// remaining count, but it must never elevate access: it preserves an already-active entitlement or
+// deactivates it, and it never rewrites the stored schema, so a damaged record stays exactly as
+// damaged — and exactly as unreadable under Rules — as it was.
+interface ContributionChange {
+  readonly adds: boolean;
+  readonly removes: boolean;
+  readonly entitlementActive: boolean;
+  readonly storedEntitlementActive: boolean;
+  readonly status: "active" | "inactive";
+}
+
+function contributionChange(
+  account: FirebaseFirestore.DocumentSnapshot,
+  entitlement: FirebaseFirestore.DocumentSnapshot,
+  oldContributes: boolean,
+  newContributes: boolean,
+  nextCount: number
+): ContributionChange {
+  const adds = newContributes && !oldContributes;
+  const removes = oldContributes && !newContributes;
+  const storedEntitlementActive = entitlement.get("status") === "active";
+  const wouldBeActive = account.get("accountStatus") === "active" && nextCount > 0;
+  const status: "active" | "inactive" = wouldBeActive && (!removes || storedEntitlementActive) ? "active" : "inactive";
+  return { adds, removes, entitlementActive: status === "active", storedEntitlementActive, status };
+}
+
+// Adding a contribution, or reporting active access the stored entitlement did not already have,
+// requires the schema the Rules authorize. A pure removal is a deactivation and therefore stays
+// possible while the account or entitlement schema is damaged: Rules already deny those reads
+// (they require `schemaVersion == 1`), the command only lowers access, and nothing is repaired,
+// activated, or broadened. A positive remaining count on a damaged record is safe to carry for the
+// same reason — it is not readable until a separate trusted reconciliation repairs the schema.
+function requireSchemaForContributionChange(
+  account: FirebaseFirestore.DocumentSnapshot,
+  entitlement: FirebaseFirestore.DocumentSnapshot,
+  change: ContributionChange
+): void {
+  if (change.adds || (change.entitlementActive && !change.storedEntitlementActive)) {
+    requireAuthorizableSchema(account, entitlement);
+  }
+}
+
 export async function transitionMembership(db: Firestore, input: MembershipTransition): Promise<CatalogTransitionResult> {
   requireCommandIdentity(input);
   strictConfiguredBound(input.maxMembershipsPerAccount, RULES_ENTITLEMENT_COUNT_MAX, "invalid-maximum-memberships");
@@ -183,10 +228,13 @@ export async function transitionMembership(db: Firestore, input: MembershipTrans
     const contributionBounds: CounterBounds = { max: rosterCount, malformed: "workspace-contribution-malformed", outOfRange: "workspace-contribution-bound-violated" };
     const contributionCount = strictCounter(workspace.get("catalogContributionCount"), contributionBounds);
     const nextContributionCount = strictCounter(contributionCount + Number(newContributes) - Number(oldContributes), { ...contributionBounds, max: nextRosterCount });
-    const entitlementStatus: "active" | "inactive" = account.get("accountStatus") === "active" && nextCount > 0 ? "active" : "inactive";
-    // Reporting catalog access as active requires the schema the Rules authorize; a deactivation
-    // transition is always allowed so access can still be revoked.
-    if (entitlementStatus === "active") requireAuthorizableSchema(account, entitlement);
+    const entitlementChange = contributionChange(account, entitlement, oldContributes, newContributes, nextCount);
+    // Adding a contribution or publishing access the stored entitlement did not already have needs
+    // the schema the Rules authorize; revoking one of several contributions must still succeed while
+    // the account or entitlement schema is damaged, because that is a deactivation and Rules deny
+    // the damaged record's reads regardless of its remaining count.
+    requireSchemaForContributionChange(account, entitlement, entitlementChange);
+    const entitlementStatus = entitlementChange.status;
     const membershipRevision = previousRevision + 1;
     const result = { uid: input.uid, activeMembershipCount: nextCount, entitlementStatus, membershipRevision };
     transaction.set(membershipRef, {
@@ -271,14 +319,15 @@ export async function transitionWorkspace(db: Firestore, input: WorkspaceTransit
       const accountCountBounds: CounterBounds = { max: input.maxMembershipsPerAccount, malformed: "membership-bound-violated", outOfRange: "membership-bound-violated" };
       const oldCount = strictCounter(entitlement.get("activeMembershipCount"), accountCountBounds);
       const nextCount = strictCounter(oldCount + Number(newContributes) - Number(oldContributes), accountCountBounds);
-      const entitlementActive = account.get("accountStatus") === "active" && nextCount > 0;
-      // An active entitlement may only be reported for schema-current documents, so a restore or
-      // suspension can never publish access the Rules would deny. Deactivation is always allowed.
-      if (entitlementActive) requireAuthorizableSchema(account, entitlement);
+      const entitlementChange = contributionChange(account, entitlement, oldContributes, newContributes, nextCount);
+      // Restoring a workspace adds contributions and needs the schema the Rules authorize; suspending
+      // one workspace while the member keeps a contribution elsewhere is a deactivation and must
+      // still succeed for a schema-damaged record, whose reads Rules keep denying.
+      requireSchemaForContributionChange(account, entitlement, entitlementChange);
       transaction.update(membership.ref, { catalogContributionActive: newContributes, revision: FieldValue.increment(1) });
       transaction.update(entitlement.ref, {
         activeMembershipCount: nextCount,
-        status: entitlementActive ? "active" : "inactive",
+        status: entitlementChange.status,
         revision: FieldValue.increment(1)
       });
     });
