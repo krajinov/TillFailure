@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
+import { FieldValue } from "firebase-admin/firestore";
 import { AccountLifecycleResult, AccountLifecycleTransition, MembershipTransition, transitionAccountLifecycle, transitionMembership, transitionWorkspace } from "../src/catalog.js";
 import { emulatorFirestore } from "../src/environment.js";
 import { commandId } from "../src/hashing.js";
@@ -1166,5 +1167,89 @@ describe("system catalog entitlement lifecycle", () => {
     await db.doc("users/schema_disable").update({ schemaVersion: 1 });
     await db.doc("users/schema_disable/authorizations/systemCatalog").update({ schemaVersion: 1 });
     assert.equal((await transitionAccountLifecycle(db, accountLifecycle("schema_disable", true, 2))).entitlementStatus, "active");
+  });
+
+  it("requires a schema-current recognized workspace before adding catalog contributions", async () => {
+    // An active workspace that Rules reject must never be the source of a catalog contribution: an
+    // activation there would otherwise raise the account count and let global catalog reads pass.
+    const cases: ReadonlyArray<readonly [string, (workspaceId: string) => Promise<void>, RegExp]> = [
+      ["missing-schema", async (workspaceId) => { await db.doc(`workspaces/${workspaceId}`).update({ schemaVersion: FieldValue.delete() }); }, /workspace-schema-unsupported/],
+      ["unsupported-schema", async (workspaceId) => { await db.doc(`workspaces/${workspaceId}`).update({ schemaVersion: 4 }); }, /workspace-schema-unsupported/],
+      ["unrecognized-status", async (workspaceId) => { await db.doc(`workspaces/${workspaceId}`).update({ status: "archived" }); }, /workspace-status-invalid/]
+    ];
+    for (const [caseName, damage, expected] of cases) {
+      const uid = `ws_schema_${caseName.replace(/-/g, "_")}`;
+      const workspaceId = `ws_guarded_${caseName.replace(/-/g, "_")}`;
+      const idempotencyKey = `ws-schema-${caseName}`;
+      await seed(uid, workspaceId);
+      await damage(workspaceId);
+      const before = {
+        workspace: (await db.doc(`workspaces/${workspaceId}`).get()).data(),
+        account: (await db.doc(`users/${uid}`).get()).data(),
+        entitlement: (await db.doc(`users/${uid}/authorizations/systemCatalog`).get()).data(),
+        receipts: (await db.collection("lifecycleCommands").get()).size
+      };
+      await assert.rejects(() => transitionMembership(db, activation(uid, workspaceId, idempotencyKey, 0, 1)), expected, `${caseName}: activation must reject`);
+      assert.deepEqual((await db.doc(`workspaces/${workspaceId}`).get()).data(), before.workspace, `${caseName}: workspace unchanged`);
+      assert.deepEqual((await db.doc(`users/${uid}`).get()).data(), before.account, `${caseName}: account unchanged`);
+      assert.deepEqual((await db.doc(`users/${uid}/authorizations/systemCatalog`).get()).data(), before.entitlement, `${caseName}: entitlement unchanged`);
+      assert.equal((await entitlementState(uid)).activeMembershipCount, 0, `${caseName}: no contribution added`);
+      assert.equal((await entitlementState(uid)).status, "inactive", `${caseName}: no entitlement activated`);
+      assert.equal((await db.doc(`workspaces/${workspaceId}/memberships/${uid}`).get()).exists, false, `${caseName}: no membership written`);
+      assert.equal((await db.collection("lifecycleCommands").get()).size, before.receipts, `${caseName}: no receipt`);
+
+      // A valid workspace still activates normally, and the same damaged workspace still allows a
+      // withdrawal once it has contributed: activate while valid, damage it, then revoke.
+      const validUid = `${uid}_valid`;
+      const validWorkspace = `${workspaceId}_valid`;
+      await seed(validUid, validWorkspace);
+      const activated = await transitionMembership(db, activation(validUid, validWorkspace, `${idempotencyKey}-valid`, 0, 1));
+      assert.equal(activated.entitlementStatus, "active", `${caseName}: valid activation still works`);
+      await damage(validWorkspace);
+      const revoked = await transitionMembership(db, activation(validUid, validWorkspace, `${idempotencyKey}-revoke`, 1, 2, { nextStatus: "revoked" }));
+      assert.equal(revoked.activeMembershipCount, 0, `${caseName}: withdrawal still removes the contribution`);
+      assert.equal(revoked.entitlementStatus, "inactive", `${caseName}: withdrawal never activates`);
+      assert.equal((await entitlementState(validUid)).status, "inactive");
+    }
+
+    // Suspension only removes contributions, so a schema-damaged workspace can still be suspended.
+    const suspendUid = "ws_schema_suspend";
+    const suspendWorkspace = "ws_guarded_suspend";
+    await seed(suspendUid, suspendWorkspace);
+    await transitionMembership(db, activation(suspendUid, suspendWorkspace, "ws-schema-suspend-activate", 0, 1));
+    await db.doc(`workspaces/${suspendWorkspace}`).update({ schemaVersion: 9 });
+    assert.equal((await transitionWorkspace(db, workspaceTransition(suspendWorkspace, "ws-schema-suspend", 2, "suspended"))).affected, 1);
+    assert.deepEqual(await workspaceCounts(suspendWorkspace), { roster: 1, contributions: 0, revision: 3, status: "suspended" });
+    assert.equal((await entitlementState(suspendUid)).activeMembershipCount, 0);
+    assert.equal((await entitlementState(suspendUid)).status, "inactive");
+
+    // Restoration adds contributions again, so a schema-damaged suspended workspace must not
+    // restore: the rejection is atomic and a trusted repair restores it normally.
+    const restoreUid = "ws_schema_restore";
+    const restoreWorkspace = "ws_guarded_restore";
+    await seed(restoreUid, restoreWorkspace);
+    await transitionMembership(db, activation(restoreUid, restoreWorkspace, "ws-schema-restore-activate", 0, 1));
+    await transitionWorkspace(db, workspaceTransition(restoreWorkspace, "ws-schema-restore-suspend", 2, "suspended"));
+    await db.doc(`workspaces/${restoreWorkspace}`).update({ schemaVersion: 3 });
+    const beforeRestore = {
+      workspace: (await db.doc(`workspaces/${restoreWorkspace}`).get()).data(),
+      membership: (await db.doc(`workspaces/${restoreWorkspace}/memberships/${restoreUid}`).get()).data(),
+      entitlement: (await db.doc(`users/${restoreUid}/authorizations/systemCatalog`).get()).data(),
+      receipts: (await db.collection("lifecycleCommands").get()).size
+    };
+    await assert.rejects(
+      () => transitionWorkspace(db, workspaceTransition(restoreWorkspace, "ws-schema-restore", 3, "active")),
+      /workspace-schema-unsupported/
+    );
+    assert.deepEqual((await db.doc(`workspaces/${restoreWorkspace}`).get()).data(), beforeRestore.workspace, "rejected restore leaves the workspace unchanged");
+    assert.deepEqual((await db.doc(`workspaces/${restoreWorkspace}/memberships/${restoreUid}`).get()).data(), beforeRestore.membership, "rejected restore leaves the membership unchanged");
+    assert.deepEqual((await db.doc(`users/${restoreUid}/authorizations/systemCatalog`).get()).data(), beforeRestore.entitlement, "rejected restore leaves the entitlement unchanged");
+    assert.equal((await db.collection("lifecycleCommands").get()).size, beforeRestore.receipts, "rejected restore records no receipt");
+
+    await db.doc(`workspaces/${restoreWorkspace}`).update({ schemaVersion: 1 });
+    assert.equal((await transitionWorkspace(db, workspaceTransition(restoreWorkspace, "ws-schema-restore", 3, "active"))).affected, 1);
+    assert.deepEqual(await workspaceCounts(restoreWorkspace), { roster: 1, contributions: 1, revision: 4, status: "active" });
+    assert.equal((await entitlementState(restoreUid)).activeMembershipCount, 1);
+    assert.equal((await entitlementState(restoreUid)).status, "active");
   });
 });

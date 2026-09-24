@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
-import { AssignmentResult, closeAssignment, publishAssignment, PublishAssignmentRequest } from "../src/assigned-program.js";
+import { AssignmentResult, closeAssignment, CloseAssignmentRequest, publishAssignment, PublishAssignmentRequest } from "../src/assigned-program.js";
 import { emulatorFirestore } from "../src/environment.js";
 
 const db = emulatorFirestore();
@@ -334,5 +334,82 @@ describe("assigned-program publication", () => {
     assert.equal(header.get("accessStatus"), "archived");
     assert.equal((await db.doc("workspaces/ws/assignedPrograms/asg-race").get()).get("revision"), 2);
     assert.equal((await db.collection("assignmentCommands").where("commandKind", "==", "close-assignment").get()).size, 1);
+  });
+
+  it("rejects non-single-segment path IDs before any write", async () => {
+    // The reported case: `day/exercises/item` would otherwise be accepted as a nested document path
+    // and materialize a workout at an exercise path instead of failing closed.
+    const cases: ReadonlyArray<readonly [string, Partial<PublishAssignmentRequest>, RegExp]> = [
+      ["workout", { idempotencyKey: "nested-workout", assignmentId: "asg-nested-workout", workouts: [{ ...base.workouts[0]!, id: "day/exercises/item" }] }, /snapshot-workout-id-path-separator/],
+      ["exercise", { idempotencyKey: "nested-exercise", assignmentId: "asg-nested-exercise", workouts: [{ ...base.workouts[0]!, exercises: [{ ...base.workouts[0]!.exercises[0]!, id: "squat/extra" }] }] }, /snapshot-exercise-id-path-separator/],
+      ["plan", { idempotencyKey: "nested-plan", assignmentId: "asg-nested-plan", plans: [{ id: "plan/one", workoutId: "day-one", scheduledInstantMillis: Date.UTC(2027, 0, 1) }] }, /planned-workout-id-path-separator/],
+      ["assignment", { idempotencyKey: "nested-assignment", assignmentId: "asg/other" }, /assignment-id-path-separator/],
+      ["workspace", { idempotencyKey: "nested-workspace", workspaceId: "ws/other" }, /workspace-id-path-separator/],
+      ["client-uid", { idempotencyKey: "nested-uid", uid: "client/other" }, /client-uid-path-separator/],
+      ["predecessor", { idempotencyKey: "nested-predecessor", replacesAssignmentId: "asg-one/other", replacesExpectedRevision: 1 }, /replaces-assignment-id-path-separator/],
+      ["reserved-document-id", { idempotencyKey: "nested-reserved", assignmentId: "__asg__" }, /assignment-id-invalid/],
+      ["blank-workout", { idempotencyKey: "nested-blank", assignmentId: "asg-nested-blank", workouts: [{ ...base.workouts[0]!, id: "  " }] }, /snapshot-workout-id-invalid/]
+    ];
+    for (const [caseName, overrides, expected] of cases) {
+      await assert.rejects(() => publishAssignment(db, { ...base, ...overrides }), expected, `${caseName}: publication must reject`);
+      assert.equal((await db.collection("assignmentCommands").get()).size, 0, `${caseName}: no receipt`);
+      assert.equal((await db.collection("users/client/workspaces/ws/assignedPrograms").get()).size, 0, `${caseName}: no assignment header`);
+      assert.equal((await db.collection("workspaces/ws/assignedPrograms").get()).size, 0, `${caseName}: no discovery index`);
+    }
+    // Nothing was materialized at the nested path the reported case would have produced.
+    assert.equal((await db.doc("users/client/workspaces/ws/assignedPrograms/asg-nested-workout/snapshots/content/workouts/day/exercises/item").get()).exists, false);
+
+    // Closure builds its references from the same IDs, so it rejects identically and leaves the
+    // published assignment and receipts untouched.
+    await publishAssignment(db, base);
+    const before = {
+      header: (await db.doc("users/client/workspaces/ws/assignedPrograms/asg-one").get()).data(),
+      index: (await db.doc("workspaces/ws/assignedPrograms/asg-one").get()).data(),
+      receipts: (await db.collection("assignmentCommands").get()).size
+    };
+    const closeCases: ReadonlyArray<readonly [string, Partial<CloseAssignmentRequest>, RegExp]> = [
+      ["uid", { uid: "client/other" }, /client-uid-path-separator/],
+      ["workspace", { workspaceId: "ws/other" }, /workspace-id-path-separator/],
+      ["assignment", { assignmentId: "asg/other" }, /assignment-id-path-separator/]
+    ];
+    for (const [caseName, overrides, expected] of closeCases) {
+      await assert.rejects(
+        () => closeAssignment(db, { callerUid: "trainer", idempotencyKey: `close-nested-${caseName}`, uid: "client", workspaceId: "ws", assignmentId: "asg-one", status: "archived", expectedRevision: 1, ...overrides }),
+        expected,
+        `${caseName}: closure must reject`
+      );
+    }
+    assert.deepEqual((await db.doc("users/client/workspaces/ws/assignedPrograms/asg-one").get()).data(), before.header, "rejected closure leaves the header unchanged");
+    assert.deepEqual((await db.doc("workspaces/ws/assignedPrograms/asg-one").get()).data(), before.index, "rejected closure leaves the index unchanged");
+    assert.equal((await db.collection("assignmentCommands").get()).size, before.receipts, "rejected closure records no receipt");
+  });
+
+  it("publishes punctuated UIDs and single-segment IDs at their exact paths", async () => {
+    // The single-segment rule deliberately does not impose a stricter business whitelist: dots are
+    // valid inside a document ID, so email-shaped UIDs and punctuated business IDs keep working and
+    // still materialize at exactly their own document paths.
+    const uid = "user.name+tag@example.com";
+    const assignmentId = "asg.2027-01";
+    const result = await publishAssignment(db, {
+      ...base,
+      idempotencyKey: "valid-punctuated",
+      uid,
+      assignmentId,
+      workouts: [{ id: "day.one", position: 0, title: "Day one", exercises: [{ id: "squat.1", position: 0, displayName: "Squat", prescription: "3 x 5" }] }],
+      plans: [{ id: "plan.one", workoutId: "day.one", scheduledInstantMillis: Date.UTC(2027, 0, 1) }]
+    });
+    assert.equal(result.replayed, false);
+    const headerPath = `users/${uid}/workspaces/ws/assignedPrograms/${assignmentId}`;
+    assert.equal((await db.doc(headerPath).get()).get("clientId"), uid);
+    assert.equal((await db.doc(headerPath).get()).get("assignmentId"), assignmentId);
+    assert.equal((await db.doc(`${headerPath}/snapshots/content/workouts/day.one/exercises/squat.1`).get()).get("itemId"), "squat.1");
+    assert.equal((await db.doc(`${headerPath}/plannedWorkouts/plan.one`).get()).get("status"), "planned");
+    assert.deepEqual((await db.doc(`${headerPath}/manifests/download`).get()).get("requiredPaths"), [
+      "plannedWorkouts/plan.one",
+      "snapshots/content",
+      "snapshots/content/workouts/day.one",
+      "snapshots/content/workouts/day.one/exercises/squat.1"
+    ]);
+    assert.equal((await db.doc(`workspaces/ws/assignedPrograms/${assignmentId}`).get()).get("clientId"), uid);
   });
 });

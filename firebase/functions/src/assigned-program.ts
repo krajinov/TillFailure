@@ -1,6 +1,42 @@
 import { FieldValue, Firestore, Timestamp } from "firebase-admin/firestore";
 import { commandId, stableHash } from "./hashing.js";
 
+// Every ID that becomes a Firestore path segment is validated as exactly one document segment
+// before any reference is constructed and before any transaction starts. Without this, a value such
+// as `day/exercises/item` is accepted as a nested document path instead of a single workout ID and
+// materializes a workout at an exercise path, producing a "ready" assignment whose structure no
+// longer matches the manifest and the client schema; an assignment ID could likewise route writes
+// beneath another assignment. UIDs keep the shared Firebase UID contract for the `users/{uid}` path
+// scheme (non-blank, at most 128 UTF-16 code units, no path separator, not `.`/`..`, not the
+// reserved `__.*__` form) instead of a stricter business whitelist, so email-shaped and punctuated
+// identities stay supported; business IDs (workspace, assignment, workout, exercise, plan) use that
+// same single-segment rule.
+const MAX_PATH_SEGMENT_LENGTH = 128;
+const RESERVED_DOCUMENT_ID = /^__.*__$/;
+
+function singlePathSegment(value: unknown, failure: string): string {
+  if (typeof value !== "string" || value.length === 0 || value.length > MAX_PATH_SEGMENT_LENGTH || value.trim().length === 0) {
+    throw new Error(`${failure}-invalid`);
+  }
+  if (value.includes("/")) throw new Error(`${failure}-path-separator`);
+  if (value === "." || value === ".." || RESERVED_DOCUMENT_ID.test(value)) throw new Error(`${failure}-invalid`);
+  return value;
+}
+
+// Publication references are built from the user, workspace, assignment (and its predecessor),
+// snapshot workout, snapshot exercise, and plan IDs, so all of them are validated up front.
+function requirePublishPathIdentifiers(input: PublishAssignmentRequest): void {
+  singlePathSegment(input.uid, "client-uid");
+  singlePathSegment(input.workspaceId, "workspace-id");
+  singlePathSegment(input.assignmentId, "assignment-id");
+  if (input.replacesAssignmentId !== undefined) singlePathSegment(input.replacesAssignmentId, "replaces-assignment-id");
+  for (const workout of input.workouts) {
+    singlePathSegment(workout.id, "snapshot-workout-id");
+    for (const exercise of workout.exercises) singlePathSegment(exercise.id, "snapshot-exercise-id");
+  }
+  for (const plan of input.plans) singlePathSegment(plan.id, "planned-workout-id");
+}
+
 export interface SnapshotExercise {
   readonly id: string;
   readonly position: number;
@@ -49,6 +85,7 @@ export interface AssignmentResult {
 }
 
 export async function publishAssignment(db: Firestore, input: PublishAssignmentRequest): Promise<AssignmentResult> {
+  requirePublishPathIdentifiers(input);
   const replaces = input.replacesAssignmentId !== undefined;
   if (replaces && (!Number.isInteger(input.replacesExpectedRevision) || (input.replacesExpectedRevision ?? 0) < 1)) {
     throw new Error("predecessor-revision-required");
@@ -70,7 +107,7 @@ export async function publishAssignment(db: Firestore, input: PublishAssignmentR
   if (documentCount > input.maxWrites) throw new Error("write-budget-exceeded");
   const snapshotWorkoutIds = new Set<string>();
   for (const workout of input.workouts) {
-    if (typeof workout.id !== "string" || workout.id.trim().length === 0) throw new Error("snapshot-workout-id-invalid");
+    // Path segments were validated before any reference was built; duplicates are still rejected.
     if (snapshotWorkoutIds.has(workout.id)) throw new Error("snapshot-workout-id-duplicated");
     snapshotWorkoutIds.add(workout.id);
   }
@@ -215,6 +252,11 @@ export interface CloseAssignmentResult {
 // expired assignment is never rewritten, terminal reasons and replacement metadata are
 // immutable, and only the original caller-bound receipt replays a successful close.
 export async function closeAssignment(db: Firestore, input: CloseAssignmentRequest): Promise<CloseAssignmentResult> {
+  // The header and discovery-index references are built from these three IDs, so each must be a
+  // single document segment before the transaction reads or publishes anything.
+  singlePathSegment(input.uid, "client-uid");
+  singlePathSegment(input.workspaceId, "workspace-id");
+  singlePathSegment(input.assignmentId, "assignment-id");
   if (!Number.isInteger(input.expectedRevision) || input.expectedRevision < 1) throw new Error("expected-revision-invalid");
   const requestHash = stableHash(input);
   const receiptRef = db.doc(`assignmentCommands/${commandId(input.callerUid, input.idempotencyKey)}`);

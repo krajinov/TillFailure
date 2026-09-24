@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { after, before, beforeEach, describe, it } from "node:test";
 import { assertFails, assertSucceeds, initializeTestEnvironment, RulesTestEnvironment } from "@firebase/rules-unit-testing";
 import { collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from "firebase/firestore";
-import { ref, uploadString } from "firebase/storage";
+import { deleteObject, ref, uploadString } from "firebase/storage";
 import { publishAssignment } from "../src/assigned-program.js";
 import { transitionAccountLifecycle, transitionMembership, transitionWorkspace } from "../src/catalog.js";
 import { emulatorFirestore, SPIKE_PROJECT_ID } from "../src/environment.js";
@@ -648,6 +648,81 @@ describe("Firestore and Storage rules", () => {
     await assertSucceeds(uploadString(ref(ownerStorage, "spikeUploads/client/ok"), "safe", "raw", { contentType: "text/plain", customMetadata: { ownerUid: "client" } }));
     await assertFails(uploadString(ref(otherStorage, "spikeUploads/client/no"), "safe", "raw", { contentType: "text/plain", customMetadata: { ownerUid: "other" } }));
     await assertFails(uploadString(ref(ownerStorage, "spikeUploads/client/no-mime"), "safe", "raw", { contentType: "application/octet-stream", customMetadata: { ownerUid: "client" } }));
+    await assertFails(uploadString(ref(ownerStorage, "spikeUploads/client/no-metadata"), "safe", "raw", { contentType: "text/plain" }));
+    await assertFails(uploadString(ref(ownerStorage, "spikeUploads/client/too-big"), "x".repeat(1024 * 1024 + 1), "raw", { contentType: "text/plain", customMetadata: { ownerUid: "client" } }));
+
+    // A delete carries no `request.resource`, so it is authorized by path/resource ownership alone:
+    // the owner may remove its own object, while another account, a foreign path, and a path that is
+    // not a single object beneath the owner stay denied.
+    await assertSucceeds(uploadString(ref(ownerStorage, "spikeUploads/client/again"), "safe", "raw", { contentType: "text/plain", customMetadata: { ownerUid: "client" } }));
+    await assertSucceeds(deleteObject(ref(ownerStorage, "spikeUploads/client/ok")));
+    await assertFails(deleteObject(ref(otherStorage, "spikeUploads/client/again")));
+    await assertFails(deleteObject(ref(ownerStorage, "spikeUploads/other/again")));
+    await assertFails(deleteObject(ref(ownerStorage, "spikeUploads/client")));
+    await environment.withSecurityRulesDisabled(async (context) => {
+      // An object written by a trusted path without the owner metadata is still bound to its path.
+      await uploadString(ref(context.storage(), "spikeUploads/client/trusted"), "trusted", "raw", { contentType: "text/plain" });
+    });
+    await assertFails(deleteObject(ref(otherStorage, "spikeUploads/client/trusted")));
     assert.ok(true);
+  });
+
+  it("keeps catalog reads denied when a damaged workspace blocks the contribution increase", async () => {
+    const adminDb = emulatorFirestore();
+    // An active workspace missing its schema: Rules reject it as a workspace, so activating a
+    // membership there must not raise the entitlement or authorize global catalog reads.
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, "users/ws_damaged"), { schemaVersion: 1, accountStatus: "active", lifecycleRevision: 1 });
+      await setDoc(doc(db, "users/ws_damaged/authorizations/systemCatalog"), { schemaVersion: 1, status: "inactive", activeMembershipCount: 0, revision: 1 });
+      await setDoc(doc(db, "workspaces/ws_missing_schema"), { status: "active", membershipRevision: 1, activeRosterCount: 0, catalogContributionCount: 0 });
+      await setDoc(doc(db, "systemExercises/published"), { schemaVersion: 1, name: "Squat", status: "published" });
+    });
+    const client = environment.authenticatedContext("ws_damaged").firestore();
+    await assertFails(getDoc(doc(client, "systemExercises/published")));
+    const before = {
+      workspace: (await adminDb.doc("workspaces/ws_missing_schema").get()).data(),
+      entitlement: (await adminDb.doc("users/ws_damaged/authorizations/systemCatalog").get()).data(),
+      receipts: (await adminDb.collection("lifecycleCommands").get()).size
+    };
+    await assert.rejects(
+      () => transitionMembership(adminDb, {
+        callerUid: "admin",
+        idempotencyKey: "ws-damaged-activate",
+        workspaceId: "ws_missing_schema",
+        uid: "ws_damaged",
+        role: "client",
+        nextStatus: "active",
+        expectedRevision: 0,
+        expectedWorkspaceRevision: 1,
+        maxMembershipsPerAccount: 20,
+        maxMembershipsPerWorkspace: 20
+      }),
+      /workspace-schema-unsupported/
+    );
+    assert.deepEqual((await adminDb.doc("workspaces/ws_missing_schema").get()).data(), before.workspace, "rejected activation leaves the workspace unchanged");
+    assert.deepEqual((await adminDb.doc("users/ws_damaged/authorizations/systemCatalog").get()).data(), before.entitlement, "rejected activation leaves the entitlement unchanged");
+    assert.equal((await adminDb.collection("lifecycleCommands").get()).size, before.receipts, "rejected activation records no receipt");
+    await assertFails(getDoc(doc(client, "systemExercises/published")));
+
+    // After a trusted repair the identical activation commits and the read is authorized.
+    await environment.withSecurityRulesDisabled(async (context) => {
+      await updateDoc(doc(context.firestore(), "workspaces/ws_missing_schema"), { schemaVersion: 1 });
+    });
+    const activated = await transitionMembership(adminDb, {
+      callerUid: "admin",
+      idempotencyKey: "ws-damaged-activate",
+      workspaceId: "ws_missing_schema",
+      uid: "ws_damaged",
+      role: "client",
+      nextStatus: "active",
+      expectedRevision: 0,
+      expectedWorkspaceRevision: 1,
+      maxMembershipsPerAccount: 20,
+      maxMembershipsPerWorkspace: 20
+    });
+    assert.equal(activated.activeMembershipCount, 1);
+    assert.equal(activated.entitlementStatus, "active");
+    await assertSucceeds(getDoc(doc(client, "systemExercises/published")));
   });
 });

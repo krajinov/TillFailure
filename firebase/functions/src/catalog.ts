@@ -132,6 +132,22 @@ function requireValidScannedMembership(membership: FirebaseFirestore.QueryDocume
   requireValidMembership(membership, workspaceId, SCANNED_MEMBERSHIP_STATUSES);
 }
 
+// The workspace lifecycle states this backend recognizes. A workspace may only be the source of a
+// catalog contribution while it is schema-current and in one of these states: Rules'
+// `activeWorkspace` requires `schemaVersion == 1` and `status == "active"`, so a malformed or
+// unknown workspace must never activate an entitlement or grant catalog reads (a membership
+// activation in an active-but-damaged workspace would otherwise raise the account count and let
+// global catalog reads pass). Both checks apply only to contribution increases; removals and
+// neutral changes deliberately skip them so access can always be withdrawn from a damaged record.
+const WORKSPACE_STATUSES: readonly string[] = ["active", "suspended"];
+
+function requireContributableWorkspace(workspace: FirebaseFirestore.DocumentSnapshot): void {
+  requireCurrentSchema(workspace, "workspace-schema-unsupported");
+  if (!WORKSPACE_STATUSES.includes(workspace.get("status"))) {
+    throw new Error(`workspace-status-invalid:${workspace.ref.path}`);
+  }
+}
+
 // One classification of a membership contribution change, shared by the membership command and the
 // workspace scan so the two paths cannot diverge. Only an addition (a new contribution or a
 // restoration) may publish access, so only an addition may raise the stored entitlement status. A
@@ -220,6 +236,11 @@ export async function transitionMembership(db: Firestore, input: MembershipTrans
     // suspended, but it contributes to catalog entitlement only in an active workspace.
     const wasActive = membership.exists && membership.get("status") === "active";
     const becomesActive = input.nextStatus === "active";
+    // An activation must name a workspace in a recognized lifecycle state; withdrawal (and any
+    // neutral change) stays possible regardless of workspace state so access can always be removed.
+    if (becomesActive && !WORKSPACE_STATUSES.includes(workspace.get("status"))) {
+      throw new Error(`workspace-status-invalid:${workspaceRef.path}`);
+    }
     const oldContributes = membership.exists && membership.get("catalogContributionActive") === true;
     const newContributes = becomesActive && workspace.get("status") === "active";
     // Account entitlement stays contribution-based.
@@ -240,6 +261,10 @@ export async function transitionMembership(db: Firestore, input: MembershipTrans
     // the account or entitlement schema is damaged, because that is a deactivation and Rules deny
     // the damaged record's reads regardless of its remaining count.
     requireSchemaForContributionChange(account, entitlement, entitlementChange);
+    // A contribution increase also requires the source workspace itself to be usable, so a
+    // schema-damaged or unrecognized workspace can never activate an entitlement or grant catalog
+    // reads; removal-only commands stay possible for damaged records.
+    if (entitlementChange.adds) requireContributableWorkspace(workspace);
     const entitlementStatus = entitlementChange.status;
     const membershipRevision = previousRevision + 1;
     const result = { uid: input.uid, activeMembershipCount: nextCount, entitlementStatus, membershipRevision };
@@ -330,6 +355,9 @@ export async function transitionWorkspace(db: Firestore, input: WorkspaceTransit
       // one workspace while the member keeps a contribution elsewhere is a deactivation and must
       // still succeed for a schema-damaged record, whose reads Rules keep denying.
       requireSchemaForContributionChange(account, entitlement, entitlementChange);
+      // A restoration increases contributions, so the restored workspace must itself be
+      // schema-current and in a recognized state; suspension only removes them and stays possible.
+      if (entitlementChange.adds) requireContributableWorkspace(workspace);
       transaction.update(membership.ref, { catalogContributionActive: newContributes, revision: FieldValue.increment(1) });
       transaction.update(entitlement.ref, {
         activeMembershipCount: nextCount,
