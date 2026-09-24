@@ -4,6 +4,7 @@ import { after, before, beforeEach, describe, it } from "node:test";
 import { assertFails, assertSucceeds, initializeTestEnvironment, RulesTestEnvironment } from "@firebase/rules-unit-testing";
 import { collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { ref, uploadString } from "firebase/storage";
+import { publishAssignment } from "../src/assigned-program.js";
 import { transitionAccountLifecycle, transitionWorkspace } from "../src/catalog.js";
 import { emulatorFirestore, SPIKE_PROJECT_ID } from "../src/environment.js";
 import { commandId } from "../src/hashing.js";
@@ -369,6 +370,98 @@ describe("Firestore and Storage rules", () => {
       await setDoc(doc(context.firestore(), "users/client/workspaces/ws/assignedPrograms/asg"), { schemaVersion: 1, clientId: "client", workspaceId: "ws", assignmentId: "asg", snapshotId: "content", lifecycleState: "terminal", accessStatus: "revoked", accessExpiresAt: new Date("2030-01-01T00:00:00Z") });
     });
     await assertFails(getDoc(doc(client, snapshotPath)));
+  });
+
+  it("authorizes the documented assignment-header collection query and keeps cross-account denial", async () => {
+    await seedEligibleAssignment();
+    const collectionPath = "users/client/workspaces/ws/assignedPrograms";
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, `${collectionPath}/asg-ready-2`), { schemaVersion: 1, clientId: "client", workspaceId: "ws", assignmentId: "asg-ready-2", snapshotId: "content", lifecycleState: "ready", accessStatus: "active", accessExpiresAt: new Date("2030-01-01T00:00:00Z") });
+      await setDoc(doc(db, `${collectionPath}/asg-terminal`), { schemaVersion: 1, clientId: "client", workspaceId: "ws", assignmentId: "asg-terminal", snapshotId: "content", lifecycleState: "terminal", accessStatus: "replaced", accessExpiresAt: new Date("2030-01-01T00:00:00Z") });
+      await setDoc(doc(db, `${collectionPath}/asg-terminal/snapshots/content`), { schemaVersion: 1, clientId: "client", workspaceId: "ws", assignmentId: "asg-terminal", snapshotId: "content", title: "Retired copy" });
+      await setDoc(doc(db, "users/other"), { schemaVersion: 1, accountStatus: "active" });
+    });
+
+    // The trusted assignment lifecycle is the only writer of this collection and always creates a
+    // header whose identity equals its document path — the invariant the path-bound list relies on.
+    const adminDb = emulatorFirestore();
+    await publishAssignment(adminDb, {
+      callerUid: "trainer",
+      idempotencyKey: "publish-trusted-header",
+      uid: "client",
+      workspaceId: "ws",
+      trainerId: "trainer",
+      assignmentId: "asg-trusted",
+      sourceTemplateId: "template",
+      sourceVersionId: "v1",
+      sourceVersionNumber: 1,
+      sourceContentHash: "sha256:source",
+      snapshotHash: "sha256:snapshot",
+      accessExpiresAtMillis: Date.UTC(2030, 0, 1),
+      workouts: [{ id: "day-one", position: 0, title: "Day one", exercises: [{ id: "squat", position: 0, displayName: "Squat", prescription: "3 x 5" }] }],
+      plans: [],
+      maxWrites: 200
+    });
+    const trustedHeader = await adminDb.doc(`${collectionPath}/asg-trusted`).get();
+    assert.equal(trustedHeader.get("clientId"), "client");
+    assert.equal(trustedHeader.get("workspaceId"), "ws");
+    assert.equal(trustedHeader.get("assignmentId"), "asg-trusted");
+    assert.equal(trustedHeader.get("schemaVersion"), 1);
+
+    const client = environment.authenticatedContext("client").firestore();
+    const other = environment.authenticatedContext("other").firestore();
+
+    // The documented discovery query: the owner's exact account/workspace header collection.
+    const headers = await assertSucceeds(getDocs(collection(client, collectionPath)));
+    assert.deepEqual(headers.docs.map((document) => document.id).sort(), ["asg", "asg-ready-2", "asg-terminal", "asg-trusted"]);
+    // A constrained query is authorized as well and returns only the matching safe headers.
+    const ready = await assertSucceeds(getDocs(query(collection(client, collectionPath), where("lifecycleState", "==", "ready"))));
+    assert.deepEqual(ready.docs.map((document) => document.id).sort(), ["asg", "asg-ready-2", "asg-trusted"]);
+
+    // Cross-account enumeration stays denied in both directions.
+    await assertFails(getDocs(collection(other, collectionPath)));
+    await assertFails(getDocs(collection(client, "users/other/workspaces/ws/assignedPrograms")));
+
+    // Direct gets keep the stricter per-document identity proof, including the safe terminal header.
+    await assertSucceeds(getDoc(doc(client, `${collectionPath}/asg`)));
+    await assertSucceeds(getDoc(doc(client, `${collectionPath}/asg-terminal`)));
+    await assertFails(getDoc(doc(other, `${collectionPath}/asg`)));
+    // Listing a terminal header never grants its content.
+    await assertFails(getDoc(doc(client, `${collectionPath}/asg-terminal/snapshots/content`)));
+
+    // An ineligible owner cannot list: disabled account, revoked membership, suspended workspace.
+    await environment.withSecurityRulesDisabled(async (context) => {
+      await updateDoc(doc(context.firestore(), "users/client"), { accountStatus: "disabled" });
+    });
+    await assertFails(getDocs(collection(client, collectionPath)));
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await updateDoc(doc(db, "users/client"), { accountStatus: "active" });
+      await updateDoc(doc(db, "workspaces/ws/memberships/client"), { status: "revoked" });
+    });
+    await assertFails(getDocs(collection(client, collectionPath)));
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await updateDoc(doc(db, "workspaces/ws/memberships/client"), { status: "active" });
+      await updateDoc(doc(db, "workspaces/ws"), { status: "suspended" });
+    });
+    await assertFails(getDocs(collection(client, collectionPath)));
+    await environment.withSecurityRulesDisabled(async (context) => {
+      await updateDoc(doc(context.firestore(), "workspaces/ws"), { status: "active" });
+    });
+
+    // Forged or malformed headers are never client-writable and stay denied to a direct get, while a
+    // trusted header for the same owner stays readable.
+    await assertFails(setDoc(doc(client, `${collectionPath}/asg-forged`), { schemaVersion: 1, clientId: "client", workspaceId: "ws", assignmentId: "asg-forged", snapshotId: "content", lifecycleState: "ready", accessStatus: "active", accessExpiresAt: new Date("2030-01-01T00:00:00Z") }));
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, `${collectionPath}/asg-forged`), { schemaVersion: 1, clientId: "other", workspaceId: "ws", assignmentId: "asg-forged", snapshotId: "content", lifecycleState: "ready", accessStatus: "active", accessExpiresAt: new Date("2030-01-01T00:00:00Z") });
+      await setDoc(doc(db, `${collectionPath}/asg-malformed`), { clientId: "client", workspaceId: "ws" });
+    });
+    await assertFails(getDoc(doc(client, `${collectionPath}/asg-forged`)));
+    await assertFails(getDoc(doc(client, `${collectionPath}/asg-malformed`)));
+    await assertSucceeds(getDoc(doc(client, `${collectionPath}/asg-ready-2`)));
   });
 
   it("allows an owner write and rejects forged ownership with stable permission denial", async () => {

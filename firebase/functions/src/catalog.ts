@@ -79,17 +79,22 @@ function requireAuthorizableSchema(account: FirebaseFirestore.DocumentSnapshot, 
   requireCurrentSchema(entitlement, "entitlement-schema-unsupported");
 }
 
-// The bounded active-roster scan feeds both the counter consistency checks and the derivation of
-// every affected account/entitlement reference, so each scanned membership must first prove it is
-// a well-formed member of *this* workspace. The membership document ID is the account path segment
-// used for `users/{uid}`, so the stored `userId` must equal it and the stored `workspaceId` must
-// equal the workspace being transitioned; otherwise a malformed document could redirect an
+// Every stored membership document is validated against one contract before its contribution flag,
+// lifecycle state, or revision is used to derive a delta, so the workspace scan and the direct
+// membership command cannot diverge. Each caller passes the statuses it may legitimately meet
+// instead of the check being widened for everyone. The membership document ID is the account path
+// segment used for `users/{uid}`, so the stored `userId` must equal it and the stored `workspaceId`
+// must equal the workspace being handled; otherwise a malformed document could redirect an
 // entitlement delta into another account just by occupying a plausible path. An unknown schema
-// version, a role outside the documented `trainer`/`client` set, a non-boolean contribution flag,
-// and an invalid lifecycle status/revision fail closed instead of being silently repaired, so no
-// path-only authorization inference and no cross-account entitlement contamination is possible.
-// Failures include the offending path so a bounded roster can be reconciled without guessing.
-function requireValidScannedMembership(membership: FirebaseFirestore.QueryDocumentSnapshot, workspaceId: string): void {
+// version, a role outside the documented `trainer`/`client` set, a non-boolean contribution flag, a
+// status outside the documented set, and an invalid revision fail closed instead of being silently
+// repaired, so no path-only authorization inference and no cross-account entitlement contamination
+// is possible. Failures include the offending path so the record can be reconciled without guessing.
+function requireValidMembership(
+  membership: FirebaseFirestore.DocumentSnapshot,
+  workspaceId: string,
+  allowedStatuses: readonly string[]
+): void {
   if (membership.get("schemaVersion") !== CURRENT_SCHEMA_VERSION) {
     throw new Error(`membership-schema-unsupported:${membership.ref.path}`);
   }
@@ -105,15 +110,26 @@ function requireValidScannedMembership(membership: FirebaseFirestore.QueryDocume
   if (typeof membership.get("catalogContributionActive") !== "boolean") {
     throw new Error(`membership-contribution-malformed:${membership.ref.path}`);
   }
-  // The scan query constrains `status == "active"` today; keep the identity check self-contained
-  // so a future change to the scan filter cannot silently widen which lifecycles are transitioned.
-  if (membership.get("status") !== "active") {
+  if (!allowedStatuses.includes(membership.get("status"))) {
     throw new Error(`membership-status-invalid:${membership.ref.path}`);
   }
   const revision = membership.get("revision");
   if (typeof revision !== "number" || !Number.isInteger(revision) || revision < 0) {
     throw new Error(`membership-revision-malformed:${membership.ref.path}`);
   }
+}
+
+// The bounded active-roster scan feeds both the counter consistency checks and the derivation of
+// every affected account/entitlement reference, and it only ever transitions active relationships;
+// keeping the allowed set self-contained means a future change to the scan filter cannot silently
+// widen which lifecycles are transitioned.
+const SCANNED_MEMBERSHIP_STATUSES: readonly string[] = ["active"];
+// A direct membership command must also accept a valid inactive (revoked) document it is restoring.
+// Only the documented membership lifecycle states are accepted, so an unknown status fails closed.
+const DIRECT_MEMBERSHIP_STATUSES: readonly string[] = ["active", "revoked"];
+
+function requireValidScannedMembership(membership: FirebaseFirestore.QueryDocumentSnapshot, workspaceId: string): void {
+  requireValidMembership(membership, workspaceId, SCANNED_MEMBERSHIP_STATUSES);
 }
 
 export async function transitionMembership(db: Firestore, input: MembershipTransition): Promise<CatalogTransitionResult> {
@@ -138,6 +154,13 @@ export async function transitionMembership(db: Firestore, input: MembershipTrans
       return { ...(receipt.get("result") as Omit<CatalogTransitionResult, "replayed">), replayed: true };
     }
     if (!account.exists || !entitlement.exists || !workspace.exists) throw new Error("lifecycle-source-missing");
+    // An existing membership is validated before its contribution flag or lifecycle state derives a
+    // delta and before its revision is compared: a missing or non-boolean contribution flag would
+    // otherwise be read as "not contributing", so re-activating a damaged active membership would
+    // increment both counters and overwrite the document, publishing catalog access instead of
+    // failing closed. A valid revoked membership is still accepted so revocation and restoration
+    // keep working, and a malformed document is never repaired by this command.
+    if (membership.exists) requireValidMembership(membership, input.workspaceId, DIRECT_MEMBERSHIP_STATUSES);
     const previousRevision = membership.exists ? membership.get("revision") as number : 0;
     if (previousRevision !== input.expectedRevision) throw new Error("stale-revision");
     if (workspace.get("membershipRevision") !== input.expectedWorkspaceRevision) throw new Error("stale-workspace-revision");

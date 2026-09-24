@@ -580,6 +580,79 @@ describe("system catalog entitlement lifecycle", () => {
     assert.equal((await db.collection("lifecycleCommands").get()).size, 1);
   });
 
+  it("validates a stored membership before deriving membership-transition deltas", async () => {
+    const storedMembership = (workspaceId: string, uid: string, overrides: Record<string, unknown> = {}) => ({
+      schemaVersion: 1, workspaceId, userId: uid, role: "client", status: "active", revision: 1, catalogContributionActive: true, ...overrides
+    });
+    // Each case damages one active membership of an active workspace (entitlement count 1, roster 1,
+    // contribution 1) and then re-activates it. Without the pre-delta check a missing or non-boolean
+    // contribution flag reads as "not contributing", so the re-activation would increment both
+    // counters and overwrite the damaged document instead of failing closed.
+    const cases: ReadonlyArray<readonly [string, RegExp, (workspaceId: string, uid: string) => Record<string, unknown>]> = [
+      ["contribution-missing", /membership-contribution-malformed/, (workspaceId, uid) => ({ schemaVersion: 1, workspaceId, userId: uid, role: "client", status: "active", revision: 1 })],
+      ["contribution-non-boolean", /membership-contribution-malformed/, (workspaceId, uid) => storedMembership(workspaceId, uid, { catalogContributionActive: "true" })],
+      ["user-mismatch", /membership-user-mismatch/, (workspaceId, uid) => storedMembership(workspaceId, uid, { userId: "other" })],
+      ["workspace-mismatch", /membership-workspace-mismatch/, (workspaceId, uid) => storedMembership(workspaceId, uid, { workspaceId: "ws_elsewhere" })],
+      ["schema-missing", /membership-schema-unsupported/, (workspaceId, uid) => ({ workspaceId, userId: uid, role: "client", status: "active", revision: 1, catalogContributionActive: true })],
+      ["schema-unsupported", /membership-schema-unsupported/, (workspaceId, uid) => storedMembership(workspaceId, uid, { schemaVersion: 2 })],
+      ["role-invalid", /membership-role-invalid/, (workspaceId, uid) => storedMembership(workspaceId, uid, { role: "owner" })],
+      ["status-invalid", /membership-status-invalid/, (workspaceId, uid) => storedMembership(workspaceId, uid, { status: "pending" })],
+      ["revision-malformed", /membership-revision-malformed/, (workspaceId, uid) => storedMembership(workspaceId, uid, { revision: "1" })]
+    ];
+
+    for (const [caseName, expected, damaged] of cases) {
+      const uid = `delta_${caseName.replace(/-/g, "_")}`;
+      const workspaceId = `ws_delta_${caseName.replace(/-/g, "_")}`;
+      const membershipRef = db.doc(`workspaces/${workspaceId}/memberships/${uid}`);
+      const idempotencyKey = `delta-${caseName}`;
+
+      await seed(uid, workspaceId);
+      assert.equal((await transitionMembership(db, activation(uid, workspaceId, `activate-${caseName}`, 0, 1))).activeMembershipCount, 1);
+      assert.deepEqual(await workspaceCounts(workspaceId), { roster: 1, contributions: 1, revision: 2, status: "active" });
+      await membershipRef.set(damaged(workspaceId, uid));
+
+      const before = {
+        workspace: (await db.doc(`workspaces/${workspaceId}`).get()).data(),
+        membership: (await membershipRef.get()).data(),
+        account: (await db.doc(`users/${uid}`).get()).data(),
+        entitlement: (await db.doc(`users/${uid}/authorizations/systemCatalog`).get()).data(),
+        receipts: (await db.collection("lifecycleCommands").get()).size
+      };
+
+      await assert.rejects(
+        () => transitionMembership(db, activation(uid, workspaceId, idempotencyKey, 1, 2)),
+        expected
+      );
+
+      // Atomic rejection: no counter, document, or receipt changes, and no active entitlement is
+      // published for the damaged membership.
+      assert.deepEqual((await db.doc(`workspaces/${workspaceId}`).get()).data(), before.workspace, `${caseName}: workspace must stay unchanged`);
+      assert.deepEqual((await membershipRef.get()).data(), before.membership, `${caseName}: membership must not be repaired`);
+      assert.deepEqual((await db.doc(`users/${uid}`).get()).data(), before.account, `${caseName}: account must stay unchanged`);
+      assert.deepEqual((await db.doc(`users/${uid}/authorizations/systemCatalog`).get()).data(), before.entitlement, `${caseName}: entitlement must stay unchanged`);
+      assert.equal((await entitlementState(uid)).activeMembershipCount, 1, `${caseName}: count must not be incremented`);
+      assert.equal((await db.collection("lifecycleCommands").get()).size, before.receipts, `${caseName}: must record no receipt`);
+      assert.equal((await db.doc(`lifecycleCommands/${commandId("admin", idempotencyKey)}`).get()).exists, false, `${caseName}: must record no receipt`);
+    }
+
+    // A valid stored membership still transitions: revoke then restore the intact document, which
+    // proves the pre-delta check accepts the documented inactive state instead of only "active".
+    await seed("delta_valid", "ws_delta_valid");
+    const validMembershipRef = db.doc("workspaces/ws_delta_valid/memberships/delta_valid");
+    await transitionMembership(db, activation("delta_valid", "ws_delta_valid", "delta-valid-activate", 0, 1));
+    const revoked = await transitionMembership(db, activation("delta_valid", "ws_delta_valid", "delta-valid-revoke", 1, 2, { nextStatus: "revoked" }));
+    assert.equal(revoked.entitlementStatus, "inactive");
+    assert.equal((await validMembershipRef.get()).get("status"), "revoked");
+    assert.equal((await validMembershipRef.get()).get("catalogContributionActive"), false);
+    const restored = await transitionMembership(db, activation("delta_valid", "ws_delta_valid", "delta-valid-restore", 2, 3));
+    assert.equal(restored.entitlementStatus, "active");
+    assert.deepEqual(await workspaceCounts("ws_delta_valid"), { roster: 1, contributions: 1, revision: 4, status: "active" });
+    assert.equal(await accountCount("delta_valid"), 1);
+    assert.equal((await entitlementState("delta_valid")).status, "active");
+    assert.equal((await entitlementState("delta_valid")).activeMembershipCount, 1);
+    assert.equal((await db.doc(`lifecycleCommands/${commandId("admin", "delta-valid-restore")}`).get()).get("commandKind"), "membership-transition");
+  });
+
   it("guards account lifecycle commands with revisions, receipts, and idempotent replay", async () => {
     await seedAccount("acct", { status: "active", activeMembershipCount: 1 });
 

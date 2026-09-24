@@ -59,7 +59,9 @@ service cloud.firestore {
     }
 
     match /users/{uid}/workspaces/{wid}/assignedPrograms/{aid} {
-      allow get, list: if signedIn()
+      // A single-document read knows the concrete `{aid}`, so it can prove the full identity tuple
+      // from the document itself and stays strict.
+      allow get: if signedIn()
         && request.auth.uid == uid
         && activeAccount(uid)
         && activeWorkspace(wid)
@@ -68,6 +70,18 @@ service cloud.firestore {
         && resource.data.clientId == uid
         && resource.data.workspaceId == wid
         && resource.data.assignmentId == aid;
+      // A collection query cannot prove per-document predicates for a varying `{aid}` (Rules are not
+      // filters), so listing is authorized by the path-bound own account/workspace plus the active
+      // account/workspace/membership gates, and by the invariant the trusted assignment lifecycle
+      // maintains: it is the only writer of this collection (all client writes are denied) and it
+      // always creates headers whose `clientId`/`workspaceId`/`assignmentId` equal their path. The
+      // readable header is safe lifecycle/provenance/scheduling metadata even when terminal; content
+      // and every descendant still require the per-assignment gate below.
+      allow list: if signedIn()
+        && request.auth.uid == uid
+        && activeAccount(uid)
+        && activeWorkspace(wid)
+        && activeClientMembership(wid, uid);
       allow write: if false;
 
       match /snapshots/content {
