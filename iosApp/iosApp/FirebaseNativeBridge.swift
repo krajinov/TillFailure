@@ -9,11 +9,13 @@ import Shared
 ///
 /// A Firestore client that completed `terminate`/`clearPersistence` is permanently unusable, and
 /// `Firestore.firestore(app:)` keeps returning that same terminated instance for as long as the app
-/// object exists. The registry therefore issues one *generation* per project at a time:
+/// object exists. The registry therefore issues one *generation* per bridge:
 ///
 ///  - a generation is closed synchronously the moment teardown starts, so a bridge constructed
 ///    concurrently with (or after) teardown can never acquire the dying app or its Firestore/Auth
 ///    singletons;
+///  - overlapping bridges for the same project have distinct Auth and Firestore instances, so
+///    terminating one cannot invalidate the other;
 ///  - the next bridge configures a brand-new app with a unique name, so it always receives fresh SDK
 ///    instances, independent of when the retired app's asynchronous deletion finishes;
 ///  - the retired app is deleted only after its Firestore instance has been terminated and its
@@ -50,16 +52,12 @@ private final class FirebaseAppGenerations {
     }
 
     private let lock = NSLock()
-    private var generations: [String: Generation] = [:]
     private var sequence: Int64 = 0
 
-    /// Returns the live generation for the project, or configures a fresh one.
+    /// Configures a uniquely named app for this bridge, even when another bridge is live.
     func acquire(projectID: String) -> Generation {
         lock.lock()
         defer { lock.unlock() }
-        if let live = generations[projectID], !live.isClosed {
-            return live
-        }
         sequence += 1
         let appName = "tillfailure-\(projectID)-\(sequence)"
         let options = FirebaseOptions(googleAppID: "1:1234567890:ios:0000000000000000", gcmSenderID: "1234567890")
@@ -70,9 +68,7 @@ private final class FirebaseAppGenerations {
         guard let app = FirebaseApp.app(name: appName) else {
             preconditionFailure("Failed to configure the Firebase spike app \(appName)")
         }
-        let generation = Generation(projectID: projectID, appName: appName, app: app)
-        generations[projectID] = generation
-        return generation
+        return Generation(projectID: projectID, appName: appName, app: app)
     }
 
     /// Closes the generation synchronously so no new bridge can be handed its instances. This runs
@@ -80,9 +76,6 @@ private final class FirebaseAppGenerations {
     func close(_ generation: Generation) {
         lock.lock()
         generation.close()
-        if generations[generation.projectID] === generation {
-            generations.removeValue(forKey: generation.projectID)
-        }
         lock.unlock()
     }
 
@@ -120,12 +113,15 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
     private var currentEpoch: Int64 = 0
     private var terminated = false
 
+    #if DEBUG
+    var debugAppName: String { generation.appName }
+    #endif
+
     init(host: String = "127.0.0.1", projectID: String = "demo-tillfailure-m3") {
         precondition(projectID.hasPrefix("demo-"), "The Firebase spike requires an emulator-only demo project")
         precondition(["127.0.0.1", "localhost"].contains(host), "The Firebase spike requires loopback")
-        // One generation per project: a bridge constructed after a completed teardown configures a
-        // fresh app (and therefore fresh Auth/Firestore instances) instead of reusing the terminated
-        // singletons its predecessor retired.
+        // One generation per bridge: an overlapping bridge and a later recreation both receive
+        // fresh Auth/Firestore instances independent of this bridge's teardown.
         let current = FirebaseAppGenerations.shared.acquire(projectID: projectID)
         generation = current
         let app = current.app

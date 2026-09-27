@@ -27,6 +27,7 @@ service cloud.firestore {
     function activeClientMembership(wid, uid) {
       let membership = get(/databases/$(database)/documents/workspaces/$(wid)/memberships/$(uid));
       return membership.data.schemaVersion == 1
+        && membership.data.workspaceId == wid
         && membership.data.userId == uid
         && membership.data.role == "client"
         && membership.data.status == "active";

@@ -401,7 +401,7 @@ export interface AccountLifecycleResult {
 // last-writer-wins, so a delayed or retried enable could reactivate an account and its catalog
 // entitlement after a newer disable had committed. Every command now names the expected lifecycle
 // revision, is bound to its caller and idempotency key, and commits account state, entitlement
-// state, the lifecycle revision, and the receipt in one transaction.
+// state (when present), the lifecycle revision, and the receipt in one transaction.
 export async function transitionAccountLifecycle(db: Firestore, input: AccountLifecycleTransition): Promise<AccountLifecycleResult> {
   requireCommandIdentity(input);
   if (typeof input.uid !== "string" || input.uid.length === 0) throw new Error("account-uid-required");
@@ -420,10 +420,11 @@ export async function transitionAccountLifecycle(db: Firestore, input: AccountLi
       if (receipt.get("requestHash") !== requestHash) throw new Error("idempotency-key-reused");
       return { ...(receipt.get("result") as Omit<AccountLifecycleResult, "replayed">), replayed: true };
     }
-    if (!account.exists || !entitlement.exists) throw new Error("lifecycle-source-missing");
+    if (!account.exists) throw new Error("lifecycle-source-missing");
     const storedRevision = account.get("lifecycleRevision");
     if (!Number.isInteger(storedRevision)) throw new Error("account-revision-malformed");
     if (storedRevision !== input.expectedLifecycleRevision) throw new Error("stale-revision");
+    if (input.enabled && !entitlement.exists) throw new Error("lifecycle-source-missing");
     // Enabling requires the schema versions the current Rules authorize on both documents, so a
     // missing, malformed, or unsupported version fails closed instead of reporting restored access
     // that Rules would still deny. Unknown data is never silently migrated here, and disable
@@ -443,7 +444,12 @@ export async function transitionAccountLifecycle(db: Firestore, input: AccountLi
     const accountStatus: AccountLifecycleStatus = input.enabled ? "active" : "disabled";
     const lifecycleRevision = (storedRevision as number) + 1;
     transaction.update(accountRef, { accountStatus, lifecycleRevision });
-    transaction.update(entitlementRef, { status: entitlementStatus, revision: FieldValue.increment(1) });
+    // A missing authorization already denies catalog reads. Keep it absent on disable rather
+    // than inventing a count or a schema-current document that could later be mistaken for a
+    // repaired entitlement. The account revision and receipt still commit atomically.
+    if (entitlement.exists) {
+      transaction.update(entitlementRef, { status: entitlementStatus, revision: FieldValue.increment(1) });
+    }
     const result: Omit<AccountLifecycleResult, "replayed"> = { uid: input.uid, accountStatus, entitlementStatus, lifecycleRevision };
     transaction.create(receiptRef, {
       schemaVersion: 1,

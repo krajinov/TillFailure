@@ -32,10 +32,10 @@ after(async () => {
 async function seedEligibleAssignment(): Promise<void> {
   await environment.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
-    await setDoc(doc(db, "users/client"), { schemaVersion: 1, accountStatus: "active" });
+    await setDoc(doc(db, "users/client"), { schemaVersion: 1, accountStatus: "active", lifecycleRevision: 1 });
     await setDoc(doc(db, "users/client/authorizations/systemCatalog"), { schemaVersion: 1, status: "active", activeMembershipCount: 1 });
     await setDoc(doc(db, "workspaces/ws"), { schemaVersion: 1, status: "active" });
-    await setDoc(doc(db, "workspaces/ws/memberships/client"), { schemaVersion: 1, userId: "client", role: "client", status: "active" });
+    await setDoc(doc(db, "workspaces/ws/memberships/client"), { schemaVersion: 1, workspaceId: "ws", userId: "client", role: "client", status: "active" });
     await setDoc(doc(db, "systemExercises/published"), { schemaVersion: 1, name: "Squat", status: "published" });
     await setDoc(doc(db, "systemExercises/draft"), { schemaVersion: 1, name: "Draft", status: "draft" });
     await setDoc(doc(db, "users/client/workspaces/ws/assignedPrograms/asg"), { schemaVersion: 1, clientId: "client", workspaceId: "ws", assignmentId: "asg", snapshotId: "content", lifecycleState: "ready", accessStatus: "active", accessExpiresAt: new Date("2030-01-01T00:00:00Z") });
@@ -530,6 +530,56 @@ describe("Firestore and Storage rules", () => {
       await setDoc(doc(context.firestore(), "users/client/workspaces/ws/assignedPrograms/asg"), { schemaVersion: 1, clientId: "client", workspaceId: "ws", assignmentId: "asg", snapshotId: "content", lifecycleState: "terminal", accessStatus: "revoked", accessExpiresAt: new Date("2030-01-01T00:00:00Z") });
     });
     await assertFails(getDoc(doc(client, snapshotPath)));
+  });
+
+  it("denies every assignment read through a path-correct membership with another tenant ID", async () => {
+    await seedEligibleAssignment();
+    const base = "users/client/workspaces/ws/assignedPrograms/asg";
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, `${base}/snapshots/content/workouts/day`), { clientId: "client", workspaceId: "ws", assignmentId: "asg", snapshotId: "content" });
+      await setDoc(doc(db, `${base}/plannedWorkouts/plan`), { clientId: "client", workspaceId: "ws", assignmentId: "asg", snapshotId: "content" });
+      await setDoc(doc(db, `${base}/manifests/download`), { clientId: "client", workspaceId: "ws", assignmentId: "asg" });
+    });
+    const client = environment.authenticatedContext("client").firestore();
+    const reads = [base, `${base}/snapshots/content`, `${base}/snapshots/content/workouts/day`, `${base}/snapshots/content/workouts/day/exercises/item`, `${base}/plannedWorkouts/plan`, `${base}/manifests/download`];
+    for (const path of reads) await assertSucceeds(getDoc(doc(client, path)));
+    await assertSucceeds(getDocs(collection(client, "users/client/workspaces/ws/assignedPrograms")));
+    const contentQuery = (path: string) => query(collection(client, path), where("clientId", "==", "client"), where("workspaceId", "==", "ws"), where("assignmentId", "==", "asg"), where("snapshotId", "==", "content"));
+    await assertSucceeds(getDocs(contentQuery(`${base}/snapshots/content/workouts`)));
+    await assertSucceeds(getDocs(contentQuery(`${base}/snapshots/content/workouts/day/exercises`)));
+    await assertSucceeds(getDocs(contentQuery(`${base}/plannedWorkouts`)));
+
+    await environment.withSecurityRulesDisabled(async (context) => {
+      await updateDoc(doc(context.firestore(), "workspaces/ws/memberships/client"), { workspaceId: "other-tenant" });
+    });
+    for (const path of reads) await assertFails(getDoc(doc(client, path)));
+    await assertFails(getDocs(collection(client, "users/client/workspaces/ws/assignedPrograms")));
+    await assertFails(getDocs(contentQuery(`${base}/snapshots/content/workouts`)));
+    await assertFails(getDocs(contentQuery(`${base}/snapshots/content/workouts/day/exercises`)));
+    await assertFails(getDocs(contentQuery(`${base}/plannedWorkouts`)));
+  });
+
+  it("revokes assignment reads when account disable finds no authorization", async () => {
+    await seedEligibleAssignment();
+    const base = "users/client/workspaces/ws/assignedPrograms/asg";
+    await environment.withSecurityRulesDisabled(async (context) => {
+      await context.firestore().doc("users/client/authorizations/systemCatalog").delete();
+    });
+    const client = environment.authenticatedContext("client").firestore();
+    await assertSucceeds(getDoc(doc(client, base)));
+    await assertSucceeds(getDoc(doc(client, `${base}/snapshots/content`)));
+    const adminDb = emulatorFirestore();
+    const disabled = await transitionAccountLifecycle(adminDb, { callerUid: "admin", idempotencyKey: "missing-authorization-disable", uid: "client", enabled: false, expectedLifecycleRevision: 1, maxMembershipsPerAccount: 20 });
+    assert.equal(disabled.lifecycleRevision, 2);
+    assert.equal((await adminDb.doc("users/client/authorizations/systemCatalog").get()).exists, false);
+    assert.equal((await adminDb.doc("users/client").get()).get("accountStatus"), "disabled");
+    await assertFails(getDoc(doc(client, base)));
+    await assertFails(getDoc(doc(client, `${base}/snapshots/content`)));
+    await assertFails(getDoc(doc(client, `${base}/snapshots/content/workouts/day/exercises/item`)));
+    await assertFails(getDocs(collection(client, "users/client/workspaces/ws/assignedPrograms")));
+    await assert.rejects(() => transitionAccountLifecycle(adminDb, { callerUid: "admin", idempotencyKey: "missing-authorization-enable", uid: "client", enabled: true, expectedLifecycleRevision: 2, maxMembershipsPerAccount: 20 }), /lifecycle-source-missing/);
+    assert.equal((await adminDb.doc(`lifecycleCommands/${commandId("admin", "missing-authorization-enable")}`).get()).exists, false);
   });
 
   it("authorizes the documented assignment-header collection query and keeps cross-account denial", async () => {

@@ -25,16 +25,14 @@ class AndroidFirebaseSpikeClient(
     private val terminated = AtomicBoolean(false)
 
     init {
-        // One generation per project: a client constructed after a completed teardown receives fresh
-        // SDK instances instead of the terminated Firestore singleton its predecessor retired.
+        // One generation per client: overlapping clients and later recreations receive distinct
+        // SDK instances, so this client's teardown cannot terminate a peer's Firestore singleton.
         generation = AndroidFirebaseAppRegistry.acquire(context, configuration.projectId)
         app = generation.app
         auth = FirebaseAuth.getInstance(app)
         firestore = FirebaseFirestore.getInstance(app)
-        if (generation.claimEmulatorConfiguration()) {
-            auth.useEmulator(configuration.host, configuration.authPort)
-            firestore.useEmulator(configuration.host, configuration.firestorePort)
-        }
+        auth.useEmulator(configuration.host, configuration.authPort)
+        firestore.useEmulator(configuration.host, configuration.firestorePort)
     }
 
     /**

@@ -11,6 +11,7 @@ enum FirebaseSpikeHarness {
     private static var registryProbe: RegistryLifecycleProbe?
     private static var counterProbe: CounterParityProbe?
     private static var terminationRecreationProbe: TerminationRecreationProbe?
+    private static var overlappingClientsProbe: OverlappingClientsProbe?
 
     static func runIfRequested(bridge: FirebaseNativeBridge) {
         guard ProcessInfo.processInfo.environment["TILLFAILURE_FIREBASE_SPIKE"] == "1" else { return }
@@ -85,6 +86,9 @@ enum FirebaseSpikeHarness {
                                                 projectID: "demo-tillfailure-m3"
                                             ) {
                                                 terminationRecreationProbe = nil
+                                                overlappingClientsProbe = OverlappingClientsProbe(projectID: "demo-tillfailure-m3") {
+                                                    overlappingClientsProbe = nil
+                                                }
                                             }
                                         }
                                     }
@@ -727,6 +731,80 @@ enum FirebaseSpikeHarness {
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                 print("M3_FIREBASE_SPIKE retiredEpochFenced=\(!delivered && Date() >= deadline ? "PASS" : "FAIL")")
+            }
+        }
+    }
+
+    /// Exercises two live clients of the same project before either is torn down, then repeats
+    /// A/B teardown and C recreation in the same process using real Auth and Firestore operations.
+    private final class OverlappingClientsProbe {
+        private let projectID: String
+        private let completion: () -> Void
+        private var cycle = 0
+        private var clients: [FirebaseNativeBridge] = []
+
+        init(projectID: String, completion: @escaping () -> Void) {
+            self.projectID = projectID
+            self.completion = completion
+            runCycle()
+        }
+
+        private func operate(_ bridge: FirebaseNativeBridge, epoch: Int64, label: String, then: @escaping (String?) -> Void) {
+            bridge.signInAnonymously { result in
+                guard case .success(let uid) = result else { then(nil); return }
+                let path = "spikeEcho/\(uid)/documents/native-ios-overlap-\(label)"
+                _ = bridge.writeDocument(path: path, fields: ["ownerUid": uid, "value": label, "counter": "0"], accountEpoch: epoch) { write in
+                    guard write.failure == nil else { then(nil); return }
+                    _ = bridge.getDocument(path: path, accountEpoch: epoch) { read in
+                        then(read.document?.exists == true && read.document?.isFromCache == false ? path : nil)
+                    }
+                }
+            }
+        }
+
+        private func runCycle() {
+            guard cycle < 2 else { completion(); return }
+            let a = FirebaseNativeBridge(projectID: projectID)
+            let b = FirebaseNativeBridge(projectID: projectID)
+            clients = [a, b]
+            let aEpoch = Int64(2_000 + cycle * 10)
+            let bEpoch = aEpoch + 1
+            print("M3_FIREBASE_SPIKE overlapDistinctApps=\(a.debugAppName != b.debugAppName ? "PASS" : "FAIL") cycle=\(cycle)")
+            operate(a, epoch: aEpoch, label: "a-\(cycle)") { [self] aPath in
+                guard let aPath else { print("M3_FIREBASE_SPIKE overlapAOperation=FAIL cycle=\(cycle)"); completion(); return }
+                print("M3_FIREBASE_SPIKE overlapAOperation=PASS cycle=\(cycle)")
+                operate(b, epoch: bEpoch, label: "b-\(cycle)") { [self] bPath in
+                    guard let bPath else { print("M3_FIREBASE_SPIKE overlapBOperation=FAIL cycle=\(cycle)"); completion(); return }
+                    print("M3_FIREBASE_SPIKE overlapBOperation=PASS cycle=\(cycle)")
+                    a.terminateAndClear { [self] cleared in
+                        print("M3_FIREBASE_SPIKE overlapATerminate=\(cleared.failure == nil ? "PASS" : "FAIL") cycle=\(cycle)")
+                        _ = b.getDocument(path: bPath, accountEpoch: bEpoch) { [self] liveRead in
+                            print("M3_FIREBASE_SPIKE overlapBAfterA=\(liveRead.document?.exists == true && liveRead.document?.isFromCache == false ? "PASS" : "FAIL") cycle=\(cycle)")
+                            _ = a.getDocument(path: aPath, accountEpoch: aEpoch) { [self] retiredRead in
+                                print("M3_FIREBASE_SPIKE overlapARetired=\(retiredRead.failure?.code == "FAILED_PRECONDITION" && retiredRead.document == nil ? "PASS" : "FAIL") cycle=\(cycle)")
+                                var lateDelivered = false
+                                _ = b.getDocument(path: bPath, accountEpoch: aEpoch) { _ in lateDelivered = true }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
+                                    print("M3_FIREBASE_SPIKE overlapLateCallback=\(!lateDelivered ? "PASS" : "FAIL") cycle=\(cycle)")
+                                    b.terminateAndClear { [self] bCleared in
+                                        print("M3_FIREBASE_SPIKE overlapBTerminate=\(bCleared.failure == nil ? "PASS" : "FAIL") cycle=\(cycle)")
+                                        let c = FirebaseNativeBridge(projectID: projectID)
+                                        clients.append(c)
+                                        print("M3_FIREBASE_SPIKE overlapFreshC=\(c.debugAppName != a.debugAppName && c.debugAppName != b.debugAppName ? "PASS" : "FAIL") cycle=\(cycle)")
+                                        operate(c, epoch: bEpoch + 1, label: "c-\(cycle)") { [self] cPath in
+                                            print("M3_FIREBASE_SPIKE overlapCOperation=\(cPath != nil ? "PASS" : "FAIL") cycle=\(cycle)")
+                                            c.terminateAndClear { [self] cCleared in
+                                                print("M3_FIREBASE_SPIKE overlapCTerminate=\(cCleared.failure == nil ? "PASS" : "FAIL") cycle=\(cycle)")
+                                                cycle += 1
+                                                runCycle()
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

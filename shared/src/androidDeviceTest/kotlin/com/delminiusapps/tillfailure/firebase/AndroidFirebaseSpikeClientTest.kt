@@ -423,6 +423,45 @@ class AndroidFirebaseSpikeClientTest {
         terminateAndAssert(finalClient)
     }
 
+    @Test
+    fun overlappingClientsOwnIndependentSdkGenerations() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val configuration = FirebaseEmulatorConfiguration(host = "10.0.2.2")
+        val fence = AccountCallbackFence()
+        repeat(2) { cycle ->
+            val aEpoch = fence.advance()
+            val a = AndroidFirebaseSpikeClient(context, configuration, fence)
+            val aUid = signInAndReadUid(a, aEpoch)
+            val aPath = "spikeEcho/$aUid/documents/native-android-overlap-a-$cycle"
+            writeAndAssert(a, aPath, aUid, aEpoch)
+
+            val bEpoch = fence.advance()
+            val b = AndroidFirebaseSpikeClient(context, configuration, fence)
+            assertFalse(a.firebaseApp === b.firebaseApp, "overlapping clients must have separate apps")
+            val bUid = signInAndReadUid(b, bEpoch)
+            val bPath = "spikeEcho/$bUid/documents/native-android-overlap-b-$cycle"
+            writeAndAssert(b, bPath, bUid, bEpoch)
+            terminateAndAssert(a)
+            assertEquals(FirebaseDataOrigin.SERVER, readServer(b, bPath, bEpoch).document?.origin)
+            assertEquals(StableFirebaseErrorCode.FAILED_PRECONDITION, readServer(a, aPath, aEpoch).failure?.code)
+            val late = AtomicBoolean(false)
+            b.getDocument(bPath, aEpoch) { late.set(true) }
+            Thread.sleep(500)
+            assertFalse(late.get(), "A's retired epoch reached B")
+            terminateAndAssert(b)
+
+            val cEpoch = fence.advance()
+            val c = AndroidFirebaseSpikeClient(context, configuration, fence)
+            assertFalse(c.firebaseApp === a.firebaseApp)
+            assertFalse(c.firebaseApp === b.firebaseApp)
+            val cUid = signInAndReadUid(c, cEpoch)
+            val cPath = "spikeEcho/$cUid/documents/native-android-overlap-c-$cycle"
+            writeAndAssert(c, cPath, cUid, cEpoch)
+            assertEquals(FirebaseDataOrigin.SERVER, readServer(c, cPath, cEpoch).document?.origin)
+            terminateAndAssert(c)
+        }
+    }
+
     private fun signInAndReadUid(client: AndroidFirebaseSpikeClient, epoch: Long): String {
         val signedIn = AtomicReference<FirebaseUnitResult>()
         val signInFinished = CountDownLatch(1)

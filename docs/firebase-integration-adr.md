@@ -84,6 +84,8 @@ GitLive `2.6.0` was compared against those requirements. ADR acceptance includes
 
 Milestone 3 evidence is recorded in [the milestone report](milestones/milestone-3-report.md). Android instrumentation and the actual signed Swift implementation passed Auth observation, accepted/server reads and writes, Rules rejection mapping, pending/cache-to-server metadata transitions, transactions, stalled cancellation/timeout, epoch fencing, and terminate/clear. Swift also passed a real Settings background/foreground transition. Platform recovery records are AES-GCM encrypted with Android Keystore or Apple Keychain keys; hardware backing, secure erase, physical-device Data Protection, production key rotation, and native Storage recovery are not claimed.
 
+For same-process overlap, each native spike client owns a distinct named Firebase app generation. Terminating and clearing one client never terminates another client's Firestore instance; both native harnesses prove A/B coexistence, B's successful server read after A's teardown, A's terminal failure, and a fresh C after B's teardown across repeated cycles. The Android SDK app is retained as closed inert state after cleanup because `FirebaseApp.delete()` broke later SDK component lookups in this harness; Apple deletes its app after Firestore termination and persistence clearing.
+
 - [GitLive 2.6.0 coordinates, coverage, and iOS linking](https://github.com/GitLiveApp/firebase-kotlin-sdk/blob/v2.6.0/README.md)
 - [GitLive 2.6.0 build versions](https://github.com/GitLiveApp/firebase-kotlin-sdk/blob/v2.6.0/gradle/libs.versions.toml)
 - [Firebase Android setup and BoM](https://firebase.google.com/docs/android/setup)

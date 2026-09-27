@@ -903,6 +903,32 @@ describe("system catalog entitlement lifecycle", () => {
     assert.equal((await db.collection("lifecycleCommands").get()).size, 2);
   });
 
+  it("disables an account atomically when its authorization document is absent", async () => {
+    const uid = "missing-authorization";
+    const accountRef = db.doc(`users/${uid}`);
+    const authorizationRef = db.doc(`users/${uid}/authorizations/systemCatalog`);
+    const receiptRef = db.doc(`lifecycleCommands/${commandId("admin", `disable-${uid}`)}`);
+    await accountRef.set({ schemaVersion: 1, accountStatus: "active", lifecycleRevision: 1 });
+    assert.equal((await authorizationRef.get()).exists, false);
+
+    const disabled = await transitionAccountLifecycle(db, accountLifecycle(uid, false, 1));
+    assert.deepEqual(disabled, { uid, accountStatus: "disabled", entitlementStatus: "inactive", lifecycleRevision: 2, replayed: false });
+    assert.deepEqual(await accountState(uid), { accountStatus: "disabled", lifecycleRevision: 2 });
+    assert.equal((await authorizationRef.get()).exists, false, "disable must not invent an entitlement count");
+    const receipt = (await receiptRef.get()).data();
+    assert.equal(receipt?.storedEntitlementCount, null);
+    assert.deepEqual(receipt?.result, { uid, accountStatus: "disabled", entitlementStatus: "inactive", lifecycleRevision: 2 });
+
+    assert.deepEqual(await transitionAccountLifecycle(db, accountLifecycle(uid, false, 1)), { ...disabled, replayed: true });
+    assert.deepEqual((await receiptRef.get()).data(), receipt);
+    assert.deepEqual(await accountState(uid), { accountStatus: "disabled", lifecycleRevision: 2 });
+    await assert.rejects(() => transitionAccountLifecycle(db, accountLifecycle(uid, false, 1, { idempotencyKey: "stale-disable" })), /stale-revision/);
+    await assert.rejects(() => transitionAccountLifecycle(db, accountLifecycle(uid, true, 1)), /stale-revision/);
+    await assert.rejects(() => transitionAccountLifecycle(db, accountLifecycle(uid, true, 2)), /lifecycle-source-missing/);
+    assert.equal((await authorizationRef.get()).exists, false);
+    assert.equal((await db.doc(`lifecycleCommands/${commandId("admin", `enable-${uid}`)}`).get()).exists, false);
+  });
+
   it("binds account lifecycle commands to their caller and payload", async () => {
     await seedAccount("acct", { status: "active", activeMembershipCount: 1 });
     await transitionAccountLifecycle(db, accountLifecycle("acct", false, 1));
