@@ -48,7 +48,11 @@ class AndroidFirebaseSpikeClient(
 
     private fun deliverIfCurrent(epoch: Long, cancelled: AtomicBoolean?, deliver: () -> Unit) {
         synchronized(callbackLock) {
-            if (!terminated.get() && cancelled?.get() != true && fence.accepts(epoch)) deliver()
+            if (!terminated.get() && cancelled?.get() != true) {
+                fence.deliverIfCurrent(epoch) {
+                    if (!terminated.get() && cancelled?.get() != true) deliver()
+                }
+            }
         }
     }
 

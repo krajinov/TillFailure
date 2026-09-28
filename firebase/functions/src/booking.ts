@@ -177,8 +177,14 @@ function callerAuthorizationRefs(db: Firestore, callerUid: string, workspaceId: 
   ] as const;
 }
 
-function receiptResult(data: FirebaseFirestore.DocumentData, requestHash: string): BookingResult {
-  if (data.requestHash !== requestHash) throw new Error("idempotency-key-reused");
+function receiptResult(
+  data: FirebaseFirestore.DocumentData,
+  identity: { readonly commandKind: "book" | "reschedule" | "cancel"; readonly callerUid: string; readonly workspaceId: string; readonly appointmentId: string; readonly requestHash: string }
+): BookingResult {
+  if (data.schemaVersion !== 1 || data.commandKind !== identity.commandKind || data.callerUid !== identity.callerUid ||
+      data.workspaceId !== identity.workspaceId || data.appointmentId !== identity.appointmentId || data.requestHash !== identity.requestHash) {
+    throw new Error("idempotency-key-reused");
+  }
   return {
     appointmentId: data.appointmentId as string,
     revision: data.revision as number,
@@ -188,20 +194,32 @@ function receiptResult(data: FirebaseFirestore.DocumentData, requestHash: string
   };
 }
 
+function requireLiveAppointment(appointment: FirebaseFirestore.DocumentSnapshot, workspaceId: string): void {
+  if (!appointment.exists) throw new Error("appointment-not-live");
+  if (appointment.get("schemaVersion") !== 1) throw new Error("appointment-schema-unsupported");
+  if (appointment.get("workspaceId") !== workspaceId) throw new Error("appointment-workspace-mismatch");
+  if (appointment.get("status") !== "confirmed") throw new Error("appointment-not-live");
+  const ids = appointment.get("bucketIds");
+  if (!Array.isArray(ids) || !ids.every((id) => typeof id === "string" && id.length > 0 && !id.includes("/"))) {
+    throw new Error("appointment-locks-malformed");
+  }
+}
+
 export async function bookAppointment(db: Firestore, request: BookingRequest, policy: BookingPolicy): Promise<BookingResult> {
-  const buckets = validateRange(request, policy);
-  const ids = bucketIds(request.trainerId, buckets);
-  if (ids.length + 2 > policy.maxWrites) throw new Error("write-budget-exceeded");
   const receiptRef = db.doc(`workspaces/${request.workspaceId}/bookingCommands/${commandId(request.callerUid, request.idempotencyKey)}`);
   const appointmentRef = db.doc(`workspaces/${request.workspaceId}/appointments/${request.appointmentId}`);
   const requestHash = stableHash({ kind: "book", ...request });
 
   return db.runTransaction(async (transaction) => {
-    const documents = await transaction.getAll(...bookingAuthorizationRefs(db, request), receiptRef);
-    const [callerAccount, workspace, callerMembership, trainerAccount, trainerMembership, clientAccount, clientMembership, receipt] = documents;
+    const receipt = await transaction.get(receiptRef);
+    if (receipt.exists) return receiptResult(receipt.data()!, { commandKind: "book", callerUid: request.callerUid, workspaceId: request.workspaceId, appointmentId: request.appointmentId, requestHash });
+    const documents = await transaction.getAll(...bookingAuthorizationRefs(db, request));
+    const [callerAccount, workspace, callerMembership, trainerAccount, trainerMembership, clientAccount, clientMembership] = documents;
     authorizeBookingCaller(request, callerAccount!, workspace!, callerMembership!);
     authorizeBookingCounterparts(request, trainerAccount!, trainerMembership!, clientAccount!, clientMembership!);
-    if (receipt!.exists) return receiptResult(receipt!.data()!, requestHash);
+    const buckets = validateRange(request, policy);
+    const ids = bucketIds(request.trainerId, buckets);
+    if (ids.length + 2 > policy.maxWrites) throw new Error("write-budget-exceeded");
     const lockRefs = ids.map((id) => db.doc(`workspaces/${request.workspaceId}/bookingSlots/${id}`));
     const locks = await transaction.getAll(...lockRefs);
     if (locks.some((lock) => lock.exists)) throw new Error("slot-conflict");
@@ -225,6 +243,7 @@ export async function bookAppointment(db: Firestore, request: BookingRequest, po
       schemaVersion: 1,
       commandKind: "book",
       callerUid: request.callerUid,
+      workspaceId: request.workspaceId,
       requestHash,
       appointmentId: request.appointmentId,
       revision: 1,
@@ -246,11 +265,12 @@ export async function rescheduleAppointment(db: Firestore, request: RescheduleRe
   const requestHash = stableHash({ kind: "reschedule", ...request });
 
   return db.runTransaction(async (transaction) => {
-    const documents = await transaction.getAll(...bookingAuthorizationRefs(db, request), receiptRef, appointmentRef);
-    const [callerAccount, workspace, callerMembership, trainerAccount, trainerMembership, clientAccount, clientMembership, receipt, appointment] = documents;
+    const receipt = await transaction.get(receiptRef);
+    if (receipt.exists) return receiptResult(receipt.data()!, { commandKind: "reschedule", callerUid: request.callerUid, workspaceId: request.workspaceId, appointmentId: request.appointmentId, requestHash });
+    const documents = await transaction.getAll(...bookingAuthorizationRefs(db, request), appointmentRef);
+    const [callerAccount, workspace, callerMembership, trainerAccount, trainerMembership, clientAccount, clientMembership, appointment] = documents;
     authorizeBookingCaller(request, callerAccount!, workspace!, callerMembership!);
-    if (receipt!.exists) return receiptResult(receipt!.data()!, requestHash);
-    if (!appointment!.exists || appointment!.get("status") !== "confirmed") throw new Error("appointment-not-live");
+    requireLiveAppointment(appointment!, request.workspaceId);
     if (appointment!.get("revision") !== request.expectedRevision) throw new Error("stale-revision");
     if (appointment!.get("trainerId") !== request.trainerId) throw new Error("immutable-trainer-mismatch");
     if (appointment!.get("clientId") !== request.clientId) throw new Error("immutable-client-mismatch");
@@ -286,7 +306,7 @@ export async function rescheduleAppointment(db: Firestore, request: RescheduleRe
       bucketIds: newBuckets,
       revision
     });
-    transaction.create(receiptRef, { schemaVersion: 1, commandKind: "reschedule", callerUid: request.callerUid, requestHash, appointmentId: request.appointmentId, revision, status: "confirmed", bucketIds: newBuckets, committedAt: FieldValue.serverTimestamp() });
+    transaction.create(receiptRef, { schemaVersion: 1, commandKind: "reschedule", callerUid: request.callerUid, workspaceId: request.workspaceId, requestHash, appointmentId: request.appointmentId, revision, status: "confirmed", bucketIds: newBuckets, committedAt: FieldValue.serverTimestamp() });
     return { appointmentId: request.appointmentId, revision, status: "confirmed", bucketIds: newBuckets, replayed: false };
   });
 }
@@ -304,8 +324,10 @@ export async function cancelAppointment(db: Firestore, request: CancelRequest, m
   const receiptRef = db.doc(`workspaces/${request.workspaceId}/bookingCommands/${commandId(request.callerUid, request.idempotencyKey)}`);
   const requestHash = stableHash({ kind: "cancel", ...request });
   return db.runTransaction(async (transaction) => {
-    const documents = await transaction.getAll(...callerAuthorizationRefs(db, request.callerUid, request.workspaceId), receiptRef, appointmentRef);
-    const [callerAccount, workspace, callerMembership, receipt, appointment] = documents;
+    const receipt = await transaction.get(receiptRef);
+    if (receipt.exists) return receiptResult(receipt.data()!, { commandKind: "cancel", callerUid: request.callerUid, workspaceId: request.workspaceId, appointmentId: request.appointmentId, requestHash });
+    const documents = await transaction.getAll(...callerAuthorizationRefs(db, request.callerUid, request.workspaceId), appointmentRef);
+    const [callerAccount, workspace, callerMembership, appointment] = documents;
     requireActiveAccount(callerAccount!, "caller-account-inactive");
     requireActiveWorkspace(workspace!);
     // Cancellation authorizes only the caller, who must be the stored trainer or client participant,
@@ -317,12 +339,10 @@ export async function cancelAppointment(db: Firestore, request: CancelRequest, m
       "caller-membership-identity-mismatch"
     );
     const callerRole = requireCallerRole(callerMembership!);
-    if (!appointment!.exists) throw new Error("appointment-not-live");
+    requireLiveAppointment(appointment!, request.workspaceId);
     if (callerRole === "trainer" ? appointment!.get("trainerId") !== request.callerUid : appointment!.get("clientId") !== request.callerUid) {
       throw new Error("participant-not-authorized");
     }
-    if (receipt!.exists) return receiptResult(receipt!.data()!, requestHash);
-    if (appointment!.get("status") !== "confirmed") throw new Error("appointment-not-live");
     if (appointment!.get("revision") !== request.expectedRevision) throw new Error("stale-revision");
     const ids = appointment!.get("bucketIds") as string[];
     if (ids.length + 2 > maxWrites) throw new Error("write-budget-exceeded");
@@ -332,7 +352,7 @@ export async function cancelAppointment(db: Firestore, request: CancelRequest, m
     refs.forEach((ref) => transaction.delete(ref));
     const revision = request.expectedRevision + 1;
     transaction.update(appointmentRef, { status: "cancelled", revision, bucketIds: [] });
-    transaction.create(receiptRef, { schemaVersion: 1, commandKind: "cancel", callerUid: request.callerUid, requestHash, appointmentId: request.appointmentId, revision, status: "cancelled", bucketIds: [], committedAt: FieldValue.serverTimestamp() });
+    transaction.create(receiptRef, { schemaVersion: 1, commandKind: "cancel", callerUid: request.callerUid, workspaceId: request.workspaceId, requestHash, appointmentId: request.appointmentId, revision, status: "cancelled", bucketIds: [], committedAt: FieldValue.serverTimestamp() });
     return { appointmentId: request.appointmentId, revision, status: "cancelled", bucketIds: [], replayed: false };
   });
 }

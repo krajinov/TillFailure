@@ -128,7 +128,7 @@ export async function publishAssignment(db: Firestore, input: PublishAssignmentR
     const receipt = documents[0]!;
     const existing = documents[1]!;
     if (receipt.exists) {
-      if (receipt.get("requestHash") !== requestHash) throw new Error("idempotency-key-reused");
+      if (receipt.get("schemaVersion") !== 1 || receipt.get("commandKind") !== "publish-assignment" || receipt.get("callerUid") !== input.callerUid || receipt.get("workspaceId") !== input.workspaceId || receipt.get("clientId") !== input.uid || receipt.get("assignmentId") !== input.assignmentId || receipt.get("requestHash") !== requestHash) throw new Error("idempotency-key-reused");
       return { assignmentId: receipt.get("assignmentId") as string, revision: 1, documentCount: receipt.get("documentCount") as number, replayed: true };
     }
     if (existing.exists) throw new Error("assignment-id-reused");
@@ -224,7 +224,7 @@ export async function publishAssignment(db: Firestore, input: PublishAssignmentR
         revision: retiredRevision
       });
     }
-    transaction.create(receiptRef, { schemaVersion: 1, requestHash, commandKind: "publish-assignment", assignmentId: input.assignmentId, documentCount, committedAt: FieldValue.serverTimestamp() });
+    transaction.create(receiptRef, { schemaVersion: 1, requestHash, commandKind: "publish-assignment", callerUid: input.callerUid, workspaceId: input.workspaceId, clientId: input.uid, assignmentId: input.assignmentId, documentCount, committedAt: FieldValue.serverTimestamp() });
     return { assignmentId: input.assignmentId, revision: 1, documentCount, replayed: false };
   });
 }
@@ -268,7 +268,7 @@ export async function closeAssignment(db: Firestore, input: CloseAssignmentReque
     const header = documents[1]!;
     const index = documents[2]!;
     if (receipt.exists) {
-      if (receipt.get("requestHash") !== requestHash) throw new Error("idempotency-key-reused");
+      if (receipt.get("schemaVersion") !== 1 || receipt.get("commandKind") !== "close-assignment" || receipt.get("callerUid") !== input.callerUid || receipt.get("workspaceId") !== input.workspaceId || receipt.get("clientId") !== input.uid || receipt.get("assignmentId") !== input.assignmentId || receipt.get("requestHash") !== requestHash) throw new Error("idempotency-key-reused");
       return {
         assignmentId: receipt.get("assignmentId") as string,
         revision: receipt.get("revision") as number,
@@ -298,7 +298,7 @@ export async function closeAssignment(db: Firestore, input: CloseAssignmentReque
     const revision = input.expectedRevision + 1;
     transaction.update(headerRef, { accessStatus: input.status, lifecycleState: "terminal", revision });
     transaction.update(indexRef, { status: input.status, revision });
-    transaction.create(receiptRef, { schemaVersion: 1, requestHash, commandKind: "close-assignment", callerUid: input.callerUid, assignmentId: input.assignmentId, revision, status: input.status, committedAt: FieldValue.serverTimestamp() });
+    transaction.create(receiptRef, { schemaVersion: 1, requestHash, commandKind: "close-assignment", callerUid: input.callerUid, workspaceId: input.workspaceId, clientId: input.uid, assignmentId: input.assignmentId, revision, status: input.status, committedAt: FieldValue.serverTimestamp() });
     return { assignmentId: input.assignmentId, revision, status: input.status, replayed: false };
   });
 }

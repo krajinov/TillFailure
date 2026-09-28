@@ -108,7 +108,8 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
     private let generation: FirebaseAppGenerations.Generation
     private let auth: Auth
     private let firestore: Firestore
-    private let lock = NSLock()
+    // A consumer may synchronously start another bridge operation in its callback.
+    private let lock = NSRecursiveLock()
     private var cancellations: [String: () -> Void] = [:]
     private var currentEpoch: Int64 = 0
     private var terminated = false
@@ -150,16 +151,15 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
     private func deliverTerminatedFailure(accountEpoch: Int64, deliver: @escaping () -> Void) -> String {
         let token = UUID().uuidString
         DispatchQueue.main.async { [weak self] in
-            guard let self, self.epochAccepted(epoch: accountEpoch) else { return }
-            deliver()
+            self?.deliverIfEpochMatches(epoch: accountEpoch, allowTerminated: true, deliver)
         }
         return token
     }
 
-    private func epochAccepted(epoch: Int64) -> Bool {
+    private func deliverIfEpochMatches(epoch: Int64, allowTerminated: Bool = false, _ deliver: () -> Void) {
         lock.lock()
         defer { lock.unlock() }
-        return epoch == currentEpoch
+        if epoch == currentEpoch && (allowTerminated || !terminated) { deliver() }
     }
 
     func observeSession(accountEpoch: Int64, callback_: @escaping (NativeFirebaseAuthState) -> Void) -> String {
@@ -167,8 +167,9 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
         // A terminated bridge registers no listener: there is no live SDK instance left to observe.
         if terminatedFailure != nil { return UUID().uuidString }
         let handle = auth.addStateDidChangeListener { [weak self] _, user in
-            guard self?.accepts(epoch: accountEpoch) == true else { return }
-            callback_(NativeFirebaseAuthState(uid: user?.uid, isAnonymous: user?.isAnonymous == true))
+            self?.deliverIfEpochMatches(epoch: accountEpoch) {
+                callback_(NativeFirebaseAuthState(uid: user?.uid, isAnonymous: user?.isAnonymous == true))
+            }
         }
         return registerCancellation { [weak self] in self?.auth.removeStateDidChangeListener(handle) }
     }
@@ -195,8 +196,9 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
         // A terminated bridge registers no listener instead of attaching to a dead instance.
         if terminatedFailure != nil { return UUID().uuidString }
         let registration = firestore.document(path).addSnapshotListener(includeMetadataChanges: true) { [weak self] snapshot, error in
-            guard self?.accepts(epoch: accountEpoch) == true else { return }
-            callback_(self?.documentResult(snapshot: snapshot, error: error) ?? Self.unknownDocumentResult())
+            self?.deliverIfEpochMatches(epoch: accountEpoch) {
+                callback_(self?.documentResult(snapshot: snapshot, error: error) ?? Self.unknownDocumentResult())
+            }
         }
         return registerCancellation { registration.remove() }
     }
@@ -300,13 +302,13 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
     func terminateAndClear(callback_: @escaping (NativeFirebaseUnitResult) -> Void) {
         // Close the generation before touching the SDK: a bridge constructed concurrently with (or
         // after) this teardown must never be handed these instances, and this bridge is fenced at once.
-        FirebaseAppGenerations.shared.close(generation)
         lock.lock()
         let firstTermination = !terminated
         terminated = true
         let outstanding = Array(cancellations.values)
         cancellations.removeAll()
         lock.unlock()
+        FirebaseAppGenerations.shared.close(generation)
         outstanding.forEach { $0() }
         guard firstTermination else {
             // Repeated cleanup is deterministic and idempotent: the instances were already retired,
@@ -383,12 +385,6 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
         lock.unlock()
     }
 
-    private func accepts(epoch: Int64) -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return !terminated && epoch == currentEpoch
-    }
-
     private func registerCancellation(_ cancellation: @escaping () -> Void) -> String {
         let token = UUID().uuidString
         registerCancellation(token: token, cancellation)
@@ -412,8 +408,7 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
     private func deliverOneShot(token: String, gate: OneShotGate, accountEpoch: Int64, deliver: () -> Void) {
         guard gate.claim() else { return }
         removeCancellation(token: token)
-        guard accepts(epoch: accountEpoch) else { return }
-        deliver()
+        deliverIfEpochMatches(epoch: accountEpoch, deliver)
     }
 
     private func registerCancellation(token: String, _ cancellation: @escaping () -> Void) {

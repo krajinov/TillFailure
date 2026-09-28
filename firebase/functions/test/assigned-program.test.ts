@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 import { AssignmentResult, closeAssignment, CloseAssignmentRequest, publishAssignment, PublishAssignmentRequest } from "../src/assigned-program.js";
 import { emulatorFirestore } from "../src/environment.js";
+import { commandId } from "../src/hashing.js";
 
 const db = emulatorFirestore();
 const base: PublishAssignmentRequest = {
@@ -40,6 +41,24 @@ describe("assigned-program publication", () => {
       "snapshots/content/workouts/day-one",
       "snapshots/content/workouts/day-one/exercises/squat"
     ]);
+  });
+
+  it("binds publication and close receipts to their stored command identities", async () => {
+    await publishAssignment(db, base);
+    const close: CloseAssignmentRequest = { callerUid: "trainer", idempotencyKey: "close-one", uid: "client", workspaceId: "ws", assignmentId: "asg-one", status: "archived", expectedRevision: 1 };
+    await closeAssignment(db, close);
+    for (const [key, kind, replay] of [
+      [base.idempotencyKey, "publish-assignment", () => publishAssignment(db, base)],
+      [close.idempotencyKey, "close-assignment", () => closeAssignment(db, close)]
+    ] as const) {
+      const receipt = db.doc(`assignmentCommands/${commandId("trainer", key)}`);
+      await receipt.update({ commandKind: "wrong-kind" });
+      await assert.rejects(replay, /idempotency-key-reused/);
+      await receipt.update({ commandKind: kind, workspaceId: "foreign" });
+      await assert.rejects(replay, /idempotency-key-reused/);
+      await receipt.update({ workspaceId: "ws" });
+      assert.equal((await replay()).replayed, true);
+    }
   });
 
   it("publishes a deterministic complete inventory with zero, one, or many plans", async () => {

@@ -514,6 +514,40 @@ class AndroidFirebaseSpikeClientTest {
         listener.cancel()
     }
 
+    @Test
+    fun accountSwitchAndDisposalSuppressQueuedSdkCallbacks() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val fence = AccountCallbackFence()
+        val firstEpoch = fence.advance()
+        val client = AndroidFirebaseSpikeClient(context, FirebaseEmulatorConfiguration(host = "10.0.2.2"), fence)
+        val uid = signInAndReadUid(client, firstEpoch)
+        val path = "spikeEcho/$uid/documents/native-android-epoch-race"
+        writeAndAssert(client, path, uid, firstEpoch)
+        val stale = AtomicInteger(0)
+
+        fun queueThenRetire(oldEpoch: Long, retire: () -> Unit) {
+            val mainEntered = CountDownLatch(1)
+            val releaseMain = CountDownLatch(1)
+            Handler(Looper.getMainLooper()).post {
+                mainEntered.countDown()
+                releaseMain.await(10, TimeUnit.SECONDS)
+            }
+            await(mainEntered, "main-thread epoch gate")
+            client.getDocument(path, oldEpoch) { stale.incrementAndGet() }
+            retire()
+            releaseMain.countDown()
+            Thread.sleep(500)
+            assertEquals(0, stale.get(), "a queued SDK callback reached the replacement account")
+        }
+
+        queueThenRetire(firstEpoch) { fence.advance() }
+        val replacementEpoch = fence.advance()
+        assertEquals(FirebaseDataOrigin.SERVER, readServer(client, path, replacementEpoch).document?.origin)
+        queueThenRetire(replacementEpoch) { fence.dispose() }
+        assertFalse(fence.accepts(replacementEpoch))
+        terminateAndAssert(client)
+    }
+
     private fun signInAndReadUid(client: AndroidFirebaseSpikeClient, epoch: Long): String {
         val signedIn = AtomicReference<FirebaseUnitResult>()
         val signInFinished = CountDownLatch(1)

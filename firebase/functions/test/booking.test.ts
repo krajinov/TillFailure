@@ -225,6 +225,7 @@ describe("booking contention probe", () => {
 
   it("rejects an unsupported transaction budget before writing", async () => {
     const base = Date.UTC(2026, 8, 19, 10, 0);
+    await seedBookingWorkspace("ws_budget");
     await assert.rejects(() => bookAppointment(db, { workspaceId: "ws_budget", trainerId: "trainer", clientId: "client", callerUid: "client", appointmentId: "appt", idempotencyKey: "key", startsAtMillis: base, endsAtMillis: base + 60 * 60_000, bufferBeforeMinutes: 0, bufferAfterMinutes: 0 }, { ...policy, maxWrites: 5 }), /write-budget/);
     assert.equal((await db.collection("workspaces/ws_budget/appointments").get()).size, 0);
   });
@@ -416,6 +417,75 @@ describe("booking contention probe", () => {
     assert.equal((await db.collection("workspaces/ws_receipt/bookingCommands").get()).size, 1);
     assert.equal((await db.doc(`workspaces/ws_receipt/bookingCommands/${commandId("client", "shared-key")}`).get()).get("callerUid"), "client");
     assert.equal((await db.collection("workspaces/ws_receipt/appointments").get()).size, 1);
+  });
+
+  it("replays all three committed commands after authorization is revoked, but rejects changed identity", async () => {
+    const workspaceId = "ws_lost_response";
+    await seedBookingWorkspace(workspaceId);
+    const book = bookingRequest(workspaceId);
+    const booked = await bookAppointment(db, book, policy);
+    const move = { ...book, idempotencyKey: "move", expectedRevision: 1, startsAtMillis: book.startsAtMillis + 3_600_000, endsAtMillis: book.endsAtMillis + 3_600_000 };
+    const moved = await rescheduleAppointment(db, move, policy);
+    const cancel = { workspaceId, appointmentId: book.appointmentId, callerUid: book.callerUid, idempotencyKey: "cancel", expectedRevision: 2 };
+    const cancelled = await cancelAppointment(db, cancel);
+    await db.doc("users/client").update({ accountStatus: "disabled" });
+    await db.doc("users/trainer").update({ accountStatus: "disabled" });
+    await db.doc(`workspaces/${workspaceId}`).update({ status: "suspended" });
+    await db.doc(`workspaces/${workspaceId}/memberships/client`).update({ status: "revoked" });
+    await db.doc(`workspaces/${workspaceId}/memberships/trainer`).update({ status: "revoked" });
+
+    assert.deepEqual(await bookAppointment(db, book, policy), { ...booked, replayed: true });
+    assert.deepEqual(await rescheduleAppointment(db, move, policy), { ...moved, replayed: true });
+    assert.deepEqual(await cancelAppointment(db, cancel), { ...cancelled, replayed: true });
+    await assert.rejects(() => bookAppointment(db, { ...book, endsAtMillis: book.endsAtMillis + 60_000 }, policy), /idempotency-key-reused/);
+    await assert.rejects(() => rescheduleAppointment(db, { ...move, endsAtMillis: move.endsAtMillis + 60_000 }, policy), /idempotency-key-reused/);
+    await assert.rejects(() => cancelAppointment(db, { ...cancel, expectedRevision: 1 }), /idempotency-key-reused/);
+    for (const key of ["book", "move", "cancel"]) {
+      const receipt = db.doc(`workspaces/${workspaceId}/bookingCommands/${commandId("client", key)}`);
+      const kind = key === "move" ? "reschedule" : key;
+      await receipt.update({ commandKind: "wrong-kind" });
+      if (key === "book") await assert.rejects(() => bookAppointment(db, book, policy), /idempotency-key-reused/);
+      if (key === "move") await assert.rejects(() => rescheduleAppointment(db, move, policy), /idempotency-key-reused/);
+      if (key === "cancel") await assert.rejects(() => cancelAppointment(db, cancel), /idempotency-key-reused/);
+      await receipt.update({ commandKind: kind });
+      await receipt.update({ workspaceId: "foreign" });
+      if (key === "book") await assert.rejects(() => bookAppointment(db, book, policy), /idempotency-key-reused/);
+      if (key === "move") await assert.rejects(() => rescheduleAppointment(db, move, policy), /idempotency-key-reused/);
+      if (key === "cancel") await assert.rejects(() => cancelAppointment(db, cancel), /idempotency-key-reused/);
+      await receipt.update({ workspaceId });
+    }
+    // The same idempotency keys under another caller resolve to different receipt paths.
+    await assert.rejects(() => bookAppointment(db, { ...book, callerUid: "trainer" }, policy), /caller-account-inactive/);
+    await assert.rejects(() => rescheduleAppointment(db, { ...move, callerUid: "trainer" }, policy), /caller-account-inactive/);
+    await assert.rejects(() => cancelAppointment(db, { ...cancel, callerUid: "trainer" }), /caller-account-inactive/);
+    assert.equal((await db.collection(`workspaces/${workspaceId}/bookingCommands`).get()).size, 3);
+  });
+
+  it("rejects damaged appointment schema and tenant identity before either lock-releasing transition", async () => {
+    const workspaceId = "ws_stored_integrity";
+    await seedBookingWorkspace(workspaceId);
+    const book = bookingRequest(workspaceId);
+    await bookAppointment(db, book, policy);
+    const appointmentRef = db.doc(`workspaces/${workspaceId}/appointments/${book.appointmentId}`);
+    const move = { ...book, idempotencyKey: "move", expectedRevision: 1, startsAtMillis: book.startsAtMillis + 3_600_000, endsAtMillis: book.endsAtMillis + 3_600_000 };
+    const cancel = { workspaceId, appointmentId: book.appointmentId, callerUid: book.callerUid, idempotencyKey: "cancel", expectedRevision: 1 };
+    const locks = async () => (await db.collection(`workspaces/${workspaceId}/bookingSlots`).orderBy("__name__").get()).docs.map((document) => [document.id, document.data()]);
+    const receipts = async () => (await db.collection(`workspaces/${workspaceId}/bookingCommands`).orderBy("__name__").get()).docs.map((document) => [document.id, document.data()]);
+    for (const [field, invalid, failure] of [["schemaVersion", 99, /appointment-schema-unsupported/], ["workspaceId", "foreign", /appointment-workspace-mismatch/]] as const) {
+      await appointmentRef.update({ [field]: invalid });
+      const beforeAppointment = (await appointmentRef.get()).data();
+      const beforeLocks = await locks();
+      const beforeReceipts = await receipts();
+      await assert.rejects(() => rescheduleAppointment(db, move, policy), failure);
+      await assert.rejects(() => cancelAppointment(db, cancel), failure);
+      assert.deepEqual((await appointmentRef.get()).data(), beforeAppointment);
+      assert.deepEqual(await locks(), beforeLocks);
+      assert.deepEqual(await receipts(), beforeReceipts);
+      await appointmentRef.update({ [field]: field === "schemaVersion" ? 1 : workspaceId });
+    }
+    const moved = await rescheduleAppointment(db, move, policy);
+    assert.equal(moved.revision, 2);
+    assert.equal((await cancelAppointment(db, { ...cancel, expectedRevision: 2 })).status, "cancelled");
   });
 
   it("fails closed when the caller membership is revoked concurrently with booking", async () => {

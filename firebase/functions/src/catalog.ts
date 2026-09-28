@@ -230,7 +230,7 @@ export async function transitionMembership(db: Firestore, input: MembershipTrans
     const workspace = documents[3]!;
     const membership = documents[4]!;
     if (receipt.exists) {
-      if (receipt.get("requestHash") !== requestHash) throw new Error("idempotency-key-reused");
+      if (receipt.get("schemaVersion") !== 1 || receipt.get("commandKind") !== "membership-transition" || receipt.get("callerUid") !== input.callerUid || receipt.get("workspaceId") !== input.workspaceId || receipt.get("uid") !== input.uid || receipt.get("requestHash") !== requestHash) throw new Error("idempotency-key-reused");
       return { ...(receipt.get("result") as Omit<CatalogTransitionResult, "replayed">), replayed: true };
     }
     if (!account.exists || !entitlement.exists || !workspace.exists) throw new Error("lifecycle-source-missing");
@@ -296,7 +296,7 @@ export async function transitionMembership(db: Firestore, input: MembershipTrans
       revision: FieldValue.increment(1)
     });
     transaction.update(workspaceRef, { membershipRevision: FieldValue.increment(1), activeRosterCount: nextRosterCount, catalogContributionCount: nextContributionCount });
-    transaction.create(receiptRef, { schemaVersion: 1, requestHash, commandKind: "membership-transition", result, committedAt: FieldValue.serverTimestamp() });
+    transaction.create(receiptRef, { schemaVersion: 1, requestHash, commandKind: "membership-transition", callerUid: input.callerUid, workspaceId: input.workspaceId, uid: input.uid, result, committedAt: FieldValue.serverTimestamp() });
     return { ...result, replayed: false };
   });
 }
@@ -325,7 +325,7 @@ export async function transitionWorkspace(db: Firestore, input: WorkspaceTransit
     const receipt = documents[0]!;
     const workspace = documents[1]!;
     if (receipt.exists) {
-      if (receipt.get("requestHash") !== requestHash) throw new Error("idempotency-key-reused");
+      if (receipt.get("schemaVersion") !== 1 || receipt.get("commandKind") !== "workspace-transition" || receipt.get("callerUid") !== input.callerUid || receipt.get("workspaceId") !== input.workspaceId || receipt.get("requestHash") !== requestHash) throw new Error("idempotency-key-reused");
       return { affected: receipt.get("affected") as number, replayed: true };
     }
     if (!workspace.exists || workspace.get("membershipRevision") !== input.expectedMembershipRevision) throw new Error("stale-revision");
@@ -387,7 +387,7 @@ export async function transitionWorkspace(db: Firestore, input: WorkspaceTransit
       activeRosterCount: memberships.size,
       catalogContributionCount: input.nextStatus === "active" ? memberships.size : 0
     });
-    transaction.create(receiptRef, { schemaVersion: 1, requestHash, commandKind: "workspace-transition", affected: memberships.size, committedAt: FieldValue.serverTimestamp() });
+    transaction.create(receiptRef, { schemaVersion: 1, requestHash, commandKind: "workspace-transition", callerUid: input.callerUid, workspaceId: input.workspaceId, affected: memberships.size, committedAt: FieldValue.serverTimestamp() });
     return { affected: memberships.size, replayed: false };
   });
 }
@@ -431,7 +431,7 @@ export async function transitionAccountLifecycle(db: Firestore, input: AccountLi
     const account = documents[1]!;
     const entitlement = documents[2]!;
     if (receipt.exists) {
-      if (receipt.get("requestHash") !== requestHash) throw new Error("idempotency-key-reused");
+      if (receipt.get("schemaVersion") !== 1 || receipt.get("commandKind") !== "account-lifecycle" || receipt.get("callerUid") !== input.callerUid || receipt.get("uid") !== input.uid || receipt.get("requestHash") !== requestHash) throw new Error("idempotency-key-reused");
       return { ...(receipt.get("result") as Omit<AccountLifecycleResult, "replayed">), replayed: true };
     }
     if (!account.exists) throw new Error("lifecycle-source-missing");

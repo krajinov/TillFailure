@@ -116,6 +116,29 @@ describe("system catalog entitlement lifecycle", () => {
     await db.recursiveDelete(db.collection("lifecycleCommands"));
   });
 
+  it("binds each lifecycle receipt to its command kind and immutable target", async () => {
+    await seed("client", "ws");
+    const membership = activation("client", "ws", "membership", 0, 1);
+    const workspace = workspaceTransition("ws", "workspace", 2, "suspended");
+    const account = accountLifecycle("client", false, 1, { idempotencyKey: "account" });
+    await transitionMembership(db, membership);
+    await transitionWorkspace(db, workspace);
+    await transitionAccountLifecycle(db, account);
+    for (const [key, kind, targetField, replay] of [
+      ["membership", "membership-transition", "workspaceId", () => transitionMembership(db, membership)],
+      ["workspace", "workspace-transition", "workspaceId", () => transitionWorkspace(db, workspace)],
+      ["account", "account-lifecycle", "uid", () => transitionAccountLifecycle(db, account)]
+    ] as const) {
+      const receipt = db.doc(`lifecycleCommands/${commandId("admin", key)}`);
+      await receipt.update({ commandKind: "wrong-kind" });
+      await assert.rejects(replay, /idempotency-key-reused/);
+      await receipt.update({ commandKind: kind, [targetField]: "foreign" });
+      await assert.rejects(replay, /idempotency-key-reused/);
+      await receipt.update({ [targetField]: targetField === "uid" ? "client" : "ws" });
+      assert.equal((await replay()).replayed, true);
+    }
+  });
+
   it("rejects every path-derived lifecycle ID before building a Firestore reference", async () => {
     let referencesBuilt = 0;
     const noReferences = {

@@ -89,19 +89,9 @@ interface FirebaseSpikeClient {
     fun terminateAndClear(callback: (FirebaseUnitResult) -> Unit)
 }
 
-class AccountCallbackFence(initialEpoch: Long = 0L) {
-    private var currentEpoch = initialEpoch
-    private var disposed = false
-
-    fun advance(): Long {
-        currentEpoch += 1
-        disposed = false
-        return currentEpoch
-    }
-
-    fun dispose() {
-        disposed = true
-    }
-
-    fun accepts(epoch: Long): Boolean = !disposed && epoch == currentEpoch
+expect class AccountCallbackFence(initialEpoch: Long = 0L) {
+    fun advance(): Long
+    fun dispose()
+    fun accepts(epoch: Long): Boolean
+    fun deliverIfCurrent(epoch: Long, deliver: () -> Unit)
 }
