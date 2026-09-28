@@ -674,6 +674,60 @@ describe("Firestore and Storage rules", () => {
     await assertSucceeds(getDoc(doc(client, `${collectionPath}/asg-ready-2`)));
   });
 
+  it("allows active trainers to discover only their own assignment indexes", async () => {
+    const indexPath = "workspaces/ws/assignedPrograms";
+    const owned = `${indexPath}/asg-owned`;
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, "users/trainer"), { schemaVersion: 1, accountStatus: "active" });
+      await setDoc(doc(db, "users/client"), { schemaVersion: 1, accountStatus: "active" });
+      await setDoc(doc(db, "workspaces/ws"), { schemaVersion: 1, status: "active" });
+      await setDoc(doc(db, "workspaces/ws/memberships/trainer"), { schemaVersion: 1, workspaceId: "ws", userId: "trainer", role: "trainer", status: "active" });
+      await setDoc(doc(db, "workspaces/ws/memberships/client"), { schemaVersion: 1, workspaceId: "ws", userId: "client", role: "client", status: "active" });
+      await setDoc(doc(db, owned), { schemaVersion: 1, workspaceId: "ws", clientId: "client", assignmentId: "asg-owned", trainerId: "trainer", status: "active", revision: 1 });
+      await setDoc(doc(db, `${indexPath}/asg-other`), { schemaVersion: 1, workspaceId: "ws", clientId: "client", assignmentId: "asg-other", trainerId: "other-trainer", status: "active", revision: 1 });
+      await setDoc(doc(db, `${indexPath}/asg-client-role`), { schemaVersion: 1, workspaceId: "ws", clientId: "client", assignmentId: "asg-client-role", trainerId: "client", status: "active", revision: 1 });
+      await setDoc(doc(db, "workspaces/other"), { schemaVersion: 1, status: "active" });
+      await setDoc(doc(db, "workspaces/other/assignedPrograms/asg-cross"), { schemaVersion: 1, workspaceId: "other", clientId: "client", assignmentId: "asg-cross", trainerId: "trainer", status: "active", revision: 1 });
+    });
+    const trainer = environment.authenticatedContext("trainer").firestore();
+    const client = environment.authenticatedContext("client").firestore();
+    const ownQuery = query(collection(trainer, indexPath), where("schemaVersion", "==", 1), where("workspaceId", "==", "ws"), where("trainerId", "==", "trainer"), where("status", "==", "active"));
+    const ownIndexes = await assertSucceeds(getDocs(ownQuery));
+    assert.deepEqual(ownIndexes.docs.map((document) => document.id), ["asg-owned"]);
+    assert.equal((await assertSucceeds(getDoc(doc(trainer, owned)))).get("clientId"), "client");
+    await assertFails(getDocs(collection(trainer, indexPath)));
+    await assertFails(getDocs(query(collection(trainer, indexPath), where("trainerId", "==", "trainer"), where("status", "==", "active"))));
+    await assertFails(getDoc(doc(trainer, `${indexPath}/asg-other`)));
+    await assertFails(getDocs(query(collection(trainer, "workspaces/other/assignedPrograms"), where("schemaVersion", "==", 1), where("workspaceId", "==", "other"), where("trainerId", "==", "trainer"))));
+    await assertFails(getDoc(doc(trainer, "workspaces/other/assignedPrograms/asg-cross")));
+    await assertFails(getDocs(query(collection(client, indexPath), where("schemaVersion", "==", 1), where("workspaceId", "==", "ws"), where("trainerId", "==", "client"))));
+    await assertFails(getDoc(doc(client, `${indexPath}/asg-client-role`)));
+    await assertFails(setDoc(doc(trainer, `${indexPath}/attempt`), { schemaVersion: 1, trainerId: "trainer" }));
+    await assertFails(updateDoc(doc(trainer, owned), { status: "replaced" }));
+
+    for (const [field, invalid, original] of [["schemaVersion", 9, 1], ["workspaceId", "other", "ws"], ["assignmentId", "other", "asg-owned"]] as const) {
+      await environment.withSecurityRulesDisabled(async (context) => { await updateDoc(doc(context.firestore(), owned), { [field]: invalid }); });
+      await assertFails(getDoc(doc(trainer, owned)));
+      await environment.withSecurityRulesDisabled(async (context) => { await updateDoc(doc(context.firestore(), owned), { [field]: original }); });
+    }
+
+    for (const [path, field, invalid, original] of [
+      ["workspaces/ws/memberships/trainer", "status", "revoked", "active"],
+      ["workspaces/ws/memberships/trainer", "workspaceId", "other", "ws"],
+      ["workspaces/ws/memberships/trainer", "userId", "other", "trainer"],
+      ["workspaces/ws/memberships/trainer", "schemaVersion", 9, 1],
+      ["workspaces/ws", "status", "suspended", "active"],
+      ["users/trainer", "accountStatus", "disabled", "active"]
+    ] as const) {
+      await environment.withSecurityRulesDisabled(async (context) => { await updateDoc(doc(context.firestore(), path), { [field]: invalid }); });
+      await assertFails(getDocs(ownQuery));
+      await assertFails(getDoc(doc(trainer, owned)));
+      await environment.withSecurityRulesDisabled(async (context) => { await updateDoc(doc(context.firestore(), path), { [field]: original }); });
+      assert.equal((await assertSucceeds(getDoc(doc(trainer, owned)))).exists(), true);
+    }
+  });
+
   it("allows an owner write and rejects forged ownership with stable permission denial", async () => {
     const client = environment.authenticatedContext("client").firestore();
     await assertSucceeds(setDoc(doc(client, "spikeEcho/client/documents/doc"), { ownerUid: "client", value: "accepted", counter: 0 }));

@@ -113,6 +113,12 @@ Seventeenth round (PR #3 review `pullrequestreview-5333948282`, findings `411854
 - **Stored appointment integrity.** Both lock-releasing transitions require schema version 1, stored workspace identity matching the path, confirmed state, and a well-formed lock-ID list before any lock is changed. The existing participant and revision checks remain. Emulator tests prove malformed schema and cross-tenant identity leave appointment, locks, and receipts unchanged; valid reschedule and cancel still complete. Terminal cleanup already required schema, tenant, and an explicitly supported terminal state, so the lock-release audit found no further gap.
 - **Fresh verification.** The final clean local backend/Rules emulator suite passed **92/92** on Node 25.9.0; TypeScript build passed. Android API 34 device tests passed **70/70**, host tests **63/63**, and debug assembly passed. Shared iOS simulator tests passed **63/63**. The ad-hoc signed Xcode Debug simulator build passed; the opted-in signed harness reported **86 Firebase + 43 recovery PASS checks, zero FAIL**, including the controlled offline epoch switch and two overlapping A/B/C cycles. Prior cold-launch and visual evidence was retained, not rerun. No deployment or merge occurred.
 
+Eighteenth round (PR #3 review `pullrequestreview-5334172750`, findings `4118732140` and `4118732144`):
+
+- **Empty-roster workspace restoration.** Every transition to `active` now validates the source workspace schema and recognized lifecycle state once before the bounded roster scan, even when the roster is empty. An archived or unknown-status workspace, or one with an unsupported schema, cannot be reopened with zero members; workspace state/counters, memberships, entitlements and the attempted receipt remain unchanged. Tests cover empty and one-member rosters, valid trusted repair followed by restoration and idempotent replay. The suspension path still permits removal of access from damaged records.
+- **Trainer discovery index.** The implemented index contains only schema version, workspace/client/assignment/trainer IDs, status/revision and replacement metadata; no snapshot, prescription, notes or private payload is exposed. Rules now permit an active workspace trainer with an active schema/tenant/user-bound membership to get an index matching the stored path/trainer identity and to run a collection query constrained by schema version, stored workspace ID and their own `trainerId`. Direct gets and actual queries reject other trainers' indexes, client-role, cross-workspace, revoked, tenant-mismatched, suspended and disabled-account cases; all mobile writes remain denied.
+- **Fresh verification.** The TypeScript build and full local backend/Rules emulator suite passed **94/94** on Node 25.9.0. No Android, shared Kotlin, or Apple code changed in this round; the seventeenth-round Android **70/70** device, **63/63** host, shared iOS **63/63**, signed Xcode build and signed iOS harness **86 Firebase + 43 recovery** results are retained with their original attribution. No native rerun or new cold-launch/visual evidence is claimed.
+
 ## Runtime and dependency evidence
 
 | Area | Exact version/evidence |
@@ -129,7 +135,7 @@ Seventeenth round (PR #3 review `pullrequestreview-5333948282`, findings `411854
 
 ## Backend proof
 
-Final Node 22 emulator run after the fourteenth corrective round: **84 passed, 0 failed** on two consecutive clean runs (the earlier rounds' final runs were 17/17, 31/31, 43/43, 48/48, 50/50, 64/64, 67/67, 69/69, 71/71, 74/74, 76/76, and 80/80).
+Current fresh Node 25.9.0 backend/Rules emulator run after the eighteenth corrective round: **94 passed, 0 failed**. The detailed primitive table below records the historical fourteenth-round breakdown; later focused regressions and their fresh totals are recorded in the corrective-round entries above. The earlier Node 22 runs retain their original attribution.
 
 | Primitive | Tests and result |
 |---|---|
@@ -177,7 +183,7 @@ Future rotation uses a new versioned key identifier, reads old envelopes with th
 | Gate | Final result |
 |---|---|
 | Node 22 TypeScript build and emulator start/stop | PASS (rerun for the twelfth corrective round under Node `22.23.2`; locked dependencies retained) |
-| Trusted-operation and Rules suite | **92/92 PASS** (fresh seventeenth-round clean local emulator run on Node 25.9.0) |
+| Trusted-operation and Rules suite | **94/94 PASS** (fresh eighteenth-round clean local emulator run on Node 25.9.0) |
 | Common metadata + Android/iOS compilation | PASS (fresh seventeenth-round Android device-test and iOS simulator compilation; signed iOS and Android debug builds succeeded) |
 | Android host tests | **63/63 PASS** (fresh seventeenth-round run) |
 | Android connected tests | **70/70 PASS** on API 34 (fresh seventeenth-round run, including the queued callback switch/disposal regression) |
@@ -186,7 +192,7 @@ Future rotation uses a new versioned key identifier, reads old envelopes with th
 | Native signed Xcode Debug build | PASS (fresh seventeenth-round ad-hoc codesigned simulator build) |
 | Swift Firebase/recovery harness | PASS; **129 asserted checks (86 Firebase + 43 recovery), 0 failures** (fresh seventeenth-round signed harness, including epoch/late-callback checks and two overlapping-client A/B/C cycles). The recovery harness additionally prints one informational Data-Protection observation. |
 | Android/iOS cold launch | iOS Debug cold launch rerun with the seventh-round build: Foundation Home remained the default destination with no harness output without the opt-in flag; Android cold launch retained from `9e657fa` |
-| Diff/secret/generated/machine-path audit | Seventeenth-round diff audit recorded below before commit |
+| Diff/secret/generated/machine-path audit | Eighteenth-round diff audit recorded before commit; earlier rounds retained |
 
 The fourth corrective round changed `firebase/functions` TypeScript sources/tests, shared Kotlin contracts and their tests, the Android adapter/persistence validation, the Android device-test fixtures, the `iosApp` Swift bridge/harness sources, the shared build file (test-only Firestore dependency for typed fixtures), and documentation: no production dependency, version catalog, or lockfile change. The Android and Apple parity suites were rerun because shared Kotlin, Android adapter, and Swift bridge code changed; the Android cold launch and the Android/iOS visual evidence are preserved from earlier commits with their original attribution.
 

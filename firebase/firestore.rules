@@ -33,6 +33,15 @@ service cloud.firestore {
         && membership.data.status == "active";
     }
 
+    function activeTrainerMembership(wid, uid) {
+      let membership = get(/databases/$(database)/documents/workspaces/$(wid)/memberships/$(uid));
+      return membership.data.schemaVersion == 1
+        && membership.data.workspaceId == wid
+        && membership.data.userId == uid
+        && membership.data.role == "trainer"
+        && membership.data.status == "active";
+    }
+
     function assignmentReadable(uid, wid, aid) {
       let assignment = get(/databases/$(database)/documents/users/$(uid)/workspaces/$(wid)/assignedPrograms/$(aid));
       return signedIn()
@@ -136,7 +145,25 @@ service cloud.firestore {
     }
 
     match /workspaces/{wid}/assignedPrograms/{aid} {
-      allow read, write: if false;
+      // The trusted assignment writer stores only trainer discovery metadata here: workspace,
+      // client, assignment and trainer IDs, lifecycle status/revision and replacement metadata.
+      // Lists constrain schema, stored workspace and trainerId; Rules cannot filter documents.
+      allow get: if signedIn()
+        && activeAccount(request.auth.uid)
+        && activeWorkspace(wid)
+        && activeTrainerMembership(wid, request.auth.uid)
+        && resource.data.schemaVersion == 1
+        && resource.data.workspaceId == wid
+        && resource.data.assignmentId == aid
+        && resource.data.trainerId == request.auth.uid;
+      allow list: if signedIn()
+        && activeAccount(request.auth.uid)
+        && activeWorkspace(wid)
+        && activeTrainerMembership(wid, request.auth.uid)
+        && resource.data.schemaVersion == 1
+        && resource.data.workspaceId == wid
+        && resource.data.trainerId == request.auth.uid;
+      allow write: if false;
     }
 
     match /spikeEcho/{uid}/documents/{documentId} {

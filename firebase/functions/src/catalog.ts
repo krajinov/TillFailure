@@ -329,6 +329,9 @@ export async function transitionWorkspace(db: Firestore, input: WorkspaceTransit
       return { affected: receipt.get("affected") as number, replayed: true };
     }
     if (!workspace.exists || workspace.get("membershipRevision") !== input.expectedMembershipRevision) throw new Error("stale-revision");
+    // Restoring can publish an active workspace even with no members. Validate the source once,
+    // outside the roster loop; suspension remains possible for damaged workspace records.
+    if (input.nextStatus === "active") requireContributableWorkspace(workspace);
     const rosterBounds: CounterBounds = { max: input.maxMembershipsPerWorkspace, malformed: "workspace-roster-malformed", outOfRange: "workspace-roster-bound-violated" };
     const rosterCount = strictCounter(workspace.get("activeRosterCount"), rosterBounds);
     const contributionCount = strictCounter(workspace.get("catalogContributionCount"), { ...rosterBounds, malformed: "workspace-contribution-malformed", outOfRange: "workspace-contribution-bound-violated", max: rosterCount });
@@ -369,9 +372,6 @@ export async function transitionWorkspace(db: Firestore, input: WorkspaceTransit
       // one workspace while the member keeps a contribution elsewhere is a deactivation and must
       // still succeed for a schema-damaged record, whose reads Rules keep denying.
       requireSchemaForContributionChange(account, entitlement, entitlementChange);
-      // A restoration increases contributions, so the restored workspace must itself be
-      // schema-current and in a recognized state; suspension only removes them and stays possible.
-      if (entitlementChange.adds) requireContributableWorkspace(workspace);
       transaction.update(membership.ref, { catalogContributionActive: newContributes, revision: FieldValue.increment(1) });
       transaction.update(entitlement.ref, {
         activeMembershipCount: nextCount,

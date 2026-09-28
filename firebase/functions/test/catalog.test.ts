@@ -116,6 +116,47 @@ describe("system catalog entitlement lifecycle", () => {
     await db.recursiveDelete(db.collection("lifecycleCommands"));
   });
 
+  it("validates empty and nonempty workspace restores before publishing active status", async () => {
+    for (const populated of [false, true]) {
+      for (const damage of ["archived", "unknown", "schema"] as const) {
+        const workspaceId = `ws_restore_${populated ? "one" : "zero"}_${damage}`;
+        const uid = `member_${populated ? "one" : "zero"}_${damage}`;
+        await seed(uid, workspaceId);
+        if (populated) await transitionMembership(db, activation(uid, workspaceId, `activate-${workspaceId}`, 0, 1));
+        const suspendRevision = populated ? 2 : 1;
+        const suspended = await transitionWorkspace(db, workspaceTransition(workspaceId, `suspend-${workspaceId}`, suspendRevision, "suspended"));
+        assert.equal(suspended.affected, Number(populated));
+        const workspaceRef = db.doc(`workspaces/${workspaceId}`);
+        if (damage === "schema") await workspaceRef.update({ schemaVersion: 7 });
+        else await workspaceRef.update({ status: damage === "archived" ? "archived" : "unknown-state" });
+        const before = {
+          workspace: (await workspaceRef.get()).data(),
+          membership: (await db.doc(`workspaces/${workspaceId}/memberships/${uid}`).get()).data(),
+          account: (await db.doc(`users/${uid}`).get()).data(),
+          entitlement: (await db.doc(`users/${uid}/authorizations/systemCatalog`).get()).data()
+        };
+        const restore = workspaceTransition(workspaceId, `restore-${workspaceId}`, suspendRevision + 1, "active");
+        await assert.rejects(() => transitionWorkspace(db, restore), damage === "schema" ? /workspace-schema-unsupported/ : /workspace-status-invalid/);
+        assert.deepEqual((await workspaceRef.get()).data(), before.workspace);
+        assert.deepEqual((await db.doc(`workspaces/${workspaceId}/memberships/${uid}`).get()).data(), before.membership);
+        assert.deepEqual((await db.doc(`users/${uid}`).get()).data(), before.account);
+        assert.deepEqual((await db.doc(`users/${uid}/authorizations/systemCatalog`).get()).data(), before.entitlement);
+        assert.equal((await db.doc(`lifecycleCommands/${commandId("admin", restore.idempotencyKey)}`).get()).exists, false);
+
+        await workspaceRef.update({ schemaVersion: 1, status: "suspended" });
+        const restored = await transitionWorkspace(db, restore);
+        assert.equal(restored.affected, Number(populated));
+        assert.equal(restored.replayed, false);
+        const committed = (await workspaceRef.get()).data();
+        assert.equal(committed?.status, "active");
+        assert.equal(committed?.activeRosterCount, Number(populated));
+        assert.equal(committed?.catalogContributionCount, Number(populated));
+        assert.deepEqual(await transitionWorkspace(db, restore), { affected: Number(populated), replayed: true });
+        assert.deepEqual((await workspaceRef.get()).data(), committed);
+      }
+    }
+  });
+
   it("binds each lifecycle receipt to its command kind and immutable target", async () => {
     await seed("client", "ws");
     const membership = activation("client", "ws", "membership", 0, 1);
