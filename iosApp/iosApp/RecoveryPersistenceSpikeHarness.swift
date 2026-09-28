@@ -91,6 +91,9 @@ enum RecoveryPersistenceSpikeHarness {
             runConcurrentChecks(root: root, keyIdentifier: keyIdentifier, suffix: suffix) { name, result in
                 record(name, result)
             }
+            runFirstKeyCreationRace(root: root, keyIdentifier: keyIdentifier, suffix: suffix) { name, result in
+                record(name, result)
+            }
 
             // Complete Firebase UID domain: email-shaped, punctuated, Unicode, maximum-length, and
             // traversal-like identifiers all round-trip because only the digest names the file.
@@ -277,6 +280,51 @@ enum RecoveryPersistenceSpikeHarness {
 
     private final class ResultBoxURL {
         var url: URL?
+    }
+
+    private static func runFirstKeyCreationRace(
+        root: URL,
+        keyIdentifier: String,
+        suffix: String,
+        record: (String, Bool) -> Void
+    ) {
+        let raceRoot = root.appendingPathComponent("first-key-race", isDirectory: true)
+        let raceKey = "\(keyIdentifier).first-key-race"
+        let firstUid = "first_key_a_\(suffix)"
+        let secondUid = "first_key_b_\(suffix)"
+        let first = RecoveryPersistenceBridge(rootURL: raceRoot, keyIdentifier: raceKey)
+        let second = RecoveryPersistenceBridge(rootURL: raceRoot, keyIdentifier: raceKey)
+        let ready = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        let firstDone = DispatchSemaphore(value: 0)
+        let secondDone = DispatchSemaphore(value: 0)
+        final class ResultBox { var result: NativeRecoveryPersistenceResult? }
+        let firstResult = ResultBox()
+        let secondResult = ResultBox()
+        let reachedFirstLookup: (String) -> Void = { _ in
+            ready.signal()
+            _ = release.wait(timeout: .now() + 20)
+        }
+        first.debugBeforeFirstKeyAdd = reachedFirstLookup
+        second.debugBeforeFirstKeyAdd = reachedFirstLookup
+        defer {
+            first.debugBeforeFirstKeyAdd = nil
+            second.debugBeforeFirstKeyAdd = nil
+            first.debugDeleteKey()
+            try? FileManager.default.removeItem(at: raceRoot)
+        }
+        let queue = DispatchQueue(label: "recovery-first-key", attributes: .concurrent)
+        queue.async { firstResult.result = first.write(uid: firstUid, plaintext: "first-key-a"); firstDone.signal() }
+        queue.async { secondResult.result = second.write(uid: secondUid, plaintext: "first-key-b"); secondDone.signal() }
+        let bothSawMissingKey = ready.wait(timeout: .now() + 20) == .success &&
+            ready.wait(timeout: .now() + 20) == .success
+        release.signal()
+        release.signal()
+        let bothFinished = firstDone.wait(timeout: .now() + 20) == .success &&
+            secondDone.wait(timeout: .now() + 20) == .success
+        record("firstKeyConcurrentCreation", bothSawMissingKey && bothFinished && firstResult.result?.failureCode == nil && secondResult.result?.failureCode == nil)
+        let restarted = RecoveryPersistenceBridge(rootURL: raceRoot, keyIdentifier: raceKey)
+        record("firstKeyRestartBothPartitions", bothFinished && restarted.read(uid: firstUid).payload == "first-key-a" && restarted.read(uid: secondUid).payload == "first-key-b")
     }
 }
 #endif

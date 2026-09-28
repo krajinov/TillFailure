@@ -232,6 +232,9 @@ final class RecoveryPersistenceBridge: NSObject, NativeRecoveryPersistenceBridge
             return SymmetricKey(data: data)
         }
         guard status == errSecItemNotFound, createIfMissing else { throw PersistenceError.keyUnavailable }
+        #if DEBUG
+        debugBeforeFirstKeyAdd?(keyIdentifier)
+        #endif
         var bytes = [UInt8](repeating: 0, count: 32)
         guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
             throw PersistenceError.keyUnavailable
@@ -244,8 +247,18 @@ final class RecoveryPersistenceBridge: NSObject, NativeRecoveryPersistenceBridge
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
             kSecValueData as String: data
         ]
-        guard SecItemAdd(add as CFDictionary, nil) == errSecSuccess else { throw PersistenceError.keyUnavailable }
-        return SymmetricKey(data: data)
+        let addStatus = SecItemAdd(add as CFDictionary, nil)
+        if addStatus == errSecSuccess { return SymmetricKey(data: data) }
+        // Another UID partition can create this shared Keychain item after our first lookup.
+        // Discard the losing random bytes and use only the key that actually reached Keychain.
+        if addStatus == errSecDuplicateItem {
+            var winningItem: CFTypeRef?
+            if SecItemCopyMatching(query as CFDictionary, &winningItem) == errSecSuccess,
+               let winningData = winningItem as? Data {
+                return SymmetricKey(data: winningData)
+            }
+        }
+        throw PersistenceError.keyUnavailable
     }
 
     private func associatedData(uid: String) -> Data {
@@ -291,6 +304,7 @@ final class RecoveryPersistenceBridge: NSObject, NativeRecoveryPersistenceBridge
     var debugBeforePartitionLock: ((String) -> Void)?
     var debugBeforeCommit: ((String, URL) throws -> Void)?
     var debugBeforeDelete: ((String) -> Void)?
+    var debugBeforeFirstKeyAdd: ((String) -> Void)?
 
     func debugRawData(uid: String) throws -> Data { try Data(contentsOf: fileURL(for: uid)) }
 

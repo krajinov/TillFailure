@@ -125,6 +125,13 @@ Nineteenth round (PR #3 review `pullrequestreview-5336636429`, finding `41206184
 - **Controlled overlap evidence.** Android device and signed Apple harness barriers hold a write or delete while a second bridge reaches the same partition: write/write commits in order, write/delete ends empty, and delete/write ends with the new payload. They also prove that a failed write preserves the committed bytes and another operation's temporary file, a different UID finishes while one partition is held, and a new bridge reads the last committed payload despite a stale temporary file. The coordination uses latches/semaphores rather than sleeps.
 - **Fresh verification.** Android API 34 connected suite passed **71/71**, including the new overlap regression, after starting the local Firebase emulators. Android device-test compilation and debug assembly passed. The ad-hoc signed Xcode Debug simulator build passed; the opt-in harness reported **86 Firebase + 54 recovery PASS lines, zero FAIL**. Android host and shared iOS simulator tests were up to date in the build invocation; their last executed results remain **63/63** each from the seventeenth round. The backend/Rules **94/94** result remains attributed to the eighteenth round; no backend/Rules rerun or deployment is claimed.
 
+Twentieth round (PR #3 review `pullrequestreview-5336965577`, findings `4120865499`, `4120865505`, and `4120865512`):
+
+- **Revoked membership consistency.** The shared stored-membership validator now rejects `status == "revoked"` with `catalogContributionActive == true` before direct transitions derive roster or catalog deltas. That validator also runs before the workspace transition's bounded active-membership scan derives contributions; revoked members are excluded from that scan and cannot grant catalog access. The malformed direct reactivation leaves the workspace, membership, account, entitlement and receipt unchanged. A valid revoked-to-active transition restores roster, workspace contribution and account entitlement once; receipt replay leaves the counters unchanged.
+- **Android issuance gate.** The client retirement lock now encloses both the live check and SDK issuance for writes, transactions, reads, listeners, Auth operations, pending-write waits and network controls. It is released before asynchronous completion, while callback delivery still passes the account-epoch fence under the same teardown gate. A device-test barrier holds a write immediately before issuance, lets teardown retire the client, then proves zero SDK `set` calls and one non-retryable rejection; a new SDK generation signs in, writes and reads successfully.
+- **Apple first-key race.** Two UID partitions may find the same new Keychain item absent. If one `SecItemAdd` loses with `errSecDuplicateItem`, the bridge discards its unpersisted random bytes and reloads the winning stored key before encrypting. The signed harness forces both first writers past the absent-key lookup before either add, then restarts a bridge and decrypts both UID partitions. Existing UID-bound AAD, tamper/missing-key lockout, and per-partition file locks remain in effect.
+- **Fresh verification.** The local TypeScript build and full backend/Rules emulator suite passed **95/95** on Node 25.9.0. Android API 34 connected tests passed **72/72**; Android device-test compilation, host tests **63/63**, and debug assembly passed. The shared iOS simulator test task was up to date, retaining its seventeenth-round **63/63** execution. The ad-hoc signed Xcode Debug simulator build passed; the signed harness printed **86 Firebase + 56 recovery PASS lines, zero FAIL**. No deployment, merge or new cold-launch/visual evidence is claimed.
+
 ## Runtime and dependency evidence
 
 | Area | Exact version/evidence |
@@ -141,7 +148,7 @@ Nineteenth round (PR #3 review `pullrequestreview-5336636429`, finding `41206184
 
 ## Backend proof
 
-Current fresh Node 25.9.0 backend/Rules emulator run after the eighteenth corrective round: **94 passed, 0 failed**. The detailed primitive table below records the historical fourteenth-round breakdown; later focused regressions and their fresh totals are recorded in the corrective-round entries above. The earlier Node 22 runs retain their original attribution.
+Current fresh Node 25.9.0 backend/Rules emulator run after the twentieth corrective round: **95 passed, 0 failed**. The detailed primitive table below records the historical fourteenth-round breakdown; later focused regressions and their fresh totals are recorded in the corrective-round entries above. The earlier Node 22 runs retain their original attribution.
 
 | Primitive | Tests and result |
 |---|---|
@@ -189,16 +196,16 @@ Future rotation uses a new versioned key identifier, reads old envelopes with th
 | Gate | Final result |
 |---|---|
 | Node 22 TypeScript build and emulator start/stop | PASS (rerun for the twelfth corrective round under Node `22.23.2`; locked dependencies retained) |
-| Trusted-operation and Rules suite | **94/94 PASS** (eighteenth-round clean local emulator run on Node 25.9.0; retained) |
-| Common metadata + Android/iOS compilation | PASS (nineteenth-round Android device-test compilation and signed Xcode build; shared iOS simulator compilation up to date) |
-| Android host tests | **63/63 PASS** (fresh seventeenth-round run) |
-| Android connected tests | **71/71 PASS** on API 34 (fresh nineteenth-round run, including deterministic persistence overlap cases) |
-| Android debug assembly/cold launch | `assembleDebug` PASS in the nineteenth round; Android cold launch retained from `9e657fa` |
+| Trusted-operation and Rules suite | **95/95 PASS** (fresh twentieth-round clean local emulator run on Node 25.9.0) |
+| Common metadata + Android/iOS compilation | PASS (twentieth-round Android device-test compilation and signed Xcode build; shared iOS simulator compilation up to date) |
+| Android host tests | **63/63 PASS** (fresh twentieth-round run) |
+| Android connected tests | **72/72 PASS** on API 34 (fresh twentieth-round run, including the teardown/issuance race) |
+| Android debug assembly/cold launch | `assembleDebug` PASS in the twentieth round; Android cold launch retained from `9e657fa` |
 | iOS shared simulator tests | **63/63 PASS** (fresh seventeenth-round run) |
-| Native signed Xcode Debug build | PASS (fresh nineteenth-round ad-hoc codesigned simulator build) |
-| Swift Firebase/recovery harness | PASS; **140 PASS lines (86 Firebase + 54 recovery), 0 failures** (fresh nineteenth-round signed harness, including recovery write/write, write/delete, delete/write, failure, isolation and restart overlap checks). The recovery harness additionally prints one informational Data-Protection observation. |
+| Native signed Xcode Debug build | PASS (fresh twentieth-round ad-hoc codesigned simulator build) |
+| Swift Firebase/recovery harness | PASS; **142 PASS lines (86 Firebase + 56 recovery), 0 failures** (fresh twentieth-round signed harness, including both concurrent first-key writers and restart reads). The recovery harness additionally prints one informational Data-Protection observation. |
 | Android/iOS cold launch | iOS Debug cold launch rerun with the seventh-round build: Foundation Home remained the default destination with no harness output without the opt-in flag; Android cold launch retained from `9e657fa` |
-| Diff/secret/generated/machine-path audit | Nineteenth-round focused diff audit recorded before commit; earlier rounds retained |
+| Diff/secret/generated/machine-path audit | Twentieth-round focused diff audit recorded before commit; earlier rounds retained |
 
 The fourth corrective round changed `firebase/functions` TypeScript sources/tests, shared Kotlin contracts and their tests, the Android adapter/persistence validation, the Android device-test fixtures, the `iosApp` Swift bridge/harness sources, the shared build file (test-only Firestore dependency for typed fixtures), and documentation: no production dependency, version catalog, or lockfile change. The Android and Apple parity suites were rerun because shared Kotlin, Android adapter, and Swift bridge code changed; the Android cold launch and the Android/iOS visual evidence are preserved from earlier commits with their original attribution.
 

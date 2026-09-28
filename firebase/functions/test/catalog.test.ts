@@ -679,6 +679,38 @@ describe("system catalog entitlement lifecycle", () => {
     assert.equal((await db.collection("lifecycleCommands").get()).size, 1);
   });
 
+  it("rejects reactivation of a revoked membership with an active contribution atomically", async () => {
+    const uid = "revoked_contribution_drift";
+    const workspaceId = "ws_revoked_contribution_drift";
+    const workspaceRef = db.doc(`workspaces/${workspaceId}`);
+    const membershipRef = db.doc(`workspaces/${workspaceId}/memberships/${uid}`);
+    const accountRef = db.doc(`users/${uid}`);
+    const entitlementRef = db.doc(`users/${uid}/authorizations/systemCatalog`);
+    const receiptRef = db.doc(`lifecycleCommands/${commandId("admin", "restore-revoked-drift")}`);
+    await seed(uid, workspaceId);
+    await membershipRef.set({ schemaVersion: 1, workspaceId, userId: uid, role: "client", status: "revoked", revision: 1, catalogContributionActive: true });
+    const before = {
+      workspace: (await workspaceRef.get()).data(),
+      membership: (await membershipRef.get()).data(),
+      account: (await accountRef.get()).data(),
+      entitlement: (await entitlementRef.get()).data(),
+      receipts: (await db.collection("lifecycleCommands").get()).size
+    };
+
+    await assert.rejects(
+      () => transitionMembership(db, activation(uid, workspaceId, "restore-revoked-drift", 1, 1)),
+      /membership-revoked-contribution-active/
+    );
+    assert.deepEqual((await workspaceRef.get()).data(), before.workspace);
+    assert.deepEqual((await membershipRef.get()).data(), before.membership);
+    assert.deepEqual((await accountRef.get()).data(), before.account);
+    assert.deepEqual((await entitlementRef.get()).data(), before.entitlement);
+    assert.equal((await db.collection("lifecycleCommands").get()).size, before.receipts);
+    assert.equal((await receiptRef.get()).exists, false);
+    assert.deepEqual(await workspaceCounts(workspaceId), { roster: 0, contributions: 0, revision: 1, status: "active" });
+    assert.deepEqual(await entitlementState(uid), { status: "inactive", activeMembershipCount: 0, revision: 1 });
+  });
+
   it("validates a stored membership before deriving membership-transition deltas", async () => {
     const storedMembership = (workspaceId: string, uid: string, overrides: Record<string, unknown> = {}) => ({
       schemaVersion: 1, workspaceId, userId: uid, role: "client", status: "active", revision: 1, catalogContributionActive: true, ...overrides
@@ -696,6 +728,7 @@ describe("system catalog entitlement lifecycle", () => {
       ["schema-unsupported", /membership-schema-unsupported/, (workspaceId, uid) => storedMembership(workspaceId, uid, { schemaVersion: 2 })],
       ["role-invalid", /membership-role-invalid/, (workspaceId, uid) => storedMembership(workspaceId, uid, { role: "owner" })],
       ["status-invalid", /membership-status-invalid/, (workspaceId, uid) => storedMembership(workspaceId, uid, { status: "pending" })],
+      ["revoked-contributing", /membership-revoked-contribution-active/, (workspaceId, uid) => storedMembership(workspaceId, uid, { status: "revoked", catalogContributionActive: true })],
       ["revision-malformed", /membership-revision-malformed/, (workspaceId, uid) => storedMembership(workspaceId, uid, { revision: "1" })]
     ];
 
@@ -750,6 +783,20 @@ describe("system catalog entitlement lifecycle", () => {
     assert.equal((await entitlementState("delta_valid")).status, "active");
     assert.equal((await entitlementState("delta_valid")).activeMembershipCount, 1);
     assert.equal((await db.doc(`lifecycleCommands/${commandId("admin", "delta-valid-restore")}`).get()).get("commandKind"), "membership-transition");
+    const committed = {
+      workspace: (await db.doc("workspaces/ws_delta_valid").get()).data(),
+      membership: (await validMembershipRef.get()).data(),
+      entitlement: (await db.doc("users/delta_valid/authorizations/systemCatalog").get()).data(),
+      receipt: (await db.doc(`lifecycleCommands/${commandId("admin", "delta-valid-restore")}`).get()).data()
+    };
+    const replay = await transitionMembership(db, activation("delta_valid", "ws_delta_valid", "delta-valid-restore", 2, 3));
+    assert.equal(replay.replayed, true);
+    assert.deepEqual(await workspaceCounts("ws_delta_valid"), { roster: 1, contributions: 1, revision: 4, status: "active" });
+    assert.equal((await entitlementState("delta_valid")).activeMembershipCount, 1);
+    assert.deepEqual((await db.doc("workspaces/ws_delta_valid").get()).data(), committed.workspace);
+    assert.deepEqual((await validMembershipRef.get()).data(), committed.membership);
+    assert.deepEqual((await db.doc("users/delta_valid/authorizations/systemCatalog").get()).data(), committed.entitlement);
+    assert.deepEqual((await db.doc(`lifecycleCommands/${commandId("admin", "delta-valid-restore")}`).get()).data(), committed.receipt);
   });
 
   it("permits a partial deactivation while the account or entitlement schema is damaged", async () => {

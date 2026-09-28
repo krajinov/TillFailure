@@ -22,6 +22,62 @@ import kotlin.test.assertTrue
 
 class AndroidFirebaseSpikeClientTest {
     @Test
+    fun writeWaitingAtIssuanceCannotStartAfterTeardown() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val fence = AccountCallbackFence()
+        val epoch = fence.advance()
+        val client = AndroidFirebaseSpikeClient(context, FirebaseEmulatorConfiguration(host = "10.0.2.2"), fence)
+        val uid = signInAndReadUid(client, epoch)
+        val path = "spikeEcho/$uid/documents/native-android-issuance-race"
+        val beforeIssue = CountDownLatch(1)
+        val releaseIssue = CountDownLatch(1)
+        val sdkSets = AtomicInteger(0)
+        val callbacks = AtomicInteger(0)
+        val rejected = AtomicReference<FirebaseUnitResult>()
+        val writeFinished = CountDownLatch(1)
+        client.beforeWriteIssuanceForTest = {
+            beforeIssue.countDown()
+            await(releaseIssue, "release blocked write")
+        }
+        client.afterWriteIssuedForTest = { sdkSets.incrementAndGet() }
+        val writer = Thread {
+            client.writeDocument(path, mapOf("ownerUid" to uid, "value" to "must-not-issue"), epoch) {
+                rejected.set(it)
+                callbacks.incrementAndGet()
+                writeFinished.countDown()
+            }
+        }
+        writer.start()
+        try {
+            await(beforeIssue, "write before issuance")
+            // Teardown crosses the same lifecycle gate before the held writer is released.
+            terminateAndAssert(client)
+        } finally {
+            releaseIssue.countDown()
+        }
+        writer.join(15_000)
+        assertFalse(writer.isAlive)
+        await(writeFinished, "retired write rejection")
+        assertEquals(0, sdkSets.get(), "SDK set must not start after teardown retires the client")
+        assertEquals(1, callbacks.get(), "the rejected operation must complete exactly once")
+        assertEquals(StableFirebaseErrorCode.FAILED_PRECONDITION, rejected.get()?.failure?.code)
+        assertFalse(rejected.get()?.failure?.retryable == true)
+
+        // A new SDK generation remains usable after the retired client rejects its old write.
+        val nextFence = AccountCallbackFence()
+        val nextEpoch = nextFence.advance()
+        val replacement = AndroidFirebaseSpikeClient(context, FirebaseEmulatorConfiguration(host = "10.0.2.2"), nextFence)
+        try {
+            val replacementUid = signInAndReadUid(replacement, nextEpoch)
+            val replacementPath = "spikeEcho/$replacementUid/documents/native-android-issuance-recreated"
+            writeAndAssert(replacement, replacementPath, replacementUid, nextEpoch)
+            assertTrue(readServer(replacement, replacementPath, nextEpoch).document?.exists == true)
+        } finally {
+            terminateAndAssert(replacement)
+        }
+    }
+
+    @Test
     fun emulatorBackedNativeAdapterCoversCriticalLifecycle() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val fence = AccountCallbackFence()

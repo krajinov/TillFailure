@@ -121,6 +121,9 @@ function requireValidMembership(
   if (typeof membership.get("catalogContributionActive") !== "boolean") {
     throw new Error(`membership-contribution-malformed:${membership.ref.path}`);
   }
+  if (membership.get("status") === "revoked" && membership.get("catalogContributionActive") === true) {
+    throw new Error(`membership-revoked-contribution-active:${membership.ref.path}`);
+  }
   if (!allowedStatuses.includes(membership.get("status"))) {
     throw new Error(`membership-status-invalid:${membership.ref.path}`);
   }
