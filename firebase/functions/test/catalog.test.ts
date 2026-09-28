@@ -116,6 +116,40 @@ describe("system catalog entitlement lifecycle", () => {
     await db.recursiveDelete(db.collection("lifecycleCommands"));
   });
 
+  it("rejects every path-derived lifecycle ID before building a Firestore reference", async () => {
+    let referencesBuilt = 0;
+    const noReferences = {
+      doc: () => { referencesBuilt += 1; throw new Error("unexpected-document-reference"); },
+      collection: () => { referencesBuilt += 1; throw new Error("unexpected-collection-reference"); }
+    } as unknown as typeof db;
+    const invalid = ["a/b/c", "/leading", "trailing/", ".", "..", "__name__", " ", "a".repeat(129)];
+    for (const id of invalid) {
+      await assert.rejects(() => transitionAccountLifecycle(noReferences, accountLifecycle(id, false, 1)), /account-uid-(invalid|path-separator)/);
+      await assert.rejects(() => transitionMembership(noReferences, activation(id, "ws", "bad-uid", 0, 1)), /account-uid-(invalid|path-separator)/);
+      await assert.rejects(() => transitionMembership(noReferences, activation("client", id, "bad-workspace", 0, 1)), /workspace-id-(invalid|path-separator)/);
+      await assert.rejects(() => transitionWorkspace(noReferences, workspaceTransition(id, "bad-workspace", 1, "suspended")), /workspace-id-(invalid|path-separator)/);
+    }
+    assert.equal(referencesBuilt, 0);
+
+    // The odd-numbered slash case would otherwise name valid nested documents. Their bytes and
+    // lifecycle receipt remain untouched even when those nested documents actually exist.
+    await db.doc("users/a/b/c").set({ schemaVersion: 1, accountStatus: "active", lifecycleRevision: 1 });
+    await db.doc("users/a/b/c/authorizations/systemCatalog").set({ schemaVersion: 1, status: "active", activeMembershipCount: 1, revision: 1 });
+    await db.doc("workspaces/a/b/c").set({ schemaVersion: 1, status: "active", membershipRevision: 1, activeRosterCount: 0, catalogContributionCount: 0 });
+    const nestedAccountBefore = (await db.doc("users/a/b/c").get()).data();
+    const nestedWorkspaceBefore = (await db.doc("workspaces/a/b/c").get()).data();
+    await assert.rejects(() => transitionAccountLifecycle(db, accountLifecycle("a/b/c", false, 1)), /account-uid-path-separator/);
+    await assert.rejects(() => transitionWorkspace(db, workspaceTransition("a/b/c", "nested-workspace", 1, "suspended")), /workspace-id-path-separator/);
+    assert.deepEqual((await db.doc("users/a/b/c").get()).data(), nestedAccountBefore);
+    assert.deepEqual((await db.doc("workspaces/a/b/c").get()).data(), nestedWorkspaceBefore);
+    assert.equal((await db.collection("lifecycleCommands").get()).size, 0);
+
+    // Dotted Firebase UIDs and dotted single-segment workspace IDs still target their exact paths.
+    await seed("client@example.com", "ws.2027");
+    assert.equal((await transitionMembership(db, activation("client@example.com", "ws.2027", "valid", 0, 1))).activeMembershipCount, 1);
+    assert.equal((await db.doc("workspaces/ws.2027/memberships/client@example.com").get()).get("workspaceId"), "ws.2027");
+  });
+
   it("activates, replays, revokes, and restores without count drift", async () => {
     await seed("client", "ws");
     const activate = activation("client", "ws", "activate", 0, 1);

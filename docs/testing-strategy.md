@@ -9,6 +9,8 @@ The Node 22 emulator backend passed 84/84 tests on two consecutive clean runs, i
 
 The fifteenth correction was freshly verified with the local backend/Rules emulator suite (**87/87**, Node 25.9.0), Android API 34 connected tests (**68/68**), a signed iOS Debug build and opt-in harness (**86 Firebase and 43 recovery PASS lines, zero FAIL**), Android debug assembly and host tests (**63/63**), and the shared iOS simulator test task (**63/63** retained result, up to date). The new tests cover missing-entitlement account disable with atomic revision/receipt and strict enable, assignment denial for a tenant-mismatched membership across header/content/descendant reads and relevant lists, and two real native A/B/C overlap cycles on each platform with B operating after A terminates, A remaining unusable, late callback suppression, and fresh C SDK instances. The earlier Node 22 and visual evidence above retains its original attribution; see the [Milestone 3 report](milestones/milestone-3-report.md) for exact commands and scope.
 
+The sixteenth correction adds lifecycle single-segment ID rejection before Firestore reference construction and an Android callback gate closed synchronously by teardown. Fresh checks passed: backend/Rules **88/88** on Node 25.9.0, Android API 34 connected **69/69**, Android host **63/63**, and Android debug assembly. The signed iOS harness/build and shared iOS test evidence above remain attributed to the fifteenth round because no Apple or shared iOS code changed.
+
 ## Test layers
 
 | Layer | Scope and examples | Environment |

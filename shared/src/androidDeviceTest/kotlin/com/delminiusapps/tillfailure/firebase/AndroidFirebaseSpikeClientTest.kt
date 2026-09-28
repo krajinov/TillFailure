@@ -1,7 +1,10 @@
 package com.delminiusapps.tillfailure.firebase
 
 import androidx.test.platform.app.InstrumentationRegistry
+import android.os.Handler
+import android.os.Looper
 import com.google.firebase.FirebaseApp
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Source
@@ -460,6 +463,55 @@ class AndroidFirebaseSpikeClientTest {
             assertEquals(FirebaseDataOrigin.SERVER, readServer(c, cPath, cEpoch).document?.origin)
             terminateAndAssert(c)
         }
+    }
+
+    @Test
+    fun teardownSuppressesCallbacksIssuedWhileTheClientWasLive() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val fence = AccountCallbackFence()
+        val epoch = fence.advance()
+        val client = AndroidFirebaseSpikeClient(context, FirebaseEmulatorConfiguration(host = "10.0.2.2"), fence)
+        val uid = signInAndReadUid(client, epoch)
+        val path = "spikeEcho/$uid/documents/native-android-teardown-race"
+        val teardownStarted = AtomicBoolean(false)
+        val callbacksAfterTeardown = AtomicInteger(0)
+        fun recordLateCallback() {
+            if (teardownStarted.get()) callbacksAfterTeardown.incrementAndGet()
+        }
+
+        awaitNetwork(client, enabled = false)
+        // Hold the default SDK callback executor while the operations are issued and teardown
+        // starts. Releasing it afterward makes the late-completion ordering deterministic.
+        val mainEntered = CountDownLatch(1)
+        val releaseMain = CountDownLatch(1)
+        Handler(Looper.getMainLooper()).post {
+            mainEntered.countDown()
+            releaseMain.await(10, TimeUnit.SECONDS)
+        }
+        await(mainEntered, "main-thread callback gate")
+        val session = client.observeSession(epoch) { recordLateCallback() }
+        val listener = client.listenDocument(path, epoch) { recordLateCallback() }
+        client.writeDocument(path, mapOf("ownerUid" to uid, "value" to "pending", "counter" to "0"), epoch) { recordLateCallback() }
+        client.getDocument(path, epoch) { recordLateCallback() }
+        client.increment(path, "counter", 1, epoch) { recordLateCallback() }
+        client.waitForPendingWrites(epoch, timeoutMillis = 5_000) { recordLateCallback() }
+        // These operations were issued while the client was live. Their SDK completions may race
+        // with teardown, but none may be delivered after teardown has retired the client.
+        val clearResult = AtomicReference<FirebaseUnitResult>()
+        val clearFinished = CountDownLatch(1)
+        teardownStarted.set(true)
+        client.terminateAndClear {
+            clearResult.set(it)
+            clearFinished.countDown()
+        }
+        releaseMain.countDown()
+        await(clearFinished, "teardown with queued callbacks")
+        assertTrue(assertNotNull(clearResult.get()).isSuccess)
+        FirebaseAuth.getInstance(client.firebaseApp).signOut()
+        Thread.sleep(750)
+        assertEquals(0, callbacksAfterTeardown.get(), "a callback escaped after teardown began")
+        session.cancel()
+        listener.cancel()
     }
 
     private fun signInAndReadUid(client: AndroidFirebaseSpikeClient, epoch: Long): String {

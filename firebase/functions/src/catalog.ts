@@ -61,6 +61,17 @@ function requireCommandIdentity(input: { readonly callerUid: string; readonly id
   if (typeof input.idempotencyKey !== "string" || input.idempotencyKey.length === 0) throw new Error("idempotency-key-required");
 }
 
+// Lifecycle IDs are interpolated into account, workspace, membership, and authorization paths.
+// A value such as "a/b/c" can still form a valid Firestore document path, but would select a
+// different nested document. Reject it before constructing even the receipt reference.
+const RESERVED_DOCUMENT_ID = /^__.*__$/;
+function requireLifecyclePathSegment(value: unknown, field: string): void {
+  if (typeof value !== "string" || value.length === 0 || value.length > 128 || value.trim().length === 0 || value === "." || value === ".." || RESERVED_DOCUMENT_ID.test(value)) {
+    throw new Error(`${field}-invalid`);
+  }
+  if (value.includes("/")) throw new Error(`${field}-path-separator`);
+}
+
 // The current Firestore Rules authorize catalog access only for `schemaVersion == 1` account and
 // entitlement documents (`activeAccount` and `catalogEntitled`). A trusted command must never
 // write or report an authorization state those Rules deny, and an unknown version is rejected
@@ -201,6 +212,8 @@ function requireSchemaForContributionChange(
 
 export async function transitionMembership(db: Firestore, input: MembershipTransition): Promise<CatalogTransitionResult> {
   requireCommandIdentity(input);
+  requireLifecyclePathSegment(input.uid, "account-uid");
+  requireLifecyclePathSegment(input.workspaceId, "workspace-id");
   strictConfiguredBound(input.maxMembershipsPerAccount, RULES_ENTITLEMENT_COUNT_MAX, "invalid-maximum-memberships");
   strictConfiguredBound(input.maxMembershipsPerWorkspace, WORKSPACE_ROSTER_COUNT_MAX, "invalid-maximum-workspace-memberships");
   const requestHash = stableHash(input);
@@ -301,6 +314,7 @@ export interface WorkspaceTransition {
 
 export async function transitionWorkspace(db: Firestore, input: WorkspaceTransition): Promise<{ affected: number; replayed: boolean }> {
   requireCommandIdentity(input);
+  requireLifecyclePathSegment(input.workspaceId, "workspace-id");
   strictConfiguredBound(input.maxMembershipsPerAccount, RULES_ENTITLEMENT_COUNT_MAX, "invalid-maximum-memberships");
   strictConfiguredBound(input.maxMembershipsPerWorkspace, WORKSPACE_ROSTER_COUNT_MAX, "invalid-maximum-workspace-memberships");
   const requestHash = stableHash(input);
@@ -404,7 +418,7 @@ export interface AccountLifecycleResult {
 // state (when present), the lifecycle revision, and the receipt in one transaction.
 export async function transitionAccountLifecycle(db: Firestore, input: AccountLifecycleTransition): Promise<AccountLifecycleResult> {
   requireCommandIdentity(input);
-  if (typeof input.uid !== "string" || input.uid.length === 0) throw new Error("account-uid-required");
+  requireLifecyclePathSegment(input.uid, "account-uid");
   if (!Number.isInteger(input.expectedLifecycleRevision) || input.expectedLifecycleRevision < 0) throw new Error("invalid-expected-revision");
   strictConfiguredBound(input.maxMembershipsPerAccount, RULES_ENTITLEMENT_COUNT_MAX, "invalid-maximum-memberships");
   const requestHash = stableHash(input);

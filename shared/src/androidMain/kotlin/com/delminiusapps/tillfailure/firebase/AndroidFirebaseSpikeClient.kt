@@ -23,6 +23,9 @@ class AndroidFirebaseSpikeClient(
     private val auth: FirebaseAuth
     private val firestore: FirebaseFirestore
     private val terminated = AtomicBoolean(false)
+    // Serializes callback delivery with the moment teardown retires this client. A callback that
+    // already entered finishes before teardown starts; no old SDK completion can enter afterward.
+    private val callbackLock = Any()
 
     init {
         // One generation per client: overlapping clients and later recreations receive distinct
@@ -43,6 +46,18 @@ class AndroidFirebaseSpikeClient(
     private fun terminatedFailure(): StableFirebaseFailure? =
         if (terminated.get()) StableFirebaseFailure(StableFirebaseErrorCode.FAILED_PRECONDITION, false) else null
 
+    private fun deliverIfCurrent(epoch: Long, cancelled: AtomicBoolean?, deliver: () -> Unit) {
+        synchronized(callbackLock) {
+            if (!terminated.get() && cancelled?.get() != true && fence.accepts(epoch)) deliver()
+        }
+    }
+
+    private fun deliverIfLive(deliver: () -> Unit) {
+        synchronized(callbackLock) {
+            if (!terminated.get()) deliver()
+        }
+    }
+
     /**
      * The named SDK app this client acquired. Device tests use it to seed or inspect fixtures on the
      * same instance the client operates on, which is required now that every client acquires its own
@@ -54,7 +69,7 @@ class AndroidFirebaseSpikeClient(
         if (terminatedFailure() != null) return FirebaseCancellation {}
         val cancelled = AtomicBoolean(false)
         val listener = FirebaseAuth.AuthStateListener { observed ->
-            if (!cancelled.get() && fence.accepts(accountEpoch)) {
+            deliverIfCurrent(accountEpoch, cancelled) {
                 callback(FirebaseAuthSession(observed.currentUser?.uid, observed.currentUser?.isAnonymous == true))
             }
         }
@@ -80,10 +95,11 @@ class AndroidFirebaseSpikeClient(
         if (terminatedFailure() != null) return FirebaseCancellation {}
         val cancelled = AtomicBoolean(false)
         val registration = firestore.document(path).addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
-            when {
-                cancelled.get() || !fence.accepts(accountEpoch) -> Unit
-                error != null -> callback(FirebaseDocumentResult(failure = mapFailure(error)))
-                snapshot != null -> callback(FirebaseDocumentResult(document = snapshot.toContract()))
+            deliverIfCurrent(accountEpoch, cancelled) {
+                when {
+                    error != null -> callback(FirebaseDocumentResult(failure = mapFailure(error)))
+                    snapshot != null -> callback(FirebaseDocumentResult(document = snapshot.toContract()))
+                }
             }
         }
         return FirebaseCancellation {
@@ -103,8 +119,8 @@ class AndroidFirebaseSpikeClient(
         }
         val cancelled = AtomicBoolean(false)
         firestore.document(path).set(fields)
-            .addOnSuccessListener { if (!cancelled.get() && fence.accepts(accountEpoch)) callback(FirebaseUnitResult()) }
-            .addOnFailureListener { error -> if (!cancelled.get() && fence.accepts(accountEpoch)) callback(FirebaseUnitResult(mapFailure(error))) }
+            .addOnSuccessListener { deliverIfCurrent(accountEpoch, cancelled) { callback(FirebaseUnitResult()) } }
+            .addOnFailureListener { error -> deliverIfCurrent(accountEpoch, cancelled) { callback(FirebaseUnitResult(mapFailure(error))) } }
         return FirebaseCancellation { cancelled.set(true) }
     }
 
@@ -129,7 +145,7 @@ class AndroidFirebaseSpikeClient(
             transaction.set(reference, mapOf(field to next), SetOptions.merge())
             next
         }.addOnSuccessListener {
-            if (!cancelled.get() && fence.accepts(accountEpoch)) {
+            deliverIfCurrent(accountEpoch, cancelled) {
                 reference.get(Source.SERVER)
                     .addOnSuccessListener { snapshot -> deliverDocument(snapshot, accountEpoch, cancelled, callback) }
                     .addOnFailureListener { error -> deliverFailure(error, accountEpoch, cancelled, callback) }
@@ -151,7 +167,7 @@ class AndroidFirebaseSpikeClient(
         val completed = AtomicBoolean(false)
         val handler = Handler(Looper.getMainLooper())
         fun finish(result: FirebaseUnitResult) {
-            if (completed.compareAndSet(false, true) && fence.accepts(accountEpoch)) callback(result)
+            if (completed.compareAndSet(false, true)) deliverIfCurrent(accountEpoch, null) { callback(result) }
         }
         val timeout = Runnable {
             finish(FirebaseUnitResult(StableFirebaseFailure(StableFirebaseErrorCode.DEADLINE_EXCEEDED, true)))
@@ -173,10 +189,10 @@ class AndroidFirebaseSpikeClient(
     }
 
     override fun terminateAndClear(callback: (FirebaseUnitResult) -> Unit) {
-        // Close the generation before touching the SDK: a client constructed concurrently with (or
-        // after) this teardown must never be handed these instances, and this client is fenced at once.
+        // Retire callback delivery synchronously before SDK teardown begins. Any callback already
+        // delivering completes under this lock before termination can start.
+        val firstTermination = synchronized(callbackLock) { terminated.compareAndSet(false, true) }
         AndroidFirebaseAppRegistry.close(generation)
-        val firstTermination = terminated.compareAndSet(false, true)
         if (!firstTermination) {
             // Repeated cleanup is deterministic and idempotent: the instances have already been
             // retired, so there is nothing left to terminate or clear.
@@ -208,8 +224,8 @@ class AndroidFirebaseSpikeClient(
         val cancelled = AtomicBoolean(false)
         auth.signOut()
         auth.signInAnonymously()
-            .addOnSuccessListener { if (!cancelled.get() && fence.accepts(accountEpoch)) callback(FirebaseUnitResult()) }
-            .addOnFailureListener { error -> if (!cancelled.get() && fence.accepts(accountEpoch)) callback(FirebaseUnitResult(mapFailure(error))) }
+            .addOnSuccessListener { deliverIfCurrent(accountEpoch, cancelled) { callback(FirebaseUnitResult()) } }
+            .addOnFailureListener { error -> deliverIfCurrent(accountEpoch, cancelled) { callback(FirebaseUnitResult(mapFailure(error))) } }
         return FirebaseCancellation { cancelled.set(true) }
     }
 
@@ -219,8 +235,8 @@ class AndroidFirebaseSpikeClient(
             return
         }
         firestore.disableNetwork()
-            .addOnSuccessListener { callback(FirebaseUnitResult()) }
-            .addOnFailureListener { callback(FirebaseUnitResult(mapFailure(it))) }
+            .addOnSuccessListener { deliverIfLive { callback(FirebaseUnitResult()) } }
+            .addOnFailureListener { error -> deliverIfLive { callback(FirebaseUnitResult(mapFailure(error))) } }
     }
 
     fun enableNetwork(callback: (FirebaseUnitResult) -> Unit) {
@@ -229,8 +245,8 @@ class AndroidFirebaseSpikeClient(
             return
         }
         firestore.enableNetwork()
-            .addOnSuccessListener { callback(FirebaseUnitResult()) }
-            .addOnFailureListener { callback(FirebaseUnitResult(mapFailure(it))) }
+            .addOnSuccessListener { deliverIfLive { callback(FirebaseUnitResult()) } }
+            .addOnFailureListener { error -> deliverIfLive { callback(FirebaseUnitResult(mapFailure(error))) } }
     }
 
     // Canonical shared counter contract: an integral value, a canonical signed integer string,
@@ -255,7 +271,7 @@ class AndroidFirebaseSpikeClient(
         cancelled: AtomicBoolean,
         callback: (FirebaseDocumentResult) -> Unit,
     ) {
-        if (!cancelled.get() && fence.accepts(epoch)) callback(FirebaseDocumentResult(document = snapshot.toContract()))
+        deliverIfCurrent(epoch, cancelled) { callback(FirebaseDocumentResult(document = snapshot.toContract())) }
     }
 
     private fun deliverFailure(
@@ -264,7 +280,7 @@ class AndroidFirebaseSpikeClient(
         cancelled: AtomicBoolean,
         callback: (FirebaseDocumentResult) -> Unit,
     ) {
-        if (!cancelled.get() && fence.accepts(epoch)) callback(FirebaseDocumentResult(failure = mapFailure(error)))
+        deliverIfCurrent(epoch, cancelled) { callback(FirebaseDocumentResult(failure = mapFailure(error))) }
     }
 
     private fun DocumentSnapshot.toContract() = FirebaseDocumentSnapshot(
