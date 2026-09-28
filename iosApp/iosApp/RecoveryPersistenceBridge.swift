@@ -19,6 +19,40 @@ final class RecoveryPersistenceBridge: NSObject, NativeRecoveryPersistenceBridge
     private let rootURL: URL
     private let fileManager = FileManager.default
 
+    private final class PartitionLock {
+        let lock = NSLock()
+        var users = 0
+    }
+
+    private final class PartitionRegistry {
+        let lock = NSLock()
+        var entries: [String: PartitionLock] = [:]
+    }
+
+    // Shared across bridge instances; only the same partition is serialized. Waiting users keep
+    // the entry alive until their operation completes.
+    private static let partitionRegistry = PartitionRegistry()
+
+    private func withPartition<T>(uid: String, _ body: () throws -> T) rethrows -> T {
+        let path = fileURL(for: uid).standardizedFileURL.path
+        let registry = Self.partitionRegistry
+        registry.lock.lock()
+        let entry = registry.entries[path] ?? PartitionLock()
+        entry.users += 1
+        registry.entries[path] = entry
+        registry.lock.unlock()
+
+        entry.lock.lock()
+        defer {
+            entry.lock.unlock()
+            registry.lock.lock()
+            entry.users -= 1
+            if entry.users == 0 { registry.entries.removeValue(forKey: path) }
+            registry.lock.unlock()
+        }
+        return try body()
+    }
+
     init(
         rootURL: URL? = nil,
         keyIdentifier: String = "tillfailure.recovery.v1"
@@ -33,30 +67,35 @@ final class RecoveryPersistenceBridge: NSObject, NativeRecoveryPersistenceBridge
     func write(uid: String, plaintext: String) -> NativeRecoveryPersistenceResult {
         do {
             try validate(uid: uid)
-            try prepareRoot()
-            let target = fileURL(for: uid)
-            if fileManager.fileExists(atPath: target.path) {
-                _ = try readPlaintext(uid: uid)
+            #if DEBUG
+            debugBeforePartitionLock?(uid)
+            #endif
+            return try withPartition(uid: uid) {
+                try prepareRoot()
+                let target = fileURL(for: uid)
+                if fileManager.fileExists(atPath: target.path) {
+                    _ = try readPlaintext(uid: uid)
+                }
+                let key = try loadKey(createIfMissing: true)
+                let nonce = AES.GCM.Nonce()
+                let sealed = try AES.GCM.seal(
+                    Data(plaintext.utf8),
+                    using: key,
+                    nonce: nonce,
+                    authenticating: associatedData(uid: uid)
+                )
+                let envelope = EncryptedEnvelope(
+                    encryptionVersion: Int(encryptionVersion),
+                    keyIdentifier: keyIdentifier,
+                    nonce: Data(sealed.nonce).base64EncodedString(),
+                    ciphertext: sealed.ciphertext.base64EncodedString(),
+                    tag: sealed.tag.base64EncodedString()
+                )
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.sortedKeys]
+                try atomicallyReplace(target: target, data: encoder.encode(envelope), uid: uid)
+                return success()
             }
-            let key = try loadKey(createIfMissing: true)
-            let nonce = AES.GCM.Nonce()
-            let sealed = try AES.GCM.seal(
-                Data(plaintext.utf8),
-                using: key,
-                nonce: nonce,
-                authenticating: associatedData(uid: uid)
-            )
-            let envelope = EncryptedEnvelope(
-                encryptionVersion: Int(encryptionVersion),
-                keyIdentifier: keyIdentifier,
-                nonce: Data(sealed.nonce).base64EncodedString(),
-                ciphertext: sealed.ciphertext.base64EncodedString(),
-                tag: sealed.tag.base64EncodedString()
-            )
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.sortedKeys]
-            try atomicallyReplace(target: target, data: encoder.encode(envelope))
-            return success()
         } catch {
             return locked()
         }
@@ -65,9 +104,11 @@ final class RecoveryPersistenceBridge: NSObject, NativeRecoveryPersistenceBridge
     func read(uid: String) -> NativeRecoveryPersistenceResult {
         do {
             try validate(uid: uid)
-            let target = fileURL(for: uid)
-            guard fileManager.fileExists(atPath: target.path) else { return success(payload: nil) }
-            return success(payload: try readPlaintext(uid: uid))
+            return try withPartition(uid: uid) {
+                let target = fileURL(for: uid)
+                guard fileManager.fileExists(atPath: target.path) else { return success(payload: nil) }
+                return success(payload: try readPlaintext(uid: uid))
+            }
         } catch {
             return locked()
         }
@@ -76,11 +117,19 @@ final class RecoveryPersistenceBridge: NSObject, NativeRecoveryPersistenceBridge
     func delete(uid_ uid: String) -> NativeRecoveryPersistenceResult {
         do {
             try validate(uid: uid)
-            let target = fileURL(for: uid)
-            guard fileManager.fileExists(atPath: target.path) else { return success() }
-            _ = try readPlaintext(uid: uid)
-            try fileManager.removeItem(at: target)
-            return success()
+            #if DEBUG
+            debugBeforePartitionLock?(uid)
+            #endif
+            return try withPartition(uid: uid) {
+                let target = fileURL(for: uid)
+                guard fileManager.fileExists(atPath: target.path) else { return success() }
+                _ = try readPlaintext(uid: uid)
+                #if DEBUG
+                debugBeforeDelete?(uid)
+                #endif
+                try fileManager.removeItem(at: target)
+                return success()
+            }
         } catch {
             return locked()
         }
@@ -111,21 +160,25 @@ final class RecoveryPersistenceBridge: NSObject, NativeRecoveryPersistenceBridge
         return value
     }
 
-    private func atomicallyReplace(target: URL, data: Data) throws {
-        let temporary = target.appendingPathExtension("tmp")
-        if fileManager.fileExists(atPath: temporary.path) {
-            try fileManager.removeItem(at: temporary)
-        }
+    private func atomicallyReplace(target: URL, data: Data, uid: String) throws {
+        let temporary = target.deletingLastPathComponent().appendingPathComponent(
+            "\(target.lastPathComponent).\(UUID().uuidString).tmp"
+        )
+        var ownsTemporary = false
         do {
-            try data.write(to: temporary, options: .completeFileProtectionUntilFirstUserAuthentication)
+            try data.write(to: temporary, options: [.completeFileProtectionUntilFirstUserAuthentication, .withoutOverwriting])
+            ownsTemporary = true
             let handle = try FileHandle(forWritingTo: temporary)
             defer { try? handle.close() }
             try handle.synchronize()
             // Every required file attribute is applied to the temporary file before the rename, so a
             // metadata failure aborts the write while the previously committed record is untouched.
             try applyCommitMetadata(to: temporary)
+            #if DEBUG
+            try debugBeforeCommit?(uid, temporary)
+            #endif
         } catch {
-            try? fileManager.removeItem(at: temporary)
+            if ownsTemporary { try? fileManager.removeItem(at: temporary) }
             throw error
         }
         // The rename below is the commit point. No fallible work runs after it, so a write either
@@ -235,6 +288,9 @@ final class RecoveryPersistenceBridge: NSObject, NativeRecoveryPersistenceBridge
     /// file throws, so the harness can prove that a pre-commit failure preserves the previously
     /// committed record, never commits the new payload, and removes the temporary file.
     var debugFailMetadataSetup = false
+    var debugBeforePartitionLock: ((String) -> Void)?
+    var debugBeforeCommit: ((String, URL) throws -> Void)?
+    var debugBeforeDelete: ((String) -> Void)?
 
     func debugRawData(uid: String) throws -> Data { try Data(contentsOf: fileURL(for: uid)) }
 

@@ -33,7 +33,38 @@ class AndroidAtomicFilePersistence(
 ) : AccountPersistencePrototype {
     internal val rootDirectory: File = File(context.noBackupFilesDir, "tillfailure-recovery")
 
+    // The registry is process-wide: separate bridge instances for the same account must share
+    // the lock. Entries are retained only while an operation owns or is waiting for the lock.
+    private class PartitionLock {
+        val monitor = Any()
+        var users = 0
+    }
+
+    private inline fun <T> withPartition(uid: String, action: () -> T): T {
+        val path = fileFor(uid).absolutePath
+        val lock = synchronized(partitionLocks) {
+            partitionLocks.getOrPut(path) { PartitionLock() }.also { it.users++ }
+        }
+        try {
+            return synchronized(lock.monitor) { action() }
+        } finally {
+            synchronized(partitionLocks) {
+                lock.users--
+                if (lock.users == 0) partitionLocks.remove(path, lock)
+            }
+        }
+    }
+
+    internal var beforePartitionLockForTest: ((String) -> Unit)? = null
+    internal var beforeCommitForTest: ((String, File) -> Unit)? = null
+    internal var beforeDeleteForTest: ((String) -> Unit)? = null
+
     override fun write(envelope: AccountPersistenceEnvelope) {
+        beforePartitionLockForTest?.invoke(envelope.uid)
+        withPartition(envelope.uid) { writeLocked(envelope) }
+    }
+
+    private fun writeLocked(envelope: AccountPersistenceEnvelope) {
         try {
             check(rootDirectory.mkdirs() || rootDirectory.isDirectory) { "Unable to create recovery directory" }
             val target = fileFor(envelope.uid)
@@ -48,19 +79,25 @@ class AndroidAtomicFilePersistence(
                 nonce = Base64.encodeToString(cipher.iv, Base64.NO_WRAP),
                 ciphertext = Base64.encodeToString(cipher.doFinal(plaintext), Base64.NO_WRAP),
             )
-            val temporary = File(rootDirectory, "${target.name}.tmp")
-            check(!temporary.exists() || temporary.delete()) { "Unable to remove stale recovery temporary file" }
+            // createTempFile reserves this operation's path exclusively. Never remove a temp
+            // owned by another writer, even if that writer uses another bridge instance.
+            val temporary = File.createTempFile("${target.name}.", ".tmp", rootDirectory)
             val bytes = PersistenceJson.format.encodeToString(encrypted).encodeToByteArray()
-            FileOutputStream(temporary).use { output ->
-                output.write(bytes)
-                output.fd.sync()
+            try {
+                FileOutputStream(temporary).use { output ->
+                    output.write(bytes)
+                    output.fd.sync()
+                }
+                beforeCommitForTest?.invoke(envelope.uid, temporary)
+                Files.move(
+                    temporary.toPath(),
+                    target.toPath(),
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING,
+                )
+            } finally {
+                temporary.delete()
             }
-            Files.move(
-                temporary.toPath(),
-                target.toPath(),
-                StandardCopyOption.ATOMIC_MOVE,
-                StandardCopyOption.REPLACE_EXISTING,
-            )
         } catch (error: RecoveryPersistenceLockedException) {
             throw error
         } catch (error: Exception) {
@@ -68,7 +105,9 @@ class AndroidAtomicFilePersistence(
         }
     }
 
-    override fun read(uid: String): AccountPersistenceEnvelope? {
+    override fun read(uid: String): AccountPersistenceEnvelope? = withPartition(uid) { readLocked(uid) }
+
+    private fun readLocked(uid: String): AccountPersistenceEnvelope? {
         val file = fileFor(uid)
         if (!file.exists()) return null
         try {
@@ -94,9 +133,15 @@ class AndroidAtomicFilePersistence(
     }
 
     override fun delete(uid: String) {
+        beforePartitionLockForTest?.invoke(uid)
+        withPartition(uid) { deleteLocked(uid) }
+    }
+
+    private fun deleteLocked(uid: String) {
         val file = fileFor(uid)
         if (!file.exists()) return
-        read(uid)
+        readLocked(uid)
+        beforeDeleteForTest?.invoke(uid)
         if (!file.delete()) throw RecoveryPersistenceLockedException("Account persistence deletion failed")
     }
 
@@ -138,6 +183,7 @@ class AndroidAtomicFilePersistence(
         "TillFailureRecovery|$RECOVERY_ENCRYPTION_VERSION|$keyIdentifier|$uid".encodeToByteArray()
 
     private companion object {
+        val partitionLocks = HashMap<String, PartitionLock>()
         const val ANDROID_KEY_STORE = "AndroidKeyStore"
         const val TRANSFORMATION = "AES/GCM/NoPadding"
         const val GCM_TAG_BITS = 128

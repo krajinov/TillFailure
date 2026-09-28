@@ -119,6 +119,12 @@ Eighteenth round (PR #3 review `pullrequestreview-5334172750`, findings `4118732
 - **Trainer discovery index.** The implemented index contains only schema version, workspace/client/assignment/trainer IDs, status/revision and replacement metadata; no snapshot, prescription, notes or private payload is exposed. Rules now permit an active workspace trainer with an active schema/tenant/user-bound membership to get an index matching the stored path/trainer identity and to run a collection query constrained by schema version, stored workspace ID and their own `trainerId`. Direct gets and actual queries reject other trainers' indexes, client-role, cross-workspace, revoked, tenant-mismatched, suspended and disabled-account cases; all mobile writes remain denied.
 - **Fresh verification.** The TypeScript build and full local backend/Rules emulator suite passed **94/94** on Node 25.9.0. No Android, shared Kotlin, or Apple code changed in this round; the seventeenth-round Android **70/70** device, **63/63** host, shared iOS **63/63**, signed Xcode build and signed iOS harness **86 Firebase + 43 recovery** results are retained with their original attribution. No native rerun or new cold-launch/visual evidence is claimed.
 
+Nineteenth round (PR #3 review `pullrequestreview-5336636429`, finding `4120618484`):
+
+- **Recovery partition serialization.** Android and Apple now share a process-wide lock per committed UID partition path across bridge instances. Read, write and delete use that lock, so validation and replacement/deletion occur in a defined order for the same UID while different UIDs proceed independently. Lock entries are removed after their last owner or waiter completes. Each write reserves its own temporary path (Android exclusive `createTempFile`; Apple UUID path with no-overwrite creation), and only its owner removes it on pre-commit failure. An abandoned temporary file is never treated as committed data or deleted by another write. AES-GCM with UID/version/key-ID AAD, Android no-backup storage, Apple protection and backup exclusion before rename, flush, atomic replacement, and locked recovery remain intact.
+- **Controlled overlap evidence.** Android device and signed Apple harness barriers hold a write or delete while a second bridge reaches the same partition: write/write commits in order, write/delete ends empty, and delete/write ends with the new payload. They also prove that a failed write preserves the committed bytes and another operation's temporary file, a different UID finishes while one partition is held, and a new bridge reads the last committed payload despite a stale temporary file. The coordination uses latches/semaphores rather than sleeps.
+- **Fresh verification.** Android API 34 connected suite passed **71/71**, including the new overlap regression, after starting the local Firebase emulators. Android device-test compilation and debug assembly passed. The ad-hoc signed Xcode Debug simulator build passed; the opt-in harness reported **86 Firebase + 54 recovery PASS lines, zero FAIL**. Android host and shared iOS simulator tests were up to date in the build invocation; their last executed results remain **63/63** each from the seventeenth round. The backend/Rules **94/94** result remains attributed to the eighteenth round; no backend/Rules rerun or deployment is claimed.
+
 ## Runtime and dependency evidence
 
 | Area | Exact version/evidence |
@@ -183,16 +189,16 @@ Future rotation uses a new versioned key identifier, reads old envelopes with th
 | Gate | Final result |
 |---|---|
 | Node 22 TypeScript build and emulator start/stop | PASS (rerun for the twelfth corrective round under Node `22.23.2`; locked dependencies retained) |
-| Trusted-operation and Rules suite | **94/94 PASS** (fresh eighteenth-round clean local emulator run on Node 25.9.0) |
-| Common metadata + Android/iOS compilation | PASS (fresh seventeenth-round Android device-test and iOS simulator compilation; signed iOS and Android debug builds succeeded) |
+| Trusted-operation and Rules suite | **94/94 PASS** (eighteenth-round clean local emulator run on Node 25.9.0; retained) |
+| Common metadata + Android/iOS compilation | PASS (nineteenth-round Android device-test compilation and signed Xcode build; shared iOS simulator compilation up to date) |
 | Android host tests | **63/63 PASS** (fresh seventeenth-round run) |
-| Android connected tests | **70/70 PASS** on API 34 (fresh seventeenth-round run, including the queued callback switch/disposal regression) |
-| Android debug assembly/cold launch | `assembleDebug` PASS in the seventeenth round; Android cold launch retained from `9e657fa` |
+| Android connected tests | **71/71 PASS** on API 34 (fresh nineteenth-round run, including deterministic persistence overlap cases) |
+| Android debug assembly/cold launch | `assembleDebug` PASS in the nineteenth round; Android cold launch retained from `9e657fa` |
 | iOS shared simulator tests | **63/63 PASS** (fresh seventeenth-round run) |
-| Native signed Xcode Debug build | PASS (fresh seventeenth-round ad-hoc codesigned simulator build) |
-| Swift Firebase/recovery harness | PASS; **129 asserted checks (86 Firebase + 43 recovery), 0 failures** (fresh seventeenth-round signed harness, including epoch/late-callback checks and two overlapping-client A/B/C cycles). The recovery harness additionally prints one informational Data-Protection observation. |
+| Native signed Xcode Debug build | PASS (fresh nineteenth-round ad-hoc codesigned simulator build) |
+| Swift Firebase/recovery harness | PASS; **140 PASS lines (86 Firebase + 54 recovery), 0 failures** (fresh nineteenth-round signed harness, including recovery write/write, write/delete, delete/write, failure, isolation and restart overlap checks). The recovery harness additionally prints one informational Data-Protection observation. |
 | Android/iOS cold launch | iOS Debug cold launch rerun with the seventh-round build: Foundation Home remained the default destination with no harness output without the opt-in flag; Android cold launch retained from `9e657fa` |
-| Diff/secret/generated/machine-path audit | Eighteenth-round diff audit recorded before commit; earlier rounds retained |
+| Diff/secret/generated/machine-path audit | Nineteenth-round focused diff audit recorded before commit; earlier rounds retained |
 
 The fourth corrective round changed `firebase/functions` TypeScript sources/tests, shared Kotlin contracts and their tests, the Android adapter/persistence validation, the Android device-test fixtures, the `iosApp` Swift bridge/harness sources, the shared build file (test-only Firestore dependency for typed fixtures), and documentation: no production dependency, version catalog, or lockfile change. The Android and Apple parity suites were rerun because shared Kotlin, Android adapter, and Swift bridge code changed; the Android cold launch and the Android/iOS visual evidence are preserved from earlier commits with their original attribution.
 

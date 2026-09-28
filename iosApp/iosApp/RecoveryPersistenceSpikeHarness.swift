@@ -1,4 +1,5 @@
 import Foundation
+import Shared
 
 #if DEBUG
 enum RecoveryPersistenceSpikeHarness {
@@ -87,6 +88,10 @@ enum RecoveryPersistenceSpikeHarness {
             record("commitMetadataRetainedBackupExclusion", bridge.debugIsExcludedFromBackup(uid: firstUid))
             record("commitMetadataRetainedProtection", bridge.debugProtectionConfigurationAccepted(uid: firstUid))
 
+            runConcurrentChecks(root: root, keyIdentifier: keyIdentifier, suffix: suffix) { name, result in
+                record(name, result)
+            }
+
             // Complete Firebase UID domain: email-shaped, punctuated, Unicode, maximum-length, and
             // traversal-like identifiers all round-trip because only the digest names the file.
             record("emailUidRoundTrip", bridge.write(uid: emailUid, plaintext: "email-account").failureCode == nil && bridge.read(uid: emailUid).payload == "email-account")
@@ -138,6 +143,140 @@ enum RecoveryPersistenceSpikeHarness {
             throw NSError(domain: "TillFailureRecoverySpike", code: 1)
         }
         return object
+    }
+
+    private static func runConcurrentChecks(
+        root: URL,
+        keyIdentifier: String,
+        suffix: String,
+        record: (String, Bool) -> Void
+    ) {
+        let uid = "overlap_\(suffix)"
+        let otherUid = "overlap_other_\(suffix)"
+        let thirdUid = "overlap_third_\(suffix)"
+        let first = RecoveryPersistenceBridge(rootURL: root, keyIdentifier: keyIdentifier)
+        let second = RecoveryPersistenceBridge(rootURL: root, keyIdentifier: keyIdentifier)
+        let restarted = RecoveryPersistenceBridge(rootURL: root, keyIdentifier: keyIdentifier)
+        let queue = DispatchQueue(label: "recovery-overlap", attributes: .concurrent)
+        func reached(_ semaphore: DispatchSemaphore) -> Bool {
+            semaphore.wait(timeout: .now() + 20) == .success
+        }
+        final class ResultBox {
+            var result: NativeRecoveryPersistenceResult?
+        }
+        defer {
+            [uid, otherUid, thirdUid].forEach { first.debugCleanup(uid: $0) }
+            first.debugBeforeCommit = nil
+            first.debugBeforeDelete = nil
+            second.debugBeforeCommit = nil
+            second.debugBeforePartitionLock = nil
+        }
+
+        record("overlapInitialWrite", first.write(uid: uid, plaintext: "initial").failureCode == nil)
+        do {
+            let initialBytes = try first.debugRawData(uid: uid)
+            let aReady = DispatchSemaphore(value: 0)
+            let releaseA = DispatchSemaphore(value: 0)
+            let bWaiting = DispatchSemaphore(value: 0)
+            let aDone = DispatchSemaphore(value: 0)
+            let bDone = DispatchSemaphore(value: 0)
+            let aResult = ResultBox()
+            let bResult = ResultBox()
+            first.debugBeforeCommit = { _, _ in aReady.signal(); _ = reached(releaseA) }
+            second.debugBeforePartitionLock = { _ in bWaiting.signal() }
+            queue.async { aResult.result = first.write(uid: uid, plaintext: "write-A"); aDone.signal() }
+            let aEntered = reached(aReady)
+            queue.async { bResult.result = second.write(uid: uid, plaintext: "write-B"); bDone.signal() }
+            let bEntered = reached(bWaiting)
+            let committedBeforeRelease = try first.debugRawData(uid: uid) == initialBytes
+            releaseA.signal()
+            let bothFinished = reached(aDone) && reached(bDone)
+            record("overlapWriteWriteSerialized", aEntered && bEntered && committedBeforeRelease && bothFinished && aResult.result?.failureCode == nil && bResult.result?.failureCode == nil && restarted.read(uid: uid).payload == "write-B")
+            first.debugBeforeCommit = nil
+            second.debugBeforePartitionLock = nil
+
+            let writeReady = DispatchSemaphore(value: 0)
+            let releaseWrite = DispatchSemaphore(value: 0)
+            let deleteWaiting = DispatchSemaphore(value: 0)
+            let writeDone = DispatchSemaphore(value: 0)
+            let deleteDone = DispatchSemaphore(value: 0)
+            first.debugBeforeCommit = { _, _ in writeReady.signal(); _ = reached(releaseWrite) }
+            second.debugBeforePartitionLock = { _ in deleteWaiting.signal() }
+            queue.async { aResult.result = first.write(uid: uid, plaintext: "before-delete"); writeDone.signal() }
+            let writeEntered = reached(writeReady)
+            queue.async { bResult.result = second.delete(uid_: uid); deleteDone.signal() }
+            let deleteEntered = reached(deleteWaiting)
+            releaseWrite.signal()
+            let writeDeleteFinished = reached(writeDone) && reached(deleteDone)
+            record("overlapWriteDeleteSerialized", writeEntered && deleteEntered && writeDeleteFinished && aResult.result?.failureCode == nil && bResult.result?.failureCode == nil && restarted.read(uid: uid).payload == nil)
+            first.debugBeforeCommit = nil
+            second.debugBeforePartitionLock = nil
+
+            record("overlapDeleteWriteBaseline", first.write(uid: uid, plaintext: "before-delete-write").failureCode == nil)
+            let deleteReady = DispatchSemaphore(value: 0)
+            let releaseDelete = DispatchSemaphore(value: 0)
+            let writeWaiting = DispatchSemaphore(value: 0)
+            let firstDeleteDone = DispatchSemaphore(value: 0)
+            let secondWriteDone = DispatchSemaphore(value: 0)
+            first.debugBeforeDelete = { _ in deleteReady.signal(); _ = reached(releaseDelete) }
+            second.debugBeforePartitionLock = { _ in writeWaiting.signal() }
+            queue.async { aResult.result = first.delete(uid_: uid); firstDeleteDone.signal() }
+            let firstDeleteEntered = reached(deleteReady)
+            queue.async { bResult.result = second.write(uid: uid, plaintext: "after-delete"); secondWriteDone.signal() }
+            let secondWriteEntered = reached(writeWaiting)
+            releaseDelete.signal()
+            let deleteWriteFinished = reached(firstDeleteDone) && reached(secondWriteDone)
+            record("overlapDeleteWriteSerialized", firstDeleteEntered && secondWriteEntered && deleteWriteFinished && aResult.result?.failureCode == nil && bResult.result?.failureCode == nil && restarted.read(uid: uid).payload == "after-delete")
+            first.debugBeforeDelete = nil
+            second.debugBeforePartitionLock = nil
+
+            record("overlapOtherUidBaseline", second.write(uid: otherUid, plaintext: "other-initial").failureCode == nil)
+            let committed = try first.debugRawData(uid: uid)
+            let otherCommitted = try second.debugRawData(uid: otherUid)
+            let independentReady = DispatchSemaphore(value: 0)
+            let releaseIndependent = DispatchSemaphore(value: 0)
+            let independentDone = DispatchSemaphore(value: 0)
+            let ownedTemp = ResultBoxURL()
+            first.debugBeforeCommit = { _, temporary in
+                ownedTemp.url = temporary
+                independentReady.signal()
+                _ = reached(releaseIndependent)
+            }
+            second.debugBeforeCommit = { account, _ in
+                if account == otherUid { throw NSError(domain: "injected-write-failure", code: 1) }
+            }
+            queue.async { aResult.result = first.write(uid: uid, plaintext: "after-overlap"); independentDone.signal() }
+            let independentEntered = reached(independentReady)
+            let thirdWrite = second.write(uid: thirdUid, plaintext: "independent-success")
+            let failedOtherWrite = second.write(uid: otherUid, plaintext: "uncommitted")
+            let tempPreserved = ownedTemp.url.map { FileManager.default.fileExists(atPath: $0.path) } == true
+            let committedPreserved = try first.debugRawData(uid: uid) == committed
+            let otherPreserved = try second.debugRawData(uid: otherUid) == otherCommitted
+            releaseIndependent.signal()
+            let independentFinished = reached(independentDone)
+            record("overlapDifferentUidsIndependent", independentEntered && independentFinished && thirdWrite.failureCode == nil && restarted.read(uid: thirdUid).payload == "independent-success")
+            record("overlapFailureOwnsTemporary", failedOtherWrite.failureCode == "LOCKED" && tempPreserved && committedPreserved && otherPreserved && restarted.read(uid: uid).payload == "after-overlap" && restarted.read(uid: otherUid).payload == "other-initial")
+            first.debugBeforeCommit = nil
+            second.debugBeforeCommit = nil
+
+            let lastBytes = try first.debugRawData(uid: uid)
+            second.debugBeforeCommit = { _, _ in throw NSError(domain: "injected-write-failure", code: 2) }
+            let failedSameUid = second.write(uid: uid, plaintext: "not-committed")
+            second.debugBeforeCommit = nil
+            record("overlapFailedWritePreservesCommitted", failedSameUid.failureCode == "LOCKED" && (try? first.debugRawData(uid: uid)) == lastBytes && restarted.read(uid: uid).payload == "after-overlap")
+            let stale = root.appendingPathComponent("\(first.debugPartitionFileName(uid: uid)).stale.tmp")
+            try Data("stale".utf8).write(to: stale)
+            record("overlapRestartIgnoresStaleTemporary", restarted.read(uid: uid).payload == "after-overlap" && FileManager.default.fileExists(atPath: stale.path))
+            try FileManager.default.removeItem(at: stale)
+            record("overlapTemporaryCleanup", first.debugTemporaryFileCount() == 0)
+        } catch {
+            record("overlapUnexpectedFailure", false)
+            print("M3_RECOVERY overlapError=\((error as NSError).code)")
+        }
+    }
+
+    private final class ResultBoxURL {
+        var url: URL?
     }
 }
 #endif
