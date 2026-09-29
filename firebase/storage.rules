@@ -1,0 +1,25 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /spikeUploads/{uid}/{assetId} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      // Create and update keep the full path-ownership, size, MIME, and metadata validation.
+      allow create, update: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource != null
+        && request.resource.size < 1024 * 1024
+        && request.resource.contentType == "text/plain"
+        && request.resource.metadata.ownerUid == uid;
+      // A delete has no `request.resource`, so ownership is checked against the path (and the
+      // stored object's own metadata when present) instead of the request body.
+      allow delete: if request.auth != null
+        && request.auth.uid == uid
+        && resource != null
+        && resource.metadata.ownerUid == uid;
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

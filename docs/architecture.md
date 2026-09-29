@@ -1,6 +1,6 @@
 # TillFailure architecture
 
-Status: **Milestone 1 foundation implemented; product/data architecture remains proposed**
+Status: **Milestone 3 Firebase/native/persistence spike implemented; product feature architecture remains proposed**
 Reviewed guidance: `compose-skill` commit `982c240e47718b3b0525c5bbe85bf19ff0bb7bec` (2026-04-06), complete `SKILL.md`, mandatory `references/mvi.md`, and routed `references/architecture.md`, `references/accessibility.md`, `references/ios-swift-interop.md`, `references/navigation-3.md`, `references/navigation-3-di.md`, `references/koin.md`, `references/gradle-build.md`, and `references/testing.md`.
 
 ## Repository and module boundaries
@@ -12,13 +12,13 @@ TillFailure/
 ├── androidApp/       # Android application Gradle module; depends on shared
 ├── iosApp/           # Native Xcode app; consumes Shared framework
 ├── shared/           # KMP library: shared Compose UI + business logic
-├── firebase/         # planned TypeScript/functions/rules; not a Gradle module
+├── firebase/         # TypeScript/functions/rules spike; not a Gradle module
 ├── design/           # approved tillfailure.pen; do not alter without approval
 ├── docs/
 ├── gradle/libs.versions.toml
 ├── build.gradle.kts
 ├── settings.gradle.kts
-└── firebase.json     # planned, absent today
+└── firebase.json     # local Emulator Suite configuration
 ```
 
 `androidApp` owns `Application`, `MainActivity`, manifest, application ID/version/signing/build types, Android Firebase configuration/init, lifecycle/OS integration, notification channels/services, and platform dependency wiring. MainActivity never moves to `shared`.
@@ -27,9 +27,9 @@ TillFailure/
 
 `shared` uses `com.android.kotlin.multiplatform.library`, publishes a static `Shared` framework, and owns the shared app shell, role navigation, design system, MVI, domain, data contracts/implementations, validation, resources, and sync state. Interfaces are preferred when dependency injection is enough; `expect/actual` remains appropriate for small value factories or platform APIs and its actuals stay in `androidMain`/`iosMain`.
 
-Verified current source-set names are `commonMain`, `commonTest`, `androidMain`, opt-in `androidHostTest`, planned opt-in `androidDeviceTest`, `iosMain`, and `iosTest`. `androidUnitTest`/`androidInstrumentedTest` are obsolete for this Android-KMP plugin configuration.
+Verified current source-set names are `commonMain`, `commonTest`, `androidMain`, opt-in `androidHostTest`, opt-in `androidDeviceTest`, `iosMain`, and `iosTest`. `androidUnitTest`/`androidInstrumentedTest` are obsolete for this Android-KMP plugin configuration.
 
-`firebase` will own TypeScript Cloud Functions, Firestore/Storage rules, indexes, and backend/rule tests. It is not included in Gradle. Root `firebase.json` must map `functions.source` to `firebase/functions`, rules to `firebase/firestore.rules`, indexes to `firebase/firestore.indexes.json`, and storage rules to `firebase/storage.rules`.
+`firebase` owns the Milestone 3 TypeScript trusted-operation spike, Firestore/Storage rules, indexes, and backend/rule tests. It is not included in Gradle. Root `firebase.json` maps `functions.source` to `firebase/functions`, rules to `firebase/firestore.rules`, indexes to `firebase/firestore.indexes.json`, and storage rules to `firebase/storage.rules`.
 
 ## Dependency direction
 
@@ -70,7 +70,7 @@ com.delminiusapps.tillfailure
 └── di/                          # common modules plus platform module composition
 ```
 
-The same package names may have platform adapter files in `shared/src/androidMain` and wrappers in `shared/src/iosMain`; that does not move app entry responsibilities out of `androidApp`/`iosApp`. With ADR-001’s provisional approach, Apple Firebase implementations themselves live in Swift under `iosApp`, while `iosMain` adapts the injected narrow callback bridge to shared repositories.
+The same package names may have platform adapter files in `shared/src/androidMain` and wrappers in `shared/src/iosMain`; that does not move app entry responsibilities out of `androidApp`/`iosApp`. Under accepted ADR-001, Apple Firebase implementations live in Swift under `iosApp`, while `iosMain` adapts the injected narrow callback bridge to shared contracts.
 
 Milestone 1 intentionally implements only `app` (temporary typed navigation shell), `di` (process-level Koin bootstrap), and isolated `foundation/{home,details,mvi,scoping,ui}` demonstration packages. It does not pre-create speculative domain/data/platform abstractions or product feature packages.
 
@@ -97,7 +97,7 @@ Raw input such as `"72."` is distinct from validated domain weight. Screen state
 
 | Concern | Shared contract/UI | Android app/shared actual | iOS app/shared actual |
 |---|---|---|---|
-| Firebase | repositories/domain failures | app init; adapters in `androidMain` | Swift SDK implementations/narrow bridge in `iosApp`; callback/coroutine repository wrappers in `iosMain`; mandatory parity spike |
+| Firebase | Firebase-free spike contracts/domain failures | official Auth/Firestore adapter in `androidMain`; debug emulator harness only | official Swift Auth/Firestore implementation and narrow bridge in `iosApp`; contract wrapper in `iosMain`; debug emulator harness only |
 | Notifications | registration/router contracts | FCM service/channels/deep-link Intent | APNs/FCM delegate/URL routing |
 | Media | opaque selected-media descriptor | Photo Picker/permissions | PhotosUI/permissions |
 | Secure storage | token/key-value interface; do not duplicate Firebase credentials | Keystore-backed implementation where needed | Keychain-backed implementation where needed |
@@ -121,13 +121,13 @@ The Pencil audit specifies at least 44×44 targets, while the required Compose a
 ## Discovery contradictions and disposition
 
 - The repository already contained sample `androidApp`, `iosApp`, and `shared` scaffolding despite README text saying scaffolding was not finalized. README now reflects the verified foundation.
-- Firebase configuration plist/JSON files are tracked, but there are no Firebase SDK dependencies, initialization, rules, functions, or deployed-resource evidence; their presence is not an implemented integration.
+- Firebase configuration plist/JSON files predate the spike and are not its evidence. Milestone 3 adds official SDK dependencies, emulator-only initialization, local Rules/Functions, and native adapter proof; no cloud resource was created or deployed.
 - The README named obsolete `androidUnitTest`; the plugin and current source use `androidHostTest`.
 - The sample wizard UI and greeting/platform code were removed. `App.kt` now hosts only the isolated temporary MVI foundation flow.
 - At initial discovery the README contained duplicated KMP wizard boilerplate; the planning pass removed that duplicate and preserved the TillFailure content.
-- No `AGENTS.md`, `docs/`, `firebase/`, root `firebase.json`, or Android `Application` class existed at discovery time. Planning docs and the minimal Koin-owning Android `Application` now exist; Firebase paths remain deliberately absent.
+- No `AGENTS.md`, `docs/`, `firebase/`, root `firebase.json`, or Android `Application` class existed at initial discovery. Planning/foundation paths now exist, and Milestone 3 added emulator-only Firebase paths plus platform adapters without changing the default Foundation/catalog launch.
 
-Milestone 1 foundation changes were explicitly authorized. This document does not authorize Milestone 2, Firebase, or product implementation.
+Milestone 3 changes were explicitly authorized and remain a local spike. They do not authorize deployment, production resources, or Milestone 4 product implementation.
 
 ## Primary sources
 

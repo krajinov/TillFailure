@@ -3,9 +3,12 @@ import SwiftUI
 import Shared
 
 struct ComposeView: UIViewControllerRepresentable {
+    let firebaseBridge: NativeFirebaseBridge?
+
     func makeUIViewController(context: Self.Context) -> UIViewController {
         MainViewControllerKt.MainViewController(
-            showDevelopmentCatalog: _isDebugAssertConfiguration()
+            showDevelopmentCatalog: _isDebugAssertConfiguration(),
+            nativeFirebaseBridge: firebaseBridge
         )
     }
 
@@ -13,8 +16,10 @@ struct ComposeView: UIViewControllerRepresentable {
 }
 
 struct ContentView: View {
+    let firebaseBridge: NativeFirebaseBridge?
+
     var body: some View {
-        ComposeView()
+        ComposeView(firebaseBridge: firebaseBridge)
             .ignoresSafeArea()
     }
 }

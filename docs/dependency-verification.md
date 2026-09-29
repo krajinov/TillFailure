@@ -1,7 +1,7 @@
 # Dependency and toolchain verification
 
-Status date: **2026-09-01**
-Milestone 1 dependencies are integrated and freshly resolved/compiled on Android and iOS. Firebase and later-milestone candidates remain uninstalled.
+Status date: **2026-09-20**
+Milestone 3 Firebase dependencies are integrated and freshly compiled/run against local emulators on Android and iOS. Production Firebase remains unconfigured.
 
 ## Status legend
 
@@ -20,12 +20,12 @@ Selecting the newest artifact independently is explicitly rejected. The proposed
 | Gradle wrapper | `9.1.0` | Build | **Build-verified (fresh)**; required/default pairing for AGP 9.0 | [AGP 9.0 compatibility](https://developer.android.com/build/releases/past-releases/agp-9-0-0-release-notes) |
 | Android Gradle Plugin | `9.0.1` | `androidApp`; shared Android target | **Build-verified (fresh)** for host tests/assembly with compile/target SDK 36 and min 29; debug app cold-launched on API 34 | [AGP 9.0.1 release](https://developer.android.com/build/releases/past-releases/agp-9-0-0-release-notes) |
 | Kotlin/KGP | `2.4.10` | All KMP source sets | **Build-verified (fresh)** | [Kotlin releases](https://kotlinlang.org/docs/releases.html) |
-| Android-KMP library plugin | `com.android.kotlin.multiplatform.library` via AGP `9.0.1` | `shared/androidMain`, `androidHostTest`, planned `androidDeviceTest` | **Build-verified (fresh)**; current DSL/source-set tasks were inspected | [Android-KMP plugin](https://developer.android.com/kotlin/multiplatform/plugin) |
+| Android-KMP library plugin | `com.android.kotlin.multiplatform.library` via AGP `9.0.1` | `shared/androidMain`, `androidHostTest`, `androidDeviceTest` | **Build-verified (fresh)**; host and API 34 device-test suites executed | [Android-KMP plugin](https://developer.android.com/kotlin/multiplatform/plugin) |
 | Compose Multiplatform plugin/runtime | `1.11.1` | `commonMain`, Android, iOS | **Build-verified (fresh)** for metadata, Android app, Kotlin/Native tests, Xcode host build, and both launches | [Compose releases](https://github.com/JetBrains/compose-multiplatform/releases/tag/v1.11.1) |
 | Material 3 | `org.jetbrains.compose.material3:material3:1.11.0-alpha07` | `commonMain` | **Build-verified (fresh)**; prerelease exposure remains frozen rather than broadened | [Compose-to-Jetpack mapping](https://www.jetbrains.com/help/kotlin-multiplatform-dev/compose-multiplatform-and-jetpack-compose.html) |
 | Lifecycle Compose | `lifecycle-viewmodel-compose`, `lifecycle-runtime-compose`, `lifecycle-viewmodel-navigation3` at `2.11.0-beta01` | `commonMain` | **Build-verified (fresh)** on Android/iOS; prerelease exposure remains and must be upgraded only as a coordinated toolchain change | [JetBrains Lifecycle](https://www.jetbrains.com/help/kotlin-multiplatform-dev/compose-lifecycle.html) |
 | AndroidX Activity Compose | `androidx.activity:activity-compose:1.13.0` | `androidApp` | **Build-verified (fresh)** for assembly and emulator launch | [AndroidX Activity release notes](https://developer.android.com/jetpack/androidx/releases/activity) |
-| Xcode | `26.2` (`17C52`) | iOS build host | **Build-verified (fresh)** for scheme `iosApp` and iPhone 17 Pro/iOS 26.2 simulator launch. Warnings: ICU object min iOS Simulator 18.5 versus app target 18.2, and Shared framework bundle ID inference fallback. | Local `xcodebuild -version`; [Kotlin/Apple requirements](https://kotlinlang.org/docs/multiplatform-compatibility-guide.html) |
+| Xcode | `26.2` (`17C52`) | iOS build host | **Build-verified (fresh)** for scheme `iosApp` and iPhone 16e/iOS 26.2 simulator launch. Warnings: ICU object min iOS Simulator 18.5 versus app target 18.2, and Shared framework bundle ID inference fallback. | Local `xcodebuild -version`; [Kotlin/Apple requirements](https://kotlinlang.org/docs/multiplatform-compatibility-guide.html) |
 
 Fresh commands successful on branch `foundation/milestone-1`:
 
@@ -47,7 +47,8 @@ The aggregate `:shared:compileKotlinMetadata` task was also observed as `SKIPPED
 | `io.insert-koin:koin-compose-viewmodel` | `4.2.2` | `commonMain`; Android/iOS | **Build-verified (fresh)**; `koinViewModel()` is used in decorated Navigation 3 entries. | [Koin Compose Multiplatform](https://insert-koin.io/docs/reference/koin-compose/compose/) |
 | `org.jetbrains.androidx.navigation3:navigation3-ui` | `1.1.1` | `commonMain`; Android/iOS | **Build-verified (fresh)** with typed keys, Android navigation/back/scoping, and iOS host compile/launch; interactive iOS scoping subsequently passed by user manual verification. | [Compose Navigation 3](https://www.jetbrains.com/help/kotlin-multiplatform-dev/compose-navigation-3.html) |
 | `org.jetbrains.kotlin:kotlin-serialization` Gradle plugin | `2.4.10` | Build plugin | **Build-verified (fresh)** and matched to Kotlin; used for serializable navigation keys. | [Kotlin serialization setup](https://kotlinlang.org/docs/serialization.html) |
-| `org.jetbrains.kotlinx:kotlinx-serialization-core` | `1.9.0` | `commonMain`; Android/iOS | **Build-verified (fresh)**; only core was added for Navigation 3 key/restoration support. JSON was not needed or added. | [Serialization 1.9.0](https://github.com/Kotlin/kotlinx.serialization/releases/tag/v1.9.0) |
+| `org.jetbrains.kotlinx:kotlinx-serialization-core` | `1.9.0` | `commonMain`; Android/iOS | **Build-verified (fresh)**; supports Navigation 3 key/restoration serialization. | [Serialization 1.9.0](https://github.com/Kotlin/kotlinx.serialization/releases/tag/v1.9.0) |
+| `org.jetbrains.kotlinx:kotlinx-serialization-json` | `1.9.0` | `commonMain`; Android/iOS | **Build-verified (fresh)**; encodes the versioned Milestone 3 persistence envelopes. | [Serialization 1.9.0](https://github.com/Kotlin/kotlinx.serialization/releases/tag/v1.9.0) |
 | `org.jetbrains.kotlinx:kotlinx-datetime` | `0.8.0` | future `commonMain`; Android/iOS | **Source-verified, not added**; no Milestone 1 clock/date requirement. Store IANA zone IDs and authoritative instants when scheduling enters scope; integration/DST tests remain required. | [DateTime 0.8.0](https://github.com/Kotlin/kotlinx-datetime/releases/tag/v0.8.0) |
 | `app.cash.turbine:turbine` | `1.2.1` | `commonTest`; Android/iOS tests | **Build-verified (fresh)** for MVI effect tests on Android host and iOS simulator. | [Turbine 1.2.1](https://github.com/cashapp/turbine/releases/tag/1.2.1) |
 | `org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose` | `2.11.0-beta01` | `commonMain`; Android/iOS | **Build-verified (fresh)**; already cataloged/configured before Milestone 1 and now exercised by route collection. | [Compose lifecycle API](https://www.jetbrains.com/help/kotlin-multiplatform-dev/compose-lifecycle.html) |
@@ -61,31 +62,31 @@ Fresh Gradle resolution selected the requested direct versions. Notable transiti
 
 | Platform | Coordinates/package | Exact version | Support/source-set placement | Status and integration gate | Source |
 |---|---|---:|---|---|---|
-| Android alignment | `com.google.firebase:firebase-bom` | `34.18.0` | `shared/androidMain` adapter dependencies | **Source-verified** Android alignment; compile with AGP 9/Kotlin 2.4 required | [Firebase Android BoM release notes](https://firebase.google.com/support/release-notes/android) |
-| Android products | `firebase-auth`, `firebase-firestore`, `firebase-storage`, `firebase-messaging`, `firebase-crashlytics`, `firebase-analytics` | Managed by BoM `34.18.0` | Data adapters in `shared/androidMain`; Messaging/Crashlytics/Analytics OS wiring in `androidApp` as appropriate | **Source-verified** product APIs. Use main modules, not removed/deprecated `-ktx` modules. Emulator/persistence/API spike required. | [Firebase Android setup](https://firebase.google.com/docs/android/setup) |
+| Android alignment | `com.google.firebase:firebase-bom` | `34.19.0` | `shared/androidMain` adapter dependencies | **Build/runtime-verified** with AGP 9.0.1/Kotlin 2.4.10 and API 34 emulator | [Firebase Android BoM release notes](https://firebase.google.com/support/release-notes/android) |
+| Android products | `firebase-auth`, `firebase-firestore`, `firebase-storage` | Managed by BoM `34.19.0` | `shared/androidMain` | **Build/runtime-verified** adapter surface; Storage SDK is linked but native upload recovery was not evaluated. No Messaging/Crashlytics/Analytics added. | [Firebase Android setup](https://firebase.google.com/docs/android/setup) |
 | Android config plugin | `com.google.gms.google-services` | `4.5.0` | `androidApp` only | **Source-verified**; absent today | [Google services plugin](https://developers.google.com/android/guides/google-services-plugin) |
 | Android Crashlytics plugin | `com.google.firebase.crashlytics` | `3.0.8` | `androidApp` only | **Source-verified**; absent today | [Crashlytics Android setup](https://firebase.google.com/docs/crashlytics/get-started?platform=android) |
-| Apple package | `https://github.com/firebase/firebase-ios-sdk` products `FirebaseAuth`, `FirebaseFirestore`, `FirebaseStorage`, `FirebaseMessaging`, `FirebaseCrashlytics`, `FirebaseAnalytics` | `12.18.0` | Swift Package Manager in `iosApp`; iOS 15+ | **Source-verified** release/products. Conditional ADR-001 proposes Swift implementations of a narrow callback bridge plus `iosMain` wrappers; actual API/parity/persistence tests are unresolved. | [Firebase Apple setup](https://firebase.google.com/docs/ios/setup), [Apple SDK releases](https://github.com/firebase/firebase-ios-sdk/releases/tag/12.18.0) |
+| Apple package | `https://github.com/firebase/firebase-ios-sdk` products `FirebaseAuth`, `FirebaseFirestore` | `12.19.2` | Swift Package Manager in `iosApp`; iOS 15+ | **Build/runtime-verified** through the signed Swift bridge harness. Storage/Messaging/Crashlytics/Analytics were not added. | [Firebase Apple setup](https://firebase.google.com/docs/ios/setup), [Apple SDK releases](https://github.com/firebase/firebase-ios-sdk/releases/tag/12.19.2) |
 
-The Android BoM does not provide one visible per-library version in the Gradle catalog; the exact resolved graph must be captured with `dependencyInsight` after installation. Apple’s Swift SDK is not a `commonMain`/`iosMain` dependency. The proposed Swift callback bridge is injected by the iOS app and adapted in `iosMain`; its feasibility is a spike gate, not a verified consequence of Kotlin interface export.
+The Android BoM does not provide one visible per-library version in the Gradle catalog. Apple’s Swift SDK is not a `commonMain`/`iosMain` dependency. The verified Swift callback bridge is injected by the iOS app and adapted in `iosMain`; it keeps Apple Firebase types out of common code.
 
-## Planned Firebase backend toolchain
+## Firebase backend toolchain
 
 | Package/tool | Exact version | Runtime/placement | Status | Source |
 |---|---:|---|---|---|
-| Node.js | `22` runtime line | `firebase/functions` and CI | **Source-verified supported runtime**; local Node 25.9.0 is not the planned/supported Functions runtime | [Cloud Functions runtime support](https://firebase.google.com/docs/functions/manage-functions#set_nodejs_version) |
-| `firebase-functions` | `7.3.2` | Functions production dependency | **Source-verified** current package; exact Node/TypeScript build spike required | [npm package](https://www.npmjs.com/package/firebase-functions/v/7.3.2) |
-| `firebase-admin` | `14.3.0` | Functions production dependency | **Source-verified** current package | [npm package](https://www.npmjs.com/package/firebase-admin/v/14.3.0) |
-| `@firebase/rules-unit-testing` | `5.0.2` | Rules dev dependency | **Source-verified** Emulator rules-test API | [npm package](https://www.npmjs.com/package/@firebase/rules-unit-testing/v/5.0.2) |
+| Node.js | `22.23.2` | isolated local runtime for `firebase/functions`; Node 22 line required in CI | **Build/emulator-verified**; `npm ci`, TypeScript and all 17 emulator tests passed, and Functions reported `Using node@22 from host` | [Cloud Functions runtime support](https://firebase.google.com/docs/functions/manage-functions#set_nodejs_version) |
+| `firebase-functions` | `7.4.0` | Functions production dependency | **Build/emulator-verified** | [npm package](https://www.npmjs.com/package/firebase-functions/v/7.4.0) |
+| `firebase-admin` | `14.4.0` | Functions production dependency | **Build/emulator-verified** | [npm package](https://www.npmjs.com/package/firebase-admin/v/14.4.0) |
+| `@firebase/rules-unit-testing` | `5.0.2` | Rules dev dependency | **Emulator-verified** Firestore and Storage Rules API | [npm package](https://www.npmjs.com/package/@firebase/rules-unit-testing/v/5.0.2) |
 | `firebase-functions-test` | `3.5.0` | Functions dev dependency if needed | **Source-verified**; prefer emulator integration for auth/security behavior | [npm package](https://www.npmjs.com/package/firebase-functions-test/v/3.5.0) |
-| Firebase CLI | `15.28.2` | Developer/CI tool | **Source-verified**, but not installed locally | [Firebase CLI releases](https://github.com/firebase/firebase-tools/releases/tag/v15.28.2) |
-| TypeScript | Exact `5.x` patch | Functions dev dependency | **Unresolved**: Functions 7 requires TypeScript 5, but freeze an exact patch only after Node 22/package compile verification | [Firebase Functions TypeScript guide](https://firebase.google.com/docs/functions/typescript) |
+| Firebase CLI | `15.30.2` | Locked local developer/CI tool | **Emulator-verified** clean start/stop | [Firebase CLI releases](https://github.com/firebase/firebase-tools/releases/tag/v15.30.2) |
+| TypeScript | `5.9.3` | Functions dev dependency | **Build-verified** exact patch | [Firebase Functions TypeScript guide](https://firebase.google.com/docs/functions/typescript) |
 
-No Functions package, rules, emulator config, Firebase SDK, or Firebase project was created during Milestone 1.
+Milestone 3 added local packages, Rules, emulator configuration, and native SDKs. The acceptance run used npm `11.12.1`; eight moderate audit findings and transitive deprecation warnings were retained without `npm audit fix`. It did not create or modify a Firebase cloud project or change the lockfile in the correction pass.
 
 ## Explicitly not selected
 
-- GitLive `dev.gitlive:firebase-*:2.6.0` is not currently selected or added, but conditional ADR-001 requires comparing it against the exact seven-case API matrix before final acceptance.
+- GitLive `dev.gitlive:firebase-*:2.6.0` was source-compared and is not selected or added. Its common API is credible, but its exact stable build aligns Kotlin 2.2.21, Android BoM 34.17.0, and CocoaPods Apple SDK 11.8.0; ADR-001 accepts the directly verified official SDK path.
 - Ktor, Room, SQLDelight, a custom server, and a second database have no demonstrated MVP requirement.
 - A DI compiler plugin, generic MVI framework, and dozens of Gradle feature modules add risk without evidence.
 
@@ -93,7 +94,7 @@ No Functions package, rules, emulator config, Firebase SDK, or Firebase project 
 
 1. **Completed for Milestone 1:** add only required candidates through the version catalog, without an unreviewed latest sweep.
 2. **Completed for Milestone 1:** compile common metadata, Android host tests/app, and iOS simulator tests.
-3. **Completed as applicable:** capture resolved Gradle graphs. The Xcode project has no Swift package dependencies and therefore no `Package.resolved` to capture.
+3. **Completed:** capture locked npm and SwiftPM graphs. The Xcode workspace contains `Package.resolved` for Firebase Apple `12.19.2`.
 4. **Completed:** verify typed Navigation 3, lifecycle collection, Koin ViewModel scoping, and Android/Xcode host build/launch without Firebase. Interactive iOS navigation/scoping passed by user manual verification; process-death restoration remains unverified and is not claimed.
-5. Separately, Milestone 3 proves native Firebase Auth/Firestore listener/write/rejection/cache lifecycle, Storage recovery if needed, emulator connection, actual Swift bridge behavior, and Apple/Android parity; compare GitLive against the same required APIs.
+5. **Completed for Auth/Firestore:** Milestone 3 proved emulator connection, actual Swift bridge behavior, and Android/Apple parity; GitLive was source-compared. Native Storage recovery remains deferred because it was not evaluated.
 6. Record API deviations and freeze exact lockfiles/tool versions. Any failure remains unresolved rather than prompting unrelated upgrades.

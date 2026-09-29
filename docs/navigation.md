@@ -90,7 +90,7 @@ Foundation routes use `collectAsStateWithLifecycle` for state and one `LaunchedE
 | Secure storage | Keystore-backed implementation | Keychain-backed implementation | Minimal secrets interface; Firebase tokens are managed by SDKs where possible |
 | Crash/analytics | Native SDK wiring and consent | Native SDK wiring and consent | Privacy-safe event vocabulary and diagnostic context |
 
-Shared `expect/actual` implementations that are actually Kotlin-owned belong in `shared/src/androidMain` and `shared/src/iosMain`. Under conditional ADR-001, Apple Firebase implementations are Swift objects in `iosApp`; `iosMain` only adapts their narrow injected bridge. OS entry points/configuration stay thin, and `iosApp` remains an Xcode application consuming the framework rather than a Gradle app module.
+Shared `expect/actual` implementations that are actually Kotlin-owned belong in `shared/src/androidMain` and `shared/src/iosMain`. Under accepted ADR-001, Apple Firebase implementations are Swift objects in `iosApp`; `iosMain` only adapts their narrow injected bridge. OS entry points/configuration stay thin, and `iosApp` remains an Xcode application consuming the framework rather than a Gradle app module.
 
 ## Verification scenarios
 

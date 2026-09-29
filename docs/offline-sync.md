@@ -1,7 +1,7 @@
 # Offline, synchronization, concurrency, and recovery
 
-Status: **proposed policy with explicit Firebase-spike gates**
-Review date: **2026-09-11** (assigned-snapshot eligibility and completeness)
+Status: **Milestone 3 adapter/persistence primitives verified; product policy and security gates remain proposed**
+Review date: **2026-09-20**
 
 This is the canonical document for offline access, local mutation durability, workout-download completeness, and sign-out/account isolation. Navigation, security, testing, and milestones reference this policy rather than redefining it.
 
@@ -69,7 +69,9 @@ Account deletion and switching apply to snapshot cache entries, local manifests,
 | Assign/replace/revoke/archive program; update planned horizon/schedule | Online/server-authoritative | Trusted assignment transaction creates/changes header, client snapshot/plans, server inventory, trainer indexes and receipt; no queued mobile lifecycle writes |
 | Book/reschedule/cancel, invitation acceptance, membership/role change, deletion | Online/server-authoritative | Purpose-specific trusted Function with transaction and idempotency key |
 
-Firestore mobile transactions are not the offline mutation mechanism. Batched writes may queue offline but do not solve stale-revision recovery by themselves. The Firebase spike must prove the exact callback and metadata behavior used by each adapter.
+Firestore mobile transactions are not the offline mutation mechanism. Batched writes may queue offline but do not solve stale-revision recovery by themselves. Milestone 3 proved callback, metadata, rejection, cancellation, and epoch-fencing behavior for both native adapters; product-specific stale-revision/restart reconciliation remains Milestone 8 work.
+
+Native resumable Storage upload/process-death recovery is deferred to the first approved media/upload milestone, currently Milestone 9 or 11. The pending-upload registry and its account isolation, durable app-owned file reference, cleanup and sign-out safety requirements remain mandatory, but no artificial media path is required for Milestone 3 acceptance.
 
 ## Reliable workout download completeness
 
@@ -96,9 +98,13 @@ The server `users/{uid}/workspaces/{wid}/assignedPrograms/{aid}/manifests/downlo
 
 A **downloaded workout** is a planned workout whose required cache probe passes. A **resumable active session** additionally has an app-owned recovery snapshot/journal containing the exact prescription and local edits needed to resume even if planned-workout cache entries are later evicted. **Optional offline media** is independently available and never determines resumability unless product explicitly makes it required.
 
-## Durable mutation journal: recommended, implementation spike required
+## Durable mutation journal: encrypted atomic-file prototype passed
 
-Native Firestore persistence reliably queues writes, but a rejected optimistic write can lose its local overlay; it is not a project-owned conflict archive. TillFailure therefore recommends a small app-owned `WorkoutMutationJournal` for critical workout/session mutations. This is an architectural requirement, not a dependency selection. The spike must choose the smallest KMP-compatible durable implementation (for example an atomic app file or a verified structured store). Room, SQLDelight, or a second general database is not added by default, but additional persistence is allowed if tests demonstrate that simpler storage cannot meet recovery/atomicity requirements.
+Native Firestore persistence reliably queues writes, but a rejected optimistic write can lose its local overlay; it is not a project-owned conflict archive. Milestone 3 therefore implemented one versioned, UID-partitioned app-owned encrypted envelope for grants, manifests, recovery, journal entries, upload records, and switch markers. Android uses AES-256-GCM with a non-exportable Android Keystore key and `noBackupFilesDir`; Apple uses CryptoKit AES-GCM with a random Keychain key, backup-excluded Application Support files, and a requested `completeUntilFirstUserAuthentication` protection class. Both use a fresh nonce, authenticated UID/version/key ID, temporary-write, flush and atomic rename. Apple applies the required file-protection class and backup exclusion to the temporary file **before** the atomic replacement, so a metadata failure aborts the write with the previous committed record intact and the temporary file removed; the rename is the only commit point and no fallible work runs after it. Android inherits the same ordering guarantee from its app-private `noBackupFilesDir` temporary file and atomic move, which performs no fallible metadata work after the move. Tamper/corruption/key loss fails closed and unresolved data cannot be silently overwritten or deleted. Room, SQLDelight, or a second general database is not justified by current evidence.
+
+Partition file names are the SHA-256 digest of the raw UID, so the accepted identifier domain is the Firebase Auth UID contract — non-blank, at most 128 UTF-16 code units — with no filename-safe character whitelist. Email-shaped, punctuated, Unicode, and maximum-length UIDs are accepted identically on Android and Apple because both platforms validate through the same shared `RecoveryUidContract`; raw UIDs never appear in a path, traversal-like identifiers cannot escape the recovery root, distinct valid identifiers never normalize into one account, and the UID remains authenticated data so a partition copied under another UID fails closed.
+
+This is not production approval. Backup exclusion and application encryption are locally proved; production rotation, crash/power-loss injection, secure erase, hardware backing and physical-device Data Protection remain unproved. Key ID `tillfailure.recovery.v1` supports a future audited read-old/atomically-rewrite/delete-old-key migration.
 
 Alternatives considered:
 
@@ -106,7 +112,7 @@ Alternatives considered:
 |---|---|
 | Firebase cache only | Simplest, but insufficient for durable presentation of a server-rejected local payload after restart. Not selected for conflict-capable workout edits. |
 | Immutable operation documents reconciled by server | Robust audit/replay but adds backend model and operational complexity. Defer unless Rules-based revision writes cannot meet requirements. |
-| Small app-owned mutation journal | Recommended MVP direction: preserves only critical local payloads/statuses and leaves Firestore as the business database. Exact storage and encryption remain spike-gated. |
+| Small app-owned mutation journal | Selected MVP direction: preserves only critical local payloads/statuses and leaves Firestore as the business database. Platform-encrypted atomic storage passed locally; production rotation and physical-device controls remain later gates. |
 
 ### Logged-set mutation lifecycle
 
@@ -120,7 +126,7 @@ Alternatives considered:
 8. **Resolution:** `Keep local` creates a new operation based on the now-current server revision; `Use server` records explicit discard/resolution and removes the local payload only after confirmation. A merge is offered only for independently mergeable fields.
 9. **Retry:** use a new resolution operation ID or the same idempotent transport retry as defined by the adapter; never create a duplicate set/session.
 
-The Firebase spike must prove that Rules can enforce the proposed revision transition on ordinary mobile writes, how each SDK reports asynchronous rejection after restart, and how accepted `lastOperationId` is observed. If this fails, Milestone 8 remains blocked while immutable operation reconciliation is evaluated.
+Milestone 3 proved ordinary-write Rules acceptance/rejection, native pending/cache-to-server metadata, server reads, successful pending-write drain, and deliberately stalled timeout/cancellation with exactly-once late-callback/epoch fencing. It did not prove product-specific stale-revision rejection after process restart; Milestone 8 must cover that recovery case and evaluate immutable operation reconciliation if the proposed protocol cannot satisfy it.
 
 ## Session and completion meanings
 
