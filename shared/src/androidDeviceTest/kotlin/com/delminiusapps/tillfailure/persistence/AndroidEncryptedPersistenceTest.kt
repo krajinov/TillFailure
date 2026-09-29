@@ -6,6 +6,7 @@ import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -15,6 +16,50 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class AndroidEncryptedPersistenceTest {
+    @Test
+    fun concurrentFirstWritesShareThePersistedKeystoreAlias() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val suffix = UUID.randomUUID().toString()
+        val keyId = "$RECOVERY_KEY_IDENTIFIER.first-key.$suffix"
+        val firstUid = "first_key_a_$suffix"
+        val secondUid = "first_key_b_$suffix"
+        val first = AndroidAtomicFilePersistence(context, keyId)
+        val second = AndroidAtomicFilePersistence(context, keyId)
+        val keyCreationEntered = CountDownLatch(1)
+        val releaseKeyCreation = CountDownLatch(1)
+        val secondReachedKeyLock = CountDownLatch(1)
+        val generations = AtomicInteger(0)
+        val pool = Executors.newFixedThreadPool(2)
+        first.beforeKeyGenerationForTest = {
+            generations.incrementAndGet()
+            keyCreationEntered.countDown()
+            assertTrue(releaseKeyCreation.await(20, TimeUnit.SECONDS))
+        }
+        second.beforeKeyLockForTest = { secondReachedKeyLock.countDown() }
+        second.beforeKeyGenerationForTest = { generations.incrementAndGet() }
+        try {
+            val firstWrite = pool.submit { first.write(AccountPersistenceEnvelope(uid = firstUid)) }
+            assertTrue(keyCreationEntered.await(20, TimeUnit.SECONDS))
+            val secondWrite = pool.submit { second.write(AccountPersistenceEnvelope(uid = secondUid)) }
+            assertTrue(secondReachedKeyLock.await(20, TimeUnit.SECONDS))
+            releaseKeyCreation.countDown()
+            firstWrite.get(20, TimeUnit.SECONDS)
+            secondWrite.get(20, TimeUnit.SECONDS)
+            assertEquals(1, generations.get(), "only one thread may generate the shared alias")
+            val restarted = AndroidAtomicFilePersistence(context, keyId)
+            assertEquals(AccountPersistenceEnvelope(uid = firstUid), restarted.read(firstUid))
+            assertEquals(AccountPersistenceEnvelope(uid = secondUid), restarted.read(secondUid))
+            assertNotEquals(first.fileFor(firstUid).name, second.fileFor(secondUid).name)
+            assertFalse(first.rootDirectory.listFiles().orEmpty().any { it.name.endsWith(".tmp") })
+        } finally {
+            releaseKeyCreation.countDown()
+            pool.shutdownNow()
+            first.fileFor(firstUid).delete()
+            second.fileFor(secondUid).delete()
+            first.deleteKeyForTest()
+        }
+    }
+
     @Test
     fun overlappingOperationsSerializeByUidAndOwnTheirTemporaryFiles() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext

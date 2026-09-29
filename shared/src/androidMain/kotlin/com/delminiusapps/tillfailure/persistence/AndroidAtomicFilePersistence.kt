@@ -40,6 +40,11 @@ class AndroidAtomicFilePersistence(
         var users = 0
     }
 
+    private class KeyLock {
+        val monitor = Any()
+        var users = 0
+    }
+
     private inline fun <T> withPartition(uid: String, action: () -> T): T {
         val path = fileFor(uid).absolutePath
         val lock = synchronized(partitionLocks) {
@@ -55,9 +60,25 @@ class AndroidAtomicFilePersistence(
         }
     }
 
+    private inline fun <T> withKeyIdentifier(action: () -> T): T {
+        val lock = synchronized(keyLocks) {
+            keyLocks.getOrPut(keyIdentifier) { KeyLock() }.also { it.users++ }
+        }
+        try {
+            return synchronized(lock.monitor) { action() }
+        } finally {
+            synchronized(keyLocks) {
+                lock.users--
+                if (lock.users == 0) keyLocks.remove(keyIdentifier, lock)
+            }
+        }
+    }
+
     internal var beforePartitionLockForTest: ((String) -> Unit)? = null
     internal var beforeCommitForTest: ((String, File) -> Unit)? = null
     internal var beforeDeleteForTest: ((String) -> Unit)? = null
+    internal var beforeKeyLockForTest: (() -> Unit)? = null
+    internal var beforeKeyGenerationForTest: (() -> Unit)? = null
 
     override fun write(envelope: AccountPersistenceEnvelope) {
         beforePartitionLockForTest?.invoke(envelope.uid)
@@ -159,10 +180,18 @@ class AndroidAtomicFilePersistence(
     }
 
     private fun encryptionKey(createIfMissing: Boolean): SecretKey {
+        beforeKeyLockForTest?.invoke()
+        return withKeyIdentifier { encryptionKeyLocked(createIfMissing) }
+    }
+
+    private fun encryptionKeyLocked(createIfMissing: Boolean): SecretKey {
         val keyStore = KeyStore.getInstance(ANDROID_KEY_STORE).apply { load(null) }
-        (keyStore.getKey(keyIdentifier, null) as? SecretKey)?.let { return it }
+        val stored = keyStore.getKey(keyIdentifier, null)
+        if (stored != null) return stored as? SecretKey
+            ?: throw RecoveryPersistenceLockedException("Recovery key has an unsupported type")
         if (!createIfMissing) throw RecoveryPersistenceLockedException("Recovery key is unavailable")
-        return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEY_STORE).run {
+        beforeKeyGenerationForTest?.invoke()
+        KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEY_STORE).run {
             init(
                 KeyGenParameterSpec.Builder(
                     keyIdentifier,
@@ -177,6 +206,11 @@ class AndroidAtomicFilePersistence(
             )
             generateKey()
         }
+        // Always encrypt with the persisted alias, never an unpersisted or superseded generator
+        // result. The process-wide key lock prevents another partition from replacing this alias.
+        return KeyStore.getInstance(ANDROID_KEY_STORE).apply { load(null) }
+            .getKey(keyIdentifier, null) as? SecretKey
+            ?: throw RecoveryPersistenceLockedException("Recovery key is unavailable after creation")
     }
 
     private fun associatedData(uid: String): ByteArray =
@@ -184,6 +218,7 @@ class AndroidAtomicFilePersistence(
 
     private companion object {
         val partitionLocks = HashMap<String, PartitionLock>()
+        val keyLocks = HashMap<String, KeyLock>()
         const val ANDROID_KEY_STORE = "AndroidKeyStore"
         const val TRANSFORMATION = "AES/GCM/NoPadding"
         const val GCM_TAG_BITS = 128

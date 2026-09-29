@@ -12,6 +12,7 @@ enum FirebaseSpikeHarness {
     private static var counterProbe: CounterParityProbe?
     private static var terminationRecreationProbe: TerminationRecreationProbe?
     private static var overlappingClientsProbe: OverlappingClientsProbe?
+    private static var issuanceProbe: IssuanceTeardownProbe?
 
     static func runIfRequested(bridge: FirebaseNativeBridge) {
         guard ProcessInfo.processInfo.environment["TILLFAILURE_FIREBASE_SPIKE"] == "1" else { return }
@@ -88,6 +89,9 @@ enum FirebaseSpikeHarness {
                                                 terminationRecreationProbe = nil
                                                 overlappingClientsProbe = OverlappingClientsProbe(projectID: "demo-tillfailure-m3") {
                                                     overlappingClientsProbe = nil
+                                                    issuanceProbe = IssuanceTeardownProbe {
+                                                        issuanceProbe = nil
+                                                    }
                                                 }
                                             }
                                         }
@@ -802,6 +806,114 @@ enum FirebaseSpikeHarness {
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Holds a write immediately before the lifecycle gate, retires its client, then checks that
+    /// no SDK set slipped through. All waits run off the main queue, which delivers SDK callbacks.
+    private final class IssuanceTeardownProbe {
+        private let bridge = FirebaseNativeBridge(projectID: "demo-tillfailure-m3")
+        private let completion: () -> Void
+        private let reachedIssuance = DispatchSemaphore(value: 0)
+        private let releaseIssuance = DispatchSemaphore(value: 0)
+        private let writerReturned = DispatchSemaphore(value: 0)
+        private let rejectionDelivered = DispatchSemaphore(value: 0)
+        private let stateLock = NSLock()
+        private var sdkSets = 0
+        private var callbacks = 0
+        private var rejection: NativeFirebaseUnitResult?
+
+        init(completion: @escaping () -> Void) {
+            self.completion = completion
+            bridge.signInAnonymously { [weak self] result in
+                guard let self else { return }
+                guard case .success(let uid) = result else {
+                    print("M3_FIREBASE_SPIKE issuanceRetiredWrite=FAIL")
+                    completion()
+                    return
+                }
+                start(uid: uid)
+            }
+        }
+
+        private func start(uid: String) {
+            let epoch: Int64 = 4_000
+            let path = "spikeEcho/\(uid)/documents/native-ios-issuance-race"
+            bridge.debugBeforeWriteIssuance = { [weak self] in
+                guard let self else { return }
+                reachedIssuance.signal()
+                _ = releaseIssuance.wait(timeout: .now() + 20)
+            }
+            bridge.debugDidIssueWrite = { [weak self] in
+                guard let self else { return }
+                stateLock.lock()
+                sdkSets += 1
+                stateLock.unlock()
+            }
+            DispatchQueue.global().async { [self] in
+                _ = bridge.writeDocument(path: path, fields: ["ownerUid": uid, "value": "must-not-issue"], accountEpoch: epoch) { [weak self] result in
+                    guard let self else { return }
+                    stateLock.lock()
+                    callbacks += 1
+                    rejection = result
+                    stateLock.unlock()
+                    rejectionDelivered.signal()
+                }
+                writerReturned.signal()
+            }
+            DispatchQueue.global().async { [self] in
+                guard reachedIssuance.wait(timeout: .now() + 20) == .success else {
+                    releaseIssuance.signal()
+                    DispatchQueue.main.async {
+                        print("M3_FIREBASE_SPIKE issuanceRetiredWrite=FAIL")
+                        completion()
+                    }
+                    return
+                }
+                DispatchQueue.main.async { [self] in
+                    bridge.terminateAndClear { [self] cleared in
+                        releaseIssuance.signal()
+                        DispatchQueue.global().async { [self] in
+                            let returned = writerReturned.wait(timeout: .now() + 20) == .success
+                            let rejected = rejectionDelivered.wait(timeout: .now() + 20) == .success
+                            stateLock.lock()
+                            let passed = returned && rejected && cleared.failure == nil && sdkSets == 0 && callbacks == 1 &&
+                                rejection?.failure?.code == "FAILED_PRECONDITION" && rejection?.failure?.retryable == false
+                            stateLock.unlock()
+                            DispatchQueue.main.async { [self] in
+                                print("M3_FIREBASE_SPIKE issuanceRetiredWrite=\(passed ? "PASS" : "FAIL")")
+                                verifyFreshGeneration()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private func verifyFreshGeneration() {
+            let replacement = FirebaseNativeBridge(projectID: "demo-tillfailure-m3")
+            replacement.signInAnonymously { [self] result in
+                guard case .success(let uid) = result else {
+                    print("M3_FIREBASE_SPIKE issuanceFreshGeneration=FAIL")
+                    completion()
+                    return
+                }
+                let path = "spikeEcho/\(uid)/documents/native-ios-after-issuance-race"
+                _ = replacement.writeDocument(path: path, fields: ["ownerUid": uid, "value": "fresh"], accountEpoch: 4_001) { [self] write in
+                    guard write.failure == nil else {
+                        print("M3_FIREBASE_SPIKE issuanceFreshGeneration=FAIL")
+                        completion()
+                        return
+                    }
+                    _ = replacement.getDocument(path: path, accountEpoch: 4_001) { [self] read in
+                        let usable = read.document?.exists == true && read.document?.isFromCache == false
+                        replacement.terminateAndClear { [self] cleared in
+                            print("M3_FIREBASE_SPIKE issuanceFreshGeneration=\(usable && cleared.failure == nil ? "PASS" : "FAIL")")
+                            completion()
                         }
                     }
                 }

@@ -132,6 +132,12 @@ Twentieth round (PR #3 review `pullrequestreview-5336965577`, findings `41208654
 - **Apple first-key race.** Two UID partitions may find the same new Keychain item absent. If one `SecItemAdd` loses with `errSecDuplicateItem`, the bridge discards its unpersisted random bytes and reloads the winning stored key before encrypting. The signed harness forces both first writers past the absent-key lookup before either add, then restarts a bridge and decrypts both UID partitions. Existing UID-bound AAD, tamper/missing-key lockout, and per-partition file locks remain in effect.
 - **Fresh verification.** The local TypeScript build and full backend/Rules emulator suite passed **95/95** on Node 25.9.0. Android API 34 connected tests passed **72/72**; Android device-test compilation, host tests **63/63**, and debug assembly passed. The shared iOS simulator test task was up to date, retaining its seventeenth-round **63/63** execution. The ad-hoc signed Xcode Debug simulator build passed; the signed harness printed **86 Firebase + 56 recovery PASS lines, zero FAIL**. No deployment, merge or new cold-launch/visual evidence is claimed.
 
+Twenty-first round (PR #3 review `pullrequestreview-5341673818`, findings `4124614273` and `4124614281`):
+
+- **Apple SDK issuance gate.** The bridge now holds its lifecycle lock across the live-client check, cancellation registration, and synchronous SDK issuance. This covers writes, reads, listeners, transaction start and follow-up read, Auth start, pending-write waits, and network controls. No lock spans asynchronous completion. A signed harness barrier holds a write immediately before issuance, retires its client, then proves no SDK set occurs, one non-retryable `FAILED_PRECONDITION` is delivered, and a fresh generation signs in, writes, reads, and terminates successfully. Existing callback epoch fencing and one-shot cancellation remain active.
+- **Android first-key race.** A process-wide lock keyed by the Keystore alias serializes first-key creation across different UID partitions. Every writer reloads the persisted alias before encryption, so it cannot encrypt with a superseded generator result. UID file partitions retain independent locks. A device-test barrier holds the first generator while a second UID writer reaches the same alias; only one generator runs, and a new store reads both records with that persisted key.
+- **Fresh verification.** Android API 34 connected tests passed **73/73**; Android device-test compilation, host tests **63/63**, and debug assembly passed. The ad-hoc signed Xcode Debug simulator build passed; the opt-in signed harness printed **88 Firebase + 56 recovery PASS lines, zero FAIL**. The shared iOS simulator task was up to date, retaining its seventeenth-round **63/63** execution. Backend/Rules code was unchanged; its **95/95** result remains attributed to the twentieth round. No deployment, merge, or new cold-launch/visual evidence is claimed.
+
 ## Runtime and dependency evidence
 
 | Area | Exact version/evidence |
@@ -197,15 +203,15 @@ Future rotation uses a new versioned key identifier, reads old envelopes with th
 |---|---|
 | Node 22 TypeScript build and emulator start/stop | PASS (rerun for the twelfth corrective round under Node `22.23.2`; locked dependencies retained) |
 | Trusted-operation and Rules suite | **95/95 PASS** (fresh twentieth-round clean local emulator run on Node 25.9.0) |
-| Common metadata + Android/iOS compilation | PASS (twentieth-round Android device-test compilation and signed Xcode build; shared iOS simulator compilation up to date) |
-| Android host tests | **63/63 PASS** (fresh twentieth-round run) |
-| Android connected tests | **72/72 PASS** on API 34 (fresh twentieth-round run, including the teardown/issuance race) |
-| Android debug assembly/cold launch | `assembleDebug` PASS in the twentieth round; Android cold launch retained from `9e657fa` |
+| Common metadata + Android/iOS compilation | PASS (twenty-first-round Android device-test compilation and signed Xcode build; shared iOS simulator task up to date) |
+| Android host tests | **63/63 PASS** (fresh twenty-first-round run) |
+| Android connected tests | **73/73 PASS** on API 34 (fresh twenty-first-round run, including the shared-alias first-key race) |
+| Android debug assembly/cold launch | `assembleDebug` PASS in the twenty-first round; Android cold launch retained from `9e657fa` |
 | iOS shared simulator tests | **63/63 PASS** (fresh seventeenth-round run) |
-| Native signed Xcode Debug build | PASS (fresh twentieth-round ad-hoc codesigned simulator build) |
-| Swift Firebase/recovery harness | PASS; **142 PASS lines (86 Firebase + 56 recovery), 0 failures** (fresh twentieth-round signed harness, including both concurrent first-key writers and restart reads). The recovery harness additionally prints one informational Data-Protection observation. |
+| Native signed Xcode Debug build | PASS (fresh twenty-first-round ad-hoc codesigned simulator build) |
+| Swift Firebase/recovery harness | PASS; **144 PASS lines (88 Firebase + 56 recovery), 0 failures** (fresh twenty-first-round signed harness, including the retired-write issuance barrier and fresh generation). The recovery harness additionally prints one informational Data-Protection observation. |
 | Android/iOS cold launch | iOS Debug cold launch rerun with the seventh-round build: Foundation Home remained the default destination with no harness output without the opt-in flag; Android cold launch retained from `9e657fa` |
-| Diff/secret/generated/machine-path audit | Twentieth-round focused diff audit recorded before commit; earlier rounds retained |
+| Diff/secret/generated/machine-path audit | Twenty-first-round focused diff audit recorded before commit; earlier rounds retained |
 
 The fourth corrective round changed `firebase/functions` TypeScript sources/tests, shared Kotlin contracts and their tests, the Android adapter/persistence validation, the Android device-test fixtures, the `iosApp` Swift bridge/harness sources, the shared build file (test-only Firestore dependency for typed fixtures), and documentation: no production dependency, version catalog, or lockfile change. The Android and Apple parity suites were rerun because shared Kotlin, Android adapter, and Swift bridge code changed; the Android cold launch and the Android/iOS visual evidence are preserved from earlier commits with their original attribution.
 

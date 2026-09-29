@@ -116,6 +116,8 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
 
     #if DEBUG
     var debugAppName: String { generation.appName }
+    var debugBeforeWriteIssuance: (() -> Void)?
+    var debugDidIssueWrite: (() -> Void)?
     #endif
 
     init(host: String = "127.0.0.1", projectID: String = "demo-tillfailure-m3") {
@@ -145,6 +147,22 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
         return terminated ? NativeFirebaseFailure(code: "FAILED_PRECONDITION", retryable: false) : nil
     }
 
+    /// The live check, cancellation registration, and SDK call are one synchronous lifecycle
+    /// operation. Teardown cannot retire the bridge between these steps; no async completion holds
+    /// the lock. NSRecursiveLock permits SDK callbacks that happen inline to settle their token.
+    private func issueIfLive<T>(_ issue: () throws -> T) rethrows -> T? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !terminated else { return nil }
+        return try issue()
+    }
+
+    private func deliverIfLive(_ deliver: () -> Void) {
+        lock.lock()
+        defer { lock.unlock() }
+        if !terminated { deliver() }
+    }
+
     /// Delivers the terminal failure for an operation issued after this bridge was terminated. The
     /// token is deliberately not registered as a cancellation (registration settles immediately while
     /// terminated), and the account-epoch fence is still honored for a stale epoch.
@@ -165,130 +183,145 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
     func observeSession(accountEpoch: Int64, callback_: @escaping (NativeFirebaseAuthState) -> Void) -> String {
         activate(epoch: accountEpoch)
         // A terminated bridge registers no listener: there is no live SDK instance left to observe.
-        if terminatedFailure != nil { return UUID().uuidString }
-        let handle = auth.addStateDidChangeListener { [weak self] _, user in
-            self?.deliverIfEpochMatches(epoch: accountEpoch) {
-                callback_(NativeFirebaseAuthState(uid: user?.uid, isAnonymous: user?.isAnonymous == true))
+        return issueIfLive {
+            let handle = auth.addStateDidChangeListener { [weak self] _, user in
+                self?.deliverIfEpochMatches(epoch: accountEpoch) {
+                    callback_(NativeFirebaseAuthState(uid: user?.uid, isAnonymous: user?.isAnonymous == true))
+                }
             }
-        }
-        return registerCancellation { [weak self] in self?.auth.removeStateDidChangeListener(handle) }
+            return registerCancellation { [weak self] in self?.auth.removeStateDidChangeListener(handle) }
+        } ?? UUID().uuidString
     }
 
     func getDocument(path: String, accountEpoch: Int64, callback_: @escaping (NativeFirebaseDocumentResult) -> Void) -> String {
         activate(epoch: accountEpoch)
-        if let failure = terminatedFailure {
-            return deliverTerminatedFailure(accountEpoch: accountEpoch) {
-                callback_(NativeFirebaseDocumentResult(document: nil, failure: failure))
+        if let token = issueIfLive({
+            let (token, gate) = beginOneShot()
+            firestore.document(path).getDocument(source: .server) { [weak self] snapshot, error in
+                guard let self else { return }
+                self.deliverOneShot(token: token, gate: gate, accountEpoch: accountEpoch) {
+                    callback_(self.documentResult(snapshot: snapshot, error: error))
+                }
             }
+            return token
+        }) { return token }
+        let failure = terminatedFailure!
+        return deliverTerminatedFailure(accountEpoch: accountEpoch) {
+            callback_(NativeFirebaseDocumentResult(document: nil, failure: failure))
         }
-        let (token, gate) = beginOneShot()
-        firestore.document(path).getDocument(source: .server) { [weak self] snapshot, error in
-            guard let self else { return }
-            self.deliverOneShot(token: token, gate: gate, accountEpoch: accountEpoch) {
-                callback_(self.documentResult(snapshot: snapshot, error: error))
-            }
-        }
-        return token
     }
 
     func listenDocument(path: String, accountEpoch: Int64, callback_: @escaping (NativeFirebaseDocumentResult) -> Void) -> String {
         activate(epoch: accountEpoch)
         // A terminated bridge registers no listener instead of attaching to a dead instance.
-        if terminatedFailure != nil { return UUID().uuidString }
-        let registration = firestore.document(path).addSnapshotListener(includeMetadataChanges: true) { [weak self] snapshot, error in
-            self?.deliverIfEpochMatches(epoch: accountEpoch) {
-                callback_(self?.documentResult(snapshot: snapshot, error: error) ?? Self.unknownDocumentResult())
+        return issueIfLive {
+            let registration = firestore.document(path).addSnapshotListener(includeMetadataChanges: true) { [weak self] snapshot, error in
+                self?.deliverIfEpochMatches(epoch: accountEpoch) {
+                    callback_(self?.documentResult(snapshot: snapshot, error: error) ?? Self.unknownDocumentResult())
+                }
             }
-        }
-        return registerCancellation { registration.remove() }
+            return registerCancellation { registration.remove() }
+        } ?? UUID().uuidString
     }
 
     func writeDocument(path: String, fields: [String: String], accountEpoch: Int64, callback_: @escaping (NativeFirebaseUnitResult) -> Void) -> String {
         activate(epoch: accountEpoch)
-        if let failure = terminatedFailure {
-            return deliverTerminatedFailure(accountEpoch: accountEpoch) {
-                callback_(NativeFirebaseUnitResult(failure: failure))
+        #if DEBUG
+        debugBeforeWriteIssuance?()
+        #endif
+        if let token = issueIfLive({
+            let (token, gate) = beginOneShot()
+            firestore.document(path).setData(fields) { [weak self] error in
+                guard let self else { return }
+                self.deliverOneShot(token: token, gate: gate, accountEpoch: accountEpoch) {
+                    callback_(NativeFirebaseUnitResult(failure: error.map(Self.mapFailure)))
+                }
             }
+            #if DEBUG
+            debugDidIssueWrite?()
+            #endif
+            return token
+        }) { return token }
+        let failure = terminatedFailure!
+        return deliverTerminatedFailure(accountEpoch: accountEpoch) {
+            callback_(NativeFirebaseUnitResult(failure: failure))
         }
-        let (token, gate) = beginOneShot()
-        firestore.document(path).setData(fields) { [weak self] error in
-            guard let self else { return }
-            self.deliverOneShot(token: token, gate: gate, accountEpoch: accountEpoch) {
-                callback_(NativeFirebaseUnitResult(failure: error.map(Self.mapFailure)))
-            }
-        }
-        return token
     }
 
     func increment(path: String, field: String, by: Int64, accountEpoch: Int64, callback_: @escaping (NativeFirebaseDocumentResult) -> Void) -> String {
         activate(epoch: accountEpoch)
-        if let failure = terminatedFailure {
-            return deliverTerminatedFailure(accountEpoch: accountEpoch) {
-                callback_(NativeFirebaseDocumentResult(document: nil, failure: failure))
-            }
-        }
-        let (token, gate) = beginOneShot()
-        let reference = firestore.document(path)
-        firestore.runTransaction({ transaction, errorPointer -> Any? in
-            do {
-                let snapshot = try transaction.getDocument(reference)
-                let current = try Self.counterStartValue(snapshot.get(field))
-                guard let next = CounterValueContract.shared.addExact(left: current, right: by)?.int64Value else {
-                    throw Self.counterFailure("Counter increment overflow for '\(field)'")
+        if let token = issueIfLive({
+            let (token, gate) = beginOneShot()
+            let reference = firestore.document(path)
+            firestore.runTransaction({ transaction, errorPointer -> Any? in
+                do {
+                    let snapshot = try transaction.getDocument(reference)
+                    let current = try Self.counterStartValue(snapshot.get(field))
+                    guard let next = CounterValueContract.shared.addExact(left: current, right: by)?.int64Value else {
+                        throw Self.counterFailure("Counter increment overflow for '\(field)'")
+                    }
+                    transaction.setData([field: next], forDocument: reference, merge: true)
+                    return nil
+                } catch {
+                    errorPointer?.pointee = error as NSError
+                    return nil
                 }
-                transaction.setData([field: next], forDocument: reference, merge: true)
-                return nil
-            } catch {
-                errorPointer?.pointee = error as NSError
-                return nil
-            }
-        }) { [weak self] _, error in
-            guard let self else { return }
-            if let error {
-                self.deliverOneShot(token: token, gate: gate, accountEpoch: accountEpoch) {
-                    callback_(NativeFirebaseDocumentResult(document: nil, failure: Self.mapFailure(error)))
-                }
-            } else {
-                reference.getDocument(source: .server) { [weak self] snapshot, readError in
-                    guard let self else { return }
+            }) { [weak self] _, error in
+                guard let self else { return }
+                if let error {
                     self.deliverOneShot(token: token, gate: gate, accountEpoch: accountEpoch) {
-                        callback_(self.documentResult(snapshot: snapshot, error: readError))
+                        callback_(NativeFirebaseDocumentResult(document: nil, failure: Self.mapFailure(error)))
+                    }
+                } else {
+                    _ = self.issueIfLive {
+                        reference.getDocument(source: .server) { [weak self] snapshot, readError in
+                            guard let self else { return }
+                            self.deliverOneShot(token: token, gate: gate, accountEpoch: accountEpoch) {
+                                callback_(self.documentResult(snapshot: snapshot, error: readError))
+                            }
+                        }
+                        return true
                     }
                 }
             }
+            return token
+        }) { return token }
+        let failure = terminatedFailure!
+        return deliverTerminatedFailure(accountEpoch: accountEpoch) {
+            callback_(NativeFirebaseDocumentResult(document: nil, failure: failure))
         }
-        return token
     }
 
     func waitForPendingWrites(accountEpoch: Int64, timeoutMillis: Int64, callback_: @escaping (NativeFirebaseUnitResult) -> Void) -> String {
         precondition(timeoutMillis > 0, "Pending-write timeout must be positive")
         activate(epoch: accountEpoch)
-        if let failure = terminatedFailure {
-            return deliverTerminatedFailure(accountEpoch: accountEpoch) {
-                callback_(NativeFirebaseUnitResult(failure: failure))
+        if let token = issueIfLive({
+            let token = UUID().uuidString
+            let gate = OneShotGate()
+            let finish: (NativeFirebaseUnitResult) -> Void = { [weak self] result in
+                guard let self else { return }
+                self.deliverOneShot(token: token, gate: gate, accountEpoch: accountEpoch) {
+                    callback_(result)
+                }
             }
-        }
-        let token = UUID().uuidString
-        let gate = OneShotGate()
-        let finish: (NativeFirebaseUnitResult) -> Void = { [weak self] result in
-            guard let self else { return }
-            self.deliverOneShot(token: token, gate: gate, accountEpoch: accountEpoch) {
-                callback_(result)
+            let timeout = DispatchWorkItem {
+                finish(NativeFirebaseUnitResult(failure: NativeFirebaseFailure(code: "DEADLINE_EXCEEDED", retryable: true)))
             }
+            registerCancellation(token: token) {
+                timeout.cancel()
+                finish(NativeFirebaseUnitResult(failure: NativeFirebaseFailure(code: "CANCELLED", retryable: true)))
+            }
+            DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(Int(timeoutMillis)), execute: timeout)
+            firestore.waitForPendingWrites { error in
+                timeout.cancel()
+                finish(NativeFirebaseUnitResult(failure: error.map(Self.mapFailure)))
+            }
+            return token
+        }) { return token }
+        let failure = terminatedFailure!
+        return deliverTerminatedFailure(accountEpoch: accountEpoch) {
+            callback_(NativeFirebaseUnitResult(failure: failure))
         }
-        let timeout = DispatchWorkItem {
-            finish(NativeFirebaseUnitResult(failure: NativeFirebaseFailure(code: "DEADLINE_EXCEEDED", retryable: true)))
-        }
-        registerCancellation(token: token) {
-            timeout.cancel()
-            finish(NativeFirebaseUnitResult(failure: NativeFirebaseFailure(code: "CANCELLED", retryable: true)))
-        }
-        DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(Int(timeoutMillis)), execute: timeout)
-        firestore.waitForPendingWrites { error in
-            timeout.cancel()
-            finish(NativeFirebaseUnitResult(failure: error.map(Self.mapFailure)))
-        }
-        return token
     }
 
     func cancel(token: String) {
@@ -336,47 +369,57 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
     }
 
     func signInAnonymously(completion: @escaping (Result<String, Error>) -> Void) {
-        if let failure = terminatedFailure {
-            DispatchQueue.main.async {
-                completion(.failure(NSError(
-                    domain: "TillFailureFirebaseSpike",
-                    code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: "Firebase client is terminated (\(failure.code)); construct a new client"]
-                )))
-            }
-            return
-        }
         do {
-            try auth.signOut()
+            let issued = try issueIfLive {
+                try auth.signOut()
+                auth.signInAnonymously { [weak self] result, error in
+                    self?.deliverIfLive {
+                        if let error { completion(.failure(error)) }
+                        else if let uid = result?.user.uid { completion(.success(uid)) }
+                        else { completion(.failure(NSError(domain: "TillFailureFirebaseSpike", code: 1))) }
+                    }
+                }
+                return true
+            }
+            if issued != nil { return }
         } catch {
             completion(.failure(error))
             return
         }
-        auth.signInAnonymously { result, error in
-            if let error { completion(.failure(error)) }
-            else if let uid = result?.user.uid { completion(.success(uid)) }
-            else { completion(.failure(NSError(domain: "TillFailureFirebaseSpike", code: 1))) }
+        let failure = terminatedFailure!
+        DispatchQueue.main.async {
+            completion(.failure(NSError(
+                domain: "TillFailureFirebaseSpike",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Firebase client is terminated (\(failure.code)); construct a new client"]
+            )))
         }
     }
 
     func disableNetwork(completion: @escaping (NativeFirebaseUnitResult) -> Void) {
-        if let failure = terminatedFailure {
-            DispatchQueue.main.async { completion(NativeFirebaseUnitResult(failure: failure)) }
-            return
-        }
-        firestore.disableNetwork { error in
-            completion(NativeFirebaseUnitResult(failure: error.map(Self.mapFailure)))
-        }
+        if issueIfLive({
+            firestore.disableNetwork { [weak self] error in
+                self?.deliverIfLive {
+                    completion(NativeFirebaseUnitResult(failure: error.map(Self.mapFailure)))
+                }
+            }
+            return true
+        }) != nil { return }
+        let failure = terminatedFailure!
+        DispatchQueue.main.async { completion(NativeFirebaseUnitResult(failure: failure)) }
     }
 
     func enableNetwork(completion: @escaping (NativeFirebaseUnitResult) -> Void) {
-        if let failure = terminatedFailure {
-            DispatchQueue.main.async { completion(NativeFirebaseUnitResult(failure: failure)) }
-            return
-        }
-        firestore.enableNetwork { error in
-            completion(NativeFirebaseUnitResult(failure: error.map(Self.mapFailure)))
-        }
+        if issueIfLive({
+            firestore.enableNetwork { [weak self] error in
+                self?.deliverIfLive {
+                    completion(NativeFirebaseUnitResult(failure: error.map(Self.mapFailure)))
+                }
+            }
+            return true
+        }) != nil { return }
+        let failure = terminatedFailure!
+        DispatchQueue.main.async { completion(NativeFirebaseUnitResult(failure: failure)) }
     }
 
     private func activate(epoch: Int64) {
