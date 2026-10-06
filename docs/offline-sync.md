@@ -32,7 +32,7 @@ Global catalog online reads additionally require the active account and fixed `u
 | Situation | Required behavior |
 |---|---|
 | First-time sign-in or invitation acceptance | Online-only. Firebase identity and active membership must be verified by the server before creating an offline eligibility record. |
-| Online session restoration | Restore Firebase Auth, then fetch active membership from the server before entering the normal protected shell. Update the local eligibility record only after a server-sourced success. |
+| Online session restoration | Restore Firebase Auth, then fetch active membership from the server before entering the normal protected shell. A future local eligibility record may be updated only after a server-sourced success **and** approval of the offline policy with real downloaded-workout support; Milestone 4 issues none. |
 | Offline restoration for a previously verified account | Permit a **restricted offline workout shell** only when the persisted Firebase UID matches a locally protected `OfflineAccessGrant`, the grant is within its approved age, membership was not locally observed as revoked, and the workout/session passes local completeness checks. No schedule booking, invitations, membership changes, or other server-authoritative actions. |
 | Offline restart without a prior verified account/grant | Do not enter a protected shell. Show sign-in/connectivity guidance; retain any already-present recovery data without exposing it to a different identity. |
 | Known revoked membership | Do not open protected content. Enter a restricted recovery state for unsynchronized data; do not silently delete it. |
@@ -42,7 +42,9 @@ Global catalog online reads additionally require the active account and fixed `u
 
 **Proposed MVP bound:** allow restricted offline workout access for at most seven days after the last successful server membership verification. Seven days is a recommendation, not an approved product rule; product/security may choose a shorter duration. The `OfflineAccessGrant` should contain UID, workspace ID, role, membership revision/status, server-verified timestamp, proposed expiry, and local schema version in OS-protected app storage. It is a local eligibility record, not a credential or membership authority.
 
-When access is lost with unsynchronized workout data, the simplest safe MVP behavior is a locked recovery screen that shows non-sensitive counts/timestamps and offers: reconnect/retry under the same account, retain until policy resolution, or explicit destructive discard after warning. Export and support recovery are product/privacy decisions. A different account must never receive the payload.
+Until the bound is approved and an actual downloaded workout can pass completeness checks, Milestone 4 must not issue an `OfflineAccessGrant` or enter the restricted workout shell. Offline startup shows `ConnectToVerify`, or Locked Recovery if unresolved UID-owned data exists. This safe default lets the online identity, invitation, onboarding and role-shell flows complete independently of the offline-duration decision.
+
+When access is lost with unsynchronized workout data, the safe behavior is a locked recovery screen that shows non-sensitive counts/timestamps and offers reconnect/retry under the same account or retention until policy resolution. Explicit destructive discard after warning, export and support recovery require product/privacy approval and are unavailable in Milestone 4. A different account must never receive the payload.
 
 ### Assigned-snapshot eligibility
 
@@ -157,7 +159,9 @@ Sources: [Android FirebaseFirestore API](https://firebase.google.com/docs/refere
 
 TillFailure should support one active Firebase account per installation at a time and no instant “hot switch.” Switching means completing the same controlled departure as sign-out, then signing in the next account. With unresolved critical workout mutations, normal sign-out/switch is blocked until the user synchronizes or explicitly discards; this avoids a complex multi-account queue.
 
-Sequence:
+Milestone 4 PR 1 implements only a clean-departure subset: freeze, prove the app-owned journal/upload registry and account partition contain no pending or unresolved critical work, and successfully drain SDK pending writes. Failed preflight cancels departure without changing Auth. Once clean, persist a UID-bound switch marker before Auth changes, fence callbacks, sign out, terminate/clear Firestore, prove permitted local cleanup, dispose account scopes, and finish the marker before another login. A failed step or interruption after the marker blocks new login in `CleanupRequired` until cleanup resumes; Android and iOS must prove this natively. PR 5 adds synchronization/reconciliation for pending work. Destructive discard remains unavailable until separately approved; an offline grant is not required for either online departure slice.
+
+Full sequence for PR 5 and later; PR 1's clean-only subset above persists its marker after the frozen preflight succeeds:
 
 1. Freeze the departing account (`SwitchingOut` marker with UID and monotonically increasing account epoch); stop accepting new edits.
 2. Inspect the app journal and upload registry. Because Firebase exposes a wait but not a complete application-level pending-write inventory, TillFailure must track its own critical mutations/uploads.

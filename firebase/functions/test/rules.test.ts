@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { after, before, beforeEach, describe, it } from "node:test";
 import { assertFails, assertSucceeds, initializeTestEnvironment, RulesTestEnvironment } from "@firebase/rules-unit-testing";
-import { collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from "firebase/firestore";
+import { collection, collectionGroup, doc, getDoc, getDocs, limit, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { deleteObject, ref, uploadString } from "firebase/storage";
 import { publishAssignment } from "../src/assigned-program.js";
 import { transitionAccountLifecycle, transitionMembership, transitionWorkspace } from "../src/catalog.js";
@@ -46,6 +46,49 @@ async function seedEligibleAssignment(): Promise<void> {
 }
 
 describe("Firestore and Storage rules", () => {
+  it("allows only server-verifiable self account, workspace and bounded active membership discovery", async () => {
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, "users/alice"), { schemaVersion: 1, accountStatus: "active" });
+      await setDoc(doc(db, "users/bob"), { schemaVersion: 1, accountStatus: "active" });
+      await setDoc(doc(db, "workspaces/one"), { schemaVersion: 1, status: "active" });
+      await setDoc(doc(db, "workspaces/one/memberships/alice"), { schemaVersion: 1, workspaceId: "one", userId: "alice", status: "active", role: "client" });
+      await setDoc(doc(db, "workspaces/one/memberships/bob"), { schemaVersion: 1, workspaceId: "one", userId: "bob", status: "active", role: "trainer" });
+    });
+    const alice = environment.authenticatedContext("alice").firestore();
+    await assertSucceeds(getDoc(doc(alice, "users/alice")));
+    await assertFails(getDoc(doc(alice, "users/bob")));
+    await assertSucceeds(getDoc(doc(alice, "workspaces/one")));
+    await assertSucceeds(getDoc(doc(alice, "workspaces/one/memberships/alice")));
+    await assertFails(getDoc(doc(alice, "workspaces/one/memberships/bob")));
+    const discovery = query(collectionGroup(alice, "memberships"), where("userId", "==", "alice"), where("status", "==", "active"), where("schemaVersion", "==", 1), limit(20));
+    await assertSucceeds(getDocs(discovery));
+    await assertFails(getDocs(query(collectionGroup(alice, "memberships"), where("status", "==", "active"), limit(20))));
+    await assertFails(getDocs(query(collectionGroup(alice, "memberships"), where("userId", "==", "bob"), where("status", "==", "active"), where("schemaVersion", "==", 1), limit(20))));
+    await assertFails(getDocs(query(collectionGroup(alice, "memberships"), where("userId", "==", "alice"), where("status", "==", "active"), where("schemaVersion", "==", 1), limit(21))));
+    await assertFails(setDoc(doc(alice, "workspaces/one/memberships/alice"), { role: "trainer" }));
+  });
+
+  it("denies disabled, revoked, malformed and forged membership records", async () => {
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, "users/disabled"), { schemaVersion: 1, accountStatus: "disabled" });
+      await setDoc(doc(db, "users/revoked"), { schemaVersion: 1, accountStatus: "active" });
+      await setDoc(doc(db, "users/forged"), { schemaVersion: 1, accountStatus: "active" });
+      await setDoc(doc(db, "users/role_forger"), { schemaVersion: 1, accountStatus: "active" });
+      await setDoc(doc(db, "workspaces/one"), { schemaVersion: 1, status: "active" });
+      await setDoc(doc(db, "workspaces/one/memberships/disabled"), { schemaVersion: 1, workspaceId: "one", userId: "disabled", status: "active", role: "client" });
+      await setDoc(doc(db, "workspaces/one/memberships/revoked"), { schemaVersion: 1, workspaceId: "one", userId: "revoked", status: "revoked", role: "client" });
+      await setDoc(doc(db, "workspaces/one/memberships/forged"), { schemaVersion: 2, workspaceId: "other", userId: "forged", status: "active", role: "trainer" });
+      await setDoc(doc(db, "workspaces/one/memberships/role_forger"), { schemaVersion: 1, workspaceId: "one", userId: "role_forger", status: "active", role: "admin" });
+    });
+    for (const uid of ["disabled", "revoked", "forged", "role_forger"]) {
+      const db = environment.authenticatedContext(uid).firestore();
+      await assertSucceeds(getDoc(doc(db, `users/${uid}`)));
+      await assertFails(getDoc(doc(db, "workspaces/one")));
+      await assertFails(getDoc(doc(db, `workspaces/one/memberships/${uid}`)));
+    }
+  });
   it("requires active trusted entitlement and published status for catalog reads", async () => {
     await seedEligibleAssignment();
     const client = environment.authenticatedContext("client").firestore();

@@ -4,21 +4,28 @@ import SwiftUI
 @main
 struct iOSApp: App {
     private let firebaseBridge: FirebaseNativeBridge?
+    private let recoveryBridge: RecoveryPersistenceBridge?
 
     init() {
         DependencyInjectionKt.initializeKoin()
         #if DEBUG
-        let bridge = FirebaseNativeBridge()
+        let bridge = FirebaseNativeBridge(productMemoryCache: true)
         firebaseBridge = bridge
+        recoveryBridge = RecoveryPersistenceBridge()
         FirebaseSpikeHarness.runIfRequested(bridge: bridge)
+        ProductIdentityHarness.runIfRequested(bridge: bridge)
+        CleanDepartureHarness.runIfRequested(password: ProcessInfo.processInfo.environment["TF_PR1_TEST_PASSWORD"])
+        CleanDepartureHarness.runInterruptedPhaseIfRequested(password: ProcessInfo.processInfo.environment["TF_PR1_TEST_PASSWORD"])
+        NativeRevocationHarness.runIfRequested(password: ProcessInfo.processInfo.environment["TF_PR1_TEST_PASSWORD"])
         #else
         firebaseBridge = nil
+        recoveryBridge = nil
         #endif
     }
 
     var body: some Scene {
         WindowGroup {
-            ContentView(firebaseBridge: firebaseBridge)
+            ContentView(firebaseBridge: firebaseBridge, recoveryBridge: recoveryBridge)
         }
     }
 }

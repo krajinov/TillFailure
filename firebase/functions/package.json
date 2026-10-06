@@ -10,7 +10,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test --test-concurrency=1 lib/test/**/*.test.js",
-    "test:emulators": "node scripts/run-emulator-tests.mjs"
+    "test:emulators": "node scripts/run-emulator-tests.mjs",
+    "seed:pr1": "node scripts/seed-pr1.mjs"
   },
   "dependencies": {
     "firebase-admin": "14.4.0",

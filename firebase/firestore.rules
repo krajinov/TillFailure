@@ -42,6 +42,57 @@ service cloud.firestore {
         && membership.data.status == "active";
     }
 
+    function activeOwnMembership(wid, uid) {
+      let membership = get(/databases/$(database)/documents/workspaces/$(wid)/memberships/$(uid));
+      return membership.data.schemaVersion == 1
+        && membership.data.workspaceId == wid
+        && membership.data.userId == uid
+        && membership.data.status == "active"
+        && membership.data.role in ["client", "trainer"];
+    }
+
+    // PR 1 only exposes the signed-in user's own account and verified access paths. All writes,
+    // including bootstrap, role and membership changes, stay trusted/server-owned.
+    match /users/{uid} {
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow list, write: if false;
+    }
+
+    match /workspaces/{wid} {
+      allow get: if signedIn()
+        && activeAccount(request.auth.uid)
+        && resource.data.schemaVersion == 1
+        && resource.data.status == "active"
+        && activeOwnMembership(wid, request.auth.uid);
+      allow list, write: if false;
+
+      match /memberships/{memberUid} {
+        allow get: if signedIn()
+          && request.auth.uid == memberUid
+          && activeAccount(memberUid)
+          && activeWorkspace(wid)
+          && resource.data.schemaVersion == 1
+          && resource.data.workspaceId == wid
+          && resource.data.userId == memberUid
+          && resource.data.status == "active"
+          && resource.data.role in ["client", "trainer"];
+        allow list, write: if false;
+      }
+    }
+
+    // The only PR 1 collection-group discovery query is bounded and constrained by the caller's
+    // UID, active status, and supported schema. It does not itself grant workspace access: the
+    // client must point-read the selected workspace and membership from the server.
+    match /{path=**}/memberships/{memberUid} {
+      allow list: if signedIn()
+        && activeAccount(request.auth.uid)
+        && request.query.limit <= 20
+        && resource.data.schemaVersion == 1
+        && resource.data.userId == request.auth.uid
+        && resource.data.status == "active";
+      allow get, write: if false;
+    }
+
     function assignmentReadable(uid, wid, aid) {
       let assignment = get(/databases/$(database)/documents/users/$(uid)/workspaces/$(wid)/assignedPrograms/$(aid));
       return signedIn()

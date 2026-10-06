@@ -48,9 +48,9 @@ internal object AndroidFirebaseAppRegistry {
     }
 
     /** Initializes a uniquely named app for this client, including during an overlapping session. */
-    fun acquire(context: Context, projectId: String): Generation = synchronized(lock) {
+    fun acquire(context: Context, projectId: String, preferredName: String? = null): Generation = synchronized(lock) {
         sequence += 1
-        val appName = "tillfailure-$projectId-$sequence"
+        val appName = preferredName ?: "tillfailure-$projectId-$sequence"
         val options = FirebaseOptions.Builder()
             .setProjectId(projectId)
             .setApplicationId("1:1234567890:android:0000000000000000")

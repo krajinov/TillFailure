@@ -1,16 +1,14 @@
 package com.delminiusapps.tillfailure
 
 import androidx.compose.runtime.Composable
-import com.delminiusapps.tillfailure.app.FoundationNavigation
 import com.delminiusapps.tillfailure.core.designsystem.TillFailureTheme
+import com.delminiusapps.tillfailure.identity.IdentityRoot
+import com.delminiusapps.tillfailure.identity.ProductIdentityClient
 
-/**
- * Temporary Milestone 1 shell. It proves shared rendering and foundation wiring only and is
- * intentionally isolated for replacement by the role-aware application shell in a later milestone.
- */
+/** PR 1 product root. Debug-only catalog fixtures stay isolated from this identity gate. */
 @Composable
-fun App(showDevelopmentCatalog: Boolean = false) {
+fun App(identityClient: ProductIdentityClient? = null) {
     TillFailureTheme {
-        FoundationNavigation(showDevelopmentCatalog = showDevelopmentCatalog)
+        IdentityRoot(identityClient)
     }
 }

@@ -28,6 +28,7 @@ enum class StableFirebaseErrorCode {
     DEADLINE_EXCEEDED,
     CONFLICT,
     INVALID_ARGUMENT,
+    INVALID_CREDENTIALS,
 
     // The client instance can no longer serve requests: it was terminated (or the SDK reports
     // FAILED_PRECONDITION for the operation). Callers must construct a new client, which obtains a

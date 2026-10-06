@@ -1,13 +1,17 @@
 package com.delminiusapps.tillfailure
 
 import androidx.compose.ui.window.ComposeUIViewController
-import com.delminiusapps.tillfailure.firebase.IosFirebaseSpikeClient
 import com.delminiusapps.tillfailure.firebase.NativeFirebaseBridge
+import com.delminiusapps.tillfailure.firebase.NativeIdentityBridge
+import com.delminiusapps.tillfailure.firebase.IosProductIdentityClient
+import com.delminiusapps.tillfailure.persistence.NativeRecoveryPersistenceBridge
 
 fun MainViewController(
-    showDevelopmentCatalog: Boolean,
     nativeFirebaseBridge: NativeFirebaseBridge? = null,
+    nativeRecoveryBridge: NativeRecoveryPersistenceBridge? = null,
 ) = ComposeUIViewController {
-    nativeFirebaseBridge?.let(::IosFirebaseSpikeClient)
-    App(showDevelopmentCatalog = showDevelopmentCatalog)
+    App(
+        identityClient = if (nativeFirebaseBridge is NativeIdentityBridge && nativeRecoveryBridge != null)
+            IosProductIdentityClient(nativeFirebaseBridge, nativeRecoveryBridge) else null,
+    )
 }

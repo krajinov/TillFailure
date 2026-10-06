@@ -4,39 +4,73 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import com.google.firebase.FirebaseApp
+import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.MetadataChanges
+import com.google.firebase.firestore.MemoryCacheSettings
+import com.google.firebase.firestore.FirebaseFirestoreSettings
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.Source
+import java.security.MessageDigest
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
+import com.delminiusapps.tillfailure.identity.MembershipDiscoveryResult
+import com.delminiusapps.tillfailure.identity.ProductIdentityClient
+import com.delminiusapps.tillfailure.identity.CleanDeparturePort
+import com.delminiusapps.tillfailure.identity.DepartureMarkerRead
+import com.delminiusapps.tillfailure.identity.isPathSafeAuthUid
+import com.delminiusapps.tillfailure.persistence.AccountPersistenceEnvelope
+import com.delminiusapps.tillfailure.persistence.AccountSwitchMarker
+import com.delminiusapps.tillfailure.persistence.AndroidAtomicFilePersistence
 
 class AndroidFirebaseSpikeClient(
     context: Context,
     private val configuration: FirebaseEmulatorConfiguration,
     private val fence: AccountCallbackFence,
-) : FirebaseSpikeClient {
+    private val productMemoryCache: Boolean = false,
+    private val overrideProductAppName: String? = null,
+) : FirebaseSpikeClient, ProductIdentityClient, CleanDeparturePort {
+    private val applicationContext = context.applicationContext
+    private val recoveryStore = AndroidAtomicFilePersistence(applicationContext)
     private val generation: AndroidFirebaseAppRegistry.Generation
     private val app: FirebaseApp
     private val auth: FirebaseAuth
     private val firestore: FirebaseFirestore
     private val terminated = AtomicBoolean(false)
+    private val identityPin = context.applicationContext.getSharedPreferences("tillfailure_identity_pin_v1", Context.MODE_PRIVATE)
+    private var accountFrozen = false
+    override val departure: CleanDeparturePort get() = this
     // Serializes SDK issuance and callback delivery with the moment teardown retires this client.
     // The gate is released as soon as an SDK operation is issued; asynchronous work never holds it.
     private val callbackLock = Any()
     internal var beforeWriteIssuanceForTest: (() -> Unit)? = null
     internal var afterWriteIssuedForTest: (() -> Unit)? = null
+    internal var beforeDepartureLocalCleanupForTest: (() -> Unit)? = null
 
     init {
         // One generation per client: overlapping clients and later recreations receive distinct
         // SDK instances, so this client's teardown cannot terminate a peer's Firestore singleton.
-        generation = AndroidFirebaseAppRegistry.acquire(context, configuration.projectId)
+        val preferredName = if (productMemoryCache) synchronized(identityPinLock) {
+            val stable = identityPin.getString("productAppName", null) ?: run {
+                val created = "tillfailure-${configuration.projectId}-product-${UUID.randomUUID()}"
+                check(identityPin.edit().putString("productAppName", created).commit()) {
+                    "Cannot persist product Firebase generation"
+                }
+                created
+            }
+            overrideProductAppName ?: stable
+        } else null
+        generation = AndroidFirebaseAppRegistry.acquire(context, configuration.projectId, preferredName)
         app = generation.app
         auth = FirebaseAuth.getInstance(app)
         firestore = FirebaseFirestore.getInstance(app)
         auth.useEmulator(configuration.host, configuration.authPort)
+        if (productMemoryCache) firestore.firestoreSettings = FirebaseFirestoreSettings.Builder()
+            .setLocalCacheSettings(MemoryCacheSettings.newBuilder().build()).build()
         firestore.useEmulator(configuration.host, configuration.firestorePort)
     }
 
@@ -48,7 +82,7 @@ class AndroidFirebaseSpikeClient(
     private fun terminatedFailure(): StableFirebaseFailure? =
         if (terminated.get()) StableFirebaseFailure(StableFirebaseErrorCode.FAILED_PRECONDITION, false) else null
 
-    private fun <T : Any> issueIfLive(issue: () -> T): T? = synchronized(callbackLock) {
+    private fun <T : Any> issueIfLive(issue: () -> T?): T? = synchronized(callbackLock) {
         if (terminated.get()) null else issue()
     }
 
@@ -75,6 +109,28 @@ class AndroidFirebaseSpikeClient(
      */
     internal val firebaseApp: FirebaseApp get() = app
 
+    private companion object {
+        val identityPinLock = Any()
+    }
+
+    override fun hasPinnedIdentity(): Boolean = runCatching {
+        identityPin.contains("uidSha256")
+    }.getOrDefault(true)
+
+    override fun claimPinnedIdentity(uid: String): Boolean = synchronized(identityPinLock) {
+        runCatching {
+            val digest = MessageDigest.getInstance("SHA-256").digest(uid.toByteArray(Charsets.UTF_8))
+                .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+            val existing = identityPin.getString("uidSha256", null)
+            if (existing == null) {
+                // A missing registry on an already-pinned installation is never guessed clean.
+                if (recoveryStore.read(uid) == null) recoveryStore.write(AccountPersistenceEnvelope(uid = uid))
+                identityPin.edit().putString("uidSha256", digest).commit()
+            }
+            else existing == digest
+        }.getOrDefault(false)
+    }
+
     override fun observeSession(accountEpoch: Long, callback: (FirebaseAuthSession) -> Unit): FirebaseCancellation {
         val cancelled = AtomicBoolean(false)
         val listener = FirebaseAuth.AuthStateListener { observed ->
@@ -97,6 +153,55 @@ class AndroidFirebaseSpikeClient(
         task
             .addOnSuccessListener { snapshot -> deliverDocument(snapshot, accountEpoch, cancelled, callback) }
             .addOnFailureListener { error -> deliverFailure(error, accountEpoch, cancelled, callback) }
+        return FirebaseCancellation { cancelled.set(true) }
+    }
+
+    override fun signIn(email: String, password: String, epoch: Long, callback: (StableFirebaseFailure?) -> Unit): FirebaseCancellation {
+        val cancelled = AtomicBoolean(false)
+        val task = issueIfLive { if (accountFrozen) null else auth.signInWithEmailAndPassword(email, password) } ?: run {
+            callback(StableFirebaseFailure(StableFirebaseErrorCode.FAILED_PRECONDITION, false))
+            return FirebaseCancellation {}
+        }
+        task.addOnSuccessListener { deliverIfCurrent(epoch, cancelled) { callback(null) } }
+            .addOnFailureListener { error -> deliverIfCurrent(epoch, cancelled) { callback(mapFailure(error)) } }
+        return FirebaseCancellation { cancelled.set(true) }
+    }
+
+    override fun refreshSession(epoch: Long, callback: (StableFirebaseFailure?) -> Unit): FirebaseCancellation {
+        val cancelled = AtomicBoolean(false)
+        val user = auth.currentUser ?: run {
+            callback(StableFirebaseFailure(StableFirebaseErrorCode.UNAUTHENTICATED, false))
+            return FirebaseCancellation {}
+        }
+        val task = issueIfLive { user.getIdToken(true) } ?: run {
+            callback(terminatedFailure())
+            return FirebaseCancellation {}
+        }
+        task.addOnSuccessListener { deliverIfCurrent(epoch, cancelled) { callback(null) } }
+            .addOnFailureListener { error -> deliverIfCurrent(epoch, cancelled) { callback(mapFailure(error)) } }
+        return FirebaseCancellation { cancelled.set(true) }
+    }
+
+    override fun discoverMemberships(uid: String, epoch: Long, callback: (MembershipDiscoveryResult) -> Unit): FirebaseCancellation {
+        val cancelled = AtomicBoolean(false)
+        val task = issueIfLive {
+            firestore.collectionGroup("memberships")
+                .whereEqualTo("userId", uid)
+                .whereEqualTo("status", "active")
+                .whereEqualTo("schemaVersion", 1)
+                .limit(20)
+                .get(Source.SERVER)
+        } ?: run {
+            callback(MembershipDiscoveryResult(failure = terminatedFailure()))
+            return FirebaseCancellation {}
+        }
+        task.addOnSuccessListener { result ->
+            deliverIfCurrent(epoch, cancelled) {
+                callback(MembershipDiscoveryResult(documents = result.documents.map { it.toContract() }))
+            }
+        }.addOnFailureListener { error ->
+            deliverIfCurrent(epoch, cancelled) { callback(MembershipDiscoveryResult(failure = mapFailure(error))) }
+        }
         return FirebaseCancellation { cancelled.set(true) }
     }
 
@@ -126,9 +231,10 @@ class AndroidFirebaseSpikeClient(
         val cancelled = AtomicBoolean(false)
         beforeWriteIssuanceForTest?.invoke()
         val task = issueIfLive {
+            if (accountFrozen) return@issueIfLive null
             firestore.document(path).set(fields).also { afterWriteIssuedForTest?.invoke() }
         } ?: run {
-            callback(FirebaseUnitResult(terminatedFailure()!!))
+            callback(FirebaseUnitResult(StableFirebaseFailure(StableFirebaseErrorCode.FAILED_PRECONDITION, false)))
             return FirebaseCancellation {}
         }
         task
@@ -146,6 +252,7 @@ class AndroidFirebaseSpikeClient(
     ): FirebaseCancellation {
         val cancelled = AtomicBoolean(false)
         val issued = issueIfLive {
+            if (accountFrozen) return@issueIfLive null
             val reference = firestore.document(path)
             reference to firestore.runTransaction { transaction ->
                 val snapshot = transaction.get(reference)
@@ -156,7 +263,7 @@ class AndroidFirebaseSpikeClient(
                 next
             }
         } ?: run {
-            callback(FirebaseDocumentResult(failure = terminatedFailure()!!))
+            callback(FirebaseDocumentResult(failure = StableFirebaseFailure(StableFirebaseErrorCode.FAILED_PRECONDITION, false)))
             return FirebaseCancellation {}
         }
         val (reference, task) = issued
@@ -234,13 +341,100 @@ class AndroidFirebaseSpikeClient(
             }
     }
 
+    override fun readMarker(): DepartureMarkerRead = runCatching {
+        val uid = identityPin.getString("switchUid", null)
+        val epoch = identityPin.getLong("switchEpoch", 0L)
+        when {
+            uid == null && epoch == 0L -> DepartureMarkerRead()
+            uid == null || !isPathSafeAuthUid(uid) || epoch <= 0L -> DepartureMarkerRead(readable = false)
+            else -> DepartureMarkerRead(AccountSwitchMarker(departingUid = uid, accountEpoch = epoch, state = "SwitchingOut"))
+        }
+    }.getOrDefault(DepartureMarkerRead(readable = false))
+
+    override fun isRetired(): Boolean = terminated.get()
+
+    override fun freeze(uid: String): Boolean = synchronized(callbackLock) {
+        if (terminated.get() || !isPathSafeAuthUid(uid)) false
+        else if (accountFrozen && readMarker().marker?.departingUid == uid) true
+        else if (accountFrozen) false
+        else if (readMarker().marker == null && auth.currentUser?.uid != uid) false
+        else if (readMarker().marker != null && auth.currentUser?.uid !in listOf(null, uid)) false
+        else { accountFrozen = true; true }
+    }
+
+    override fun unfreeze(uid: String) { synchronized(callbackLock) { accountFrozen = false } }
+
+    override fun hasProvenEmptyCriticalWork(uid: String): Boolean = runCatching {
+        val envelope = recoveryStore.read(uid) ?: return@runCatching false
+        envelope.schemaVersion == 1 && envelope.uid == uid && envelope.offlineAccessGrant == null &&
+            envelope.downloadManifests.isEmpty() && envelope.workoutRecoverySnapshot == null &&
+            envelope.mutationJournal.isEmpty() && envelope.pendingUploads.isEmpty() && envelope.switchMarker == null
+    }.getOrDefault(false)
+
+    override fun drain(timeoutMillis: Long, callback: (StableFirebaseFailure?) -> Unit): FirebaseCancellation =
+        waitForPendingWrites(0L, timeoutMillis) { callback(it.failure) }
+
+    override fun persistMarker(uid: String): Boolean = synchronized(identityPinLock) {
+        runCatching {
+            if (!accountFrozen || readMarker().marker != null || !isPathSafeAuthUid(uid)) return@runCatching false
+            val epoch = identityPin.getLong("lastEpoch", 0L) + 1L
+            if (epoch <= 0L) return@runCatching false
+            identityPin.edit().putString("switchUid", uid).putLong("switchEpoch", epoch)
+                .putLong("lastEpoch", epoch).commit()
+        }.getOrDefault(false)
+    }
+
+    override fun fenceCallbacks() { fence.advance() }
+
+    override fun signOut(callback: (StableFirebaseFailure?) -> Unit) {
+        val failure = runCatching { auth.signOut() }.exceptionOrNull()
+        callback(failure?.let { mapFailure(it as? Exception ?: Exception(it)) })
+    }
+
+    override fun retireFirestore(callback: (StableFirebaseFailure?) -> Unit) =
+        terminateAndClear { result: FirebaseUnitResult -> callback(result.failure) }
+
+    override fun cleanupLocal(uid: String): Boolean = runCatching {
+        beforeDepartureLocalCleanupForTest?.invoke()
+        val record = recoveryStore.read(uid)
+        if (record != null && !hasProvenEmptyCriticalWork(uid)) return@runCatching false
+        recoveryStore.delete(uid)
+        recoveryStore.read(uid) == null
+    }.getOrDefault(false)
+
+    override fun completeMarker(uid: String): Boolean = synchronized(identityPinLock) {
+        runCatching {
+            if (readMarker().marker?.departingUid != uid) return@runCatching false
+            val digest = MessageDigest.getInstance("SHA-256").digest(uid.toByteArray(Charsets.UTF_8))
+                .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+            val pin = identityPin.getString("uidSha256", null)
+            if (pin != null && pin != digest) return@runCatching false
+            val editor = identityPin.edit().remove("uidSha256")
+            if (productMemoryCache) editor.putString("productAppName",
+                "tillfailure-${configuration.projectId}-product-${UUID.randomUUID()}")
+            if (!editor.commit()) return@runCatching false
+            identityPin.edit().remove("switchUid").remove("switchEpoch").commit()
+        }.getOrDefault(false)
+    }
+
+    override fun replacement(): ProductIdentityClient {
+        val transient = if (productMemoryCache && readMarker().marker != null)
+            "${generation.appName}-retry-${UUID.randomUUID()}" else null
+        val fresh = AndroidFirebaseSpikeClient(
+            applicationContext, configuration, AccountCallbackFence(), productMemoryCache, transient,
+        )
+        AndroidProductIdentitySession.replaceIfCurrent(this, fresh)
+        return fresh
+    }
+
     fun signInAnonymously(accountEpoch: Long, callback: (FirebaseUnitResult) -> Unit): FirebaseCancellation {
         val cancelled = AtomicBoolean(false)
         val task = issueIfLive {
+            if (accountFrozen) return@issueIfLive null
             auth.signOut()
             auth.signInAnonymously()
         } ?: run {
-            callback(FirebaseUnitResult(terminatedFailure()!!))
+            callback(FirebaseUnitResult(StableFirebaseFailure(StableFirebaseErrorCode.FAILED_PRECONDITION, false)))
             return FirebaseCancellation {}
         }
         task
@@ -312,6 +506,18 @@ class AndroidFirebaseSpikeClient(
     )
 
     private fun mapFailure(error: Exception): StableFirebaseFailure {
+        if (error is FirebaseNetworkException) {
+            return StableFirebaseFailure(StableFirebaseErrorCode.UNAVAILABLE, true)
+        }
+        if (error is FirebaseAuthException) {
+            return when (error.errorCode) {
+                "ERROR_WRONG_PASSWORD", "ERROR_INVALID_CREDENTIAL", "ERROR_INVALID_EMAIL", "ERROR_USER_NOT_FOUND" ->
+                    StableFirebaseFailure(StableFirebaseErrorCode.INVALID_CREDENTIALS, false)
+                "ERROR_USER_DISABLED", "ERROR_USER_TOKEN_EXPIRED", "ERROR_INVALID_USER_TOKEN" ->
+                    StableFirebaseFailure(StableFirebaseErrorCode.UNAUTHENTICATED, false)
+                else -> StableFirebaseFailure(StableFirebaseErrorCode.UNKNOWN, false)
+            }
+        }
         if (error is CounterValueException || error.cause is CounterValueException) {
             return StableFirebaseFailure(StableFirebaseErrorCode.INVALID_ARGUMENT, false)
         }

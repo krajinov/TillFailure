@@ -6,6 +6,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.remember
+import com.delminiusapps.tillfailure.firebase.AndroidProductIdentitySession
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -16,7 +18,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            App(showDevelopmentCatalog = BuildConfig.DEBUG)
+            val identityClient = remember {
+                if (BuildConfig.DEBUG) AndroidProductIdentitySession.get(applicationContext) else null
+            }
+            App(identityClient = identityClient)
         }
     }
 }
