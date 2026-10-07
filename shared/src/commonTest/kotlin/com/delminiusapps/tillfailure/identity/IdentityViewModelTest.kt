@@ -123,6 +123,52 @@ class IdentityViewModelTest {
         assertEquals(GateStatus.CleanupRequired, model.state.value.status)
     }
 
+    @Test fun restoredAnonymousSessionCanDepartWithoutReadingAccountPaths() {
+        val client = FakeIdentityClient()
+        val port = FakeDeparturePort(client)
+        client.departurePort = port
+        val model = IdentityViewModel(client)
+        client.emitSession("anonymous_uid", anonymous = true)
+        assertEquals(GateStatus.AnonymousSession, model.state.value.status)
+        assertEquals(true, model.state.value.canSignOut)
+        assertEquals(emptyList(), client.getPaths)
+        assertEquals(0, client.discoveryCount)
+        assertEquals(0, client.refreshCount)
+        model.onEvent(IdentityEvent.Retry)
+        assertEquals(emptyList(), client.getPaths)
+        assertEquals(0, client.refreshCount)
+        model.onEvent(IdentityEvent.SignOut)
+        assertEquals(GateStatus.SignedOut, model.state.value.status)
+        assertEquals(1, port.signOutCount)
+        assertEquals(null, port.marker)
+    }
+
+    @Test fun anonymousSessionWithoutCleanProofCannotLeaveOrAdmitAnotherAccount() {
+        val client = FakeIdentityClient()
+        val port = FakeDeparturePort(client).apply { cleanRegistry = false }
+        client.departurePort = port
+        val model = IdentityViewModel(client)
+        client.emitSession("anonymous_uid", anonymous = true)
+        assertEquals(GateStatus.AnonymousSession, model.state.value.status)
+        assertEquals(false, model.state.value.canSignOut)
+        model.onEvent(IdentityEvent.SignOut)
+        model.onEvent(IdentityEvent.SignIn)
+        assertEquals(GateStatus.AnonymousSession, model.state.value.status)
+        assertEquals(0, port.signOutCount)
+    }
+
+    @Test fun anonymousCleanupFailureRetainsMarkerUntilRecovery() {
+        val client = FakeIdentityClient()
+        val port = FakeDeparturePort(client).apply { failLocalCleanup = true }
+        client.departurePort = port
+        val model = IdentityViewModel(client)
+        client.emitSession("anonymous_uid", anonymous = true)
+        model.onEvent(IdentityEvent.SignOut)
+        assertEquals(GateStatus.CleanupRequired, model.state.value.status)
+        assertEquals("anonymous_uid", port.marker?.departingUid)
+        assertEquals(false, model.state.value.canSignOut)
+    }
+
     @Test fun lateServerCallbackAfterSignOutCannotRestorePreviousAccount() {
         val client = FakeIdentityClient()
         client.deferAccount = true
@@ -177,7 +223,9 @@ class IdentityViewModelTest {
             return true
         }
 
-        fun emitSession(uid: String?) { session?.invoke(FirebaseAuthSession(uid, false)) }
+        fun emitSession(uid: String?, anonymous: Boolean = false) {
+            session?.invoke(FirebaseAuthSession(uid, anonymous))
+        }
 
         override fun observeSession(epoch: Long, callback: (FirebaseAuthSession) -> Unit): FirebaseCancellation {
             session = callback

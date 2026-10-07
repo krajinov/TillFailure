@@ -142,6 +142,9 @@ fun IdentityScreen(
                 GateStatus.IdentityUnsupported -> if (state.canSignOut)
                     "This account ID cannot access workspaces. You can safely sign out."
                     else "This account ID cannot access workspaces. Safe sign-out is unavailable; contact support."
+                GateStatus.AnonymousSession -> if (state.canSignOut)
+                    "This anonymous session cannot access workspaces. You can safely sign out."
+                    else "This anonymous session cannot access workspaces. Safe sign-out is unavailable; contact support."
                 GateStatus.NoAccount -> "Your sign-in is valid, but your account is not ready."
                 GateStatus.AccountDisabled -> "This account is disabled. Contact support."
                 GateStatus.WorkspaceGate -> "No active workspace membership was found. Ask your trainer or operator for access."
@@ -180,6 +183,7 @@ fun IdentityScreen(
             Button(onClick = { onEvent(IdentityEvent.SignIn) }, enabled = !state.busy) { Text("Sign in") }
             Text("Development emulator sign-in only", color = TillFailureTheme.colors.secondaryText)
         } else if (state.status != GateStatus.Loading && state.status != GateStatus.IdentityUnsupported &&
+            state.status != GateStatus.AnonymousSession &&
             state.status != GateStatus.MembershipVerifiedFeaturePending && state.status != GateStatus.ConnectToVerify &&
             state.status != GateStatus.Unconfigured && state.status != GateStatus.SessionExpired &&
             state.status != GateStatus.CleanupRequired

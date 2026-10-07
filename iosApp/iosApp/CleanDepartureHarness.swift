@@ -155,6 +155,49 @@ enum CleanDepartureHarness {
         }
     }
 
+    static func runAnonymousIfRequested(password: String?) {
+        guard ProcessInfo.processInfo.environment["TILLFAILURE_PR1_ANONYMOUS"] == "1" else { return }
+        try? FileManager.default.removeItem(at: resultURL)
+        guard let password, password.count >= 8,
+              let defaults = UserDefaults(suiteName: "tillfailure.pr1.anonymous.harness") else {
+            record("PR1_ANONYMOUS configuration=FAIL"); exit(1)
+        }
+        defaults.removePersistentDomain(forName: "tillfailure.pr1.anonymous.harness")
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("TillFailurePR1AnonymousHarness")
+        try? FileManager.default.removeItem(at: root)
+        let recovery = RecoveryPersistenceBridge(rootURL: root)
+        let bridge = FirebaseNativeBridge(productMemoryCache: true, identityDefaults: defaults)
+        let client = IosProductIdentityClient(bridge: bridge, recoveryBridge: recovery)
+        bridge.signInAnonymously { result in
+            guard case .success(let uid) = result, bridge.debugCurrentUid == uid,
+                  client.claimPinnedIdentity(uid: uid), client.hasProvenEmptyCriticalWork(uid: uid) else {
+                record("PR1_ANONYMOUS preflight=FAIL"); exit(1)
+            }
+            CleanDepartureCoordinator(port: client).depart(uid: uid, disposeAccountCallbacks: {}) { outcome in
+                guard outcome == .clean, bridge.readDepartureMarker().uid == nil,
+                      !bridge.hasPinnedIdentity(), recovery.read(uid: uid).payload == nil else {
+                    record("PR1_ANONYMOUS departure=FAIL"); exit(1)
+                }
+                record("PR1_ANONYMOUS departure=PASS")
+                let b = bridge.replacementBridge() as! FirebaseNativeBridge
+                _ = b.signIn(email: "pr1-trainer@example.invalid", password: password, accountEpoch: 0) { auth in
+                    let bClient = IosProductIdentityClient(bridge: b, recoveryBridge: recovery)
+                    guard auth.failure == nil, bClient.claimPinnedIdentity(uid: "pr1_trainer") else {
+                        record("PR1_ANONYMOUS accountB=FAIL auth"); exit(1)
+                    }
+                    _ = b.getDocument(path: "users/\(uid)", accountEpoch: 0) { denied in
+                        _ = b.getDocument(path: "users/pr1_trainer", accountEpoch: 0) { own in
+                            let isolated = denied.failure?.code == "PERMISSION_DENIED" &&
+                                own.document?.isFromCache == false && own.document?.exists == true
+                            record("PR1_ANONYMOUS accountB=\(isolated ? "PASS" : "FAIL")")
+                            exit(isolated ? 0 : 1)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     static func runInterruptedPhaseIfRequested(password: String?) {
         let env = ProcessInfo.processInfo.environment
         let staging = env["TILLFAILURE_PR1_DEPARTURE_STAGE"]

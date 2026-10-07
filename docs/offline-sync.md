@@ -163,6 +163,8 @@ Milestone 4 PR 1 implements only a clean-departure subset: freeze, prove the app
 
 An Auth UID that is valid for the encrypted local recovery partition but invalid as one Firestore path segment remains at `IdentityUnsupported` with no account/workspace reads. The app may retain that UID only to perform the same proven-clean native departure and marker recovery. If its protected local registry cannot prove cleanup, sign-out stays hidden and no other account enters; an invalid recovery UID needs support intervention rather than an unsafe path or guessed cleanup.
 
+An anonymous Auth session likewise has no account/workspace authority. Keep its UID only for the same UID-bound, proven-clean departure; never use it for membership discovery or role entry. If the local proof is unavailable or cleanup fails, block another account until recovery or support intervention.
+
 Full sequence for PR 5 and later; PR 1's clean-only subset above persists its marker after the frozen preflight succeeds:
 
 1. Freeze the departing account (`SwitchingOut` marker with UID and monotonically increasing account epoch); stop accepting new edits.

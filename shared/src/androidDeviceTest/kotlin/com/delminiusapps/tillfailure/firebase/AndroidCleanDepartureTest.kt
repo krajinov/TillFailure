@@ -179,6 +179,34 @@ class AndroidCleanDepartureTest {
         reset()
     }
 
+    @Test fun restoredAnonymousAuthSessionCanCleanlyDepartBeforeBEnters() {
+        reset()
+        val client = fresh()
+        FirebaseAuth.getInstance(client.firebaseApp).signOut()
+        val signedIn = await<FirebaseUnitResult> { done -> client.signInAnonymously(0L, done) }
+        assertNull(signedIn.failure)
+        val anonymous = FirebaseAuth.getInstance(client.firebaseApp).currentUser
+        assertNotNull(anonymous)
+        assertTrue(anonymous.isAnonymous)
+        val anonymousUid = anonymous.uid
+        assertTrue(client.claimPinnedIdentity(anonymousUid))
+        assertTrue(client.hasProvenEmptyCriticalWork(anonymousUid))
+        assertEquals(DepartureOutcome.Clean, await<DepartureOutcome> { done ->
+            CleanDepartureCoordinator(client).depart(anonymousUid, {}, done)
+        })
+        assertNull(store.read(anonymousUid))
+        assertNull(client.readMarker().marker)
+        val b = client.replacement() as AndroidFirebaseSpikeClient
+        assertNull(await<StableFirebaseFailure?> { done ->
+            b.signIn("pr1-trainer@example.invalid", password, 0L, done)
+        })
+        assertTrue(b.claimPinnedIdentity("pr1_trainer"))
+        assertEquals(FirebaseDataOrigin.SERVER,
+            await<FirebaseDocumentResult> { done -> b.getDocument("users/pr1_trainer", 0L, done) }.document?.origin)
+        b.terminateAndClear { }
+        reset()
+    }
+
     private fun <T> await(seconds: Long = 15, start: ((T) -> Unit) -> Unit): T {
         val result = AtomicReference<T>()
         val done = CountDownLatch(1)

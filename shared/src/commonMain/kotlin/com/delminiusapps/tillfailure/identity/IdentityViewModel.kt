@@ -13,7 +13,7 @@ import com.delminiusapps.tillfailure.persistence.RecoveryUidContract
 
 @kotlinx.serialization.Serializable
 enum class GateStatus {
-    Loading, SignedOut, InvalidCredentials, IdentityUnsupported, NoAccount, AccountDisabled,
+    Loading, SignedOut, InvalidCredentials, IdentityUnsupported, AnonymousSession, NoAccount, AccountDisabled,
     WorkspaceGate, MembershipVerifiedFeaturePending, UnsupportedSchema, AccessLost,
     ConnectToVerify, Retry, MultipleMemberships, Unconfigured, SessionExpired, CleanupRequired,
     SwitchingOut, DepartureBlocked,
@@ -52,6 +52,7 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
     private val operations = mutableListOf<FirebaseCancellation>()
     private var revision = 0L
     private var observedUid: String? = null
+    private var restrictedSession = false
     private var sessionListener: FirebaseCancellation? = null
 
     init { recoverOnStartup() }
@@ -72,20 +73,36 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
     private fun observeSession() {
         sessionListener = client.observeSession(0L) { session ->
             val uid = session.uid
-            if (uid == null || session.isAnonymous) {
-                val mustBlock = session.isAnonymous || observedUid != null || client.hasPinnedIdentity()
+            if (uid == null) {
+                val mustBlock = observedUid != null || client.hasPinnedIdentity()
                 observedUid = null
+                restrictedSession = false
                 cancelOperations()
                 setState(mutableState.value.copy(
                     status = if (mustBlock) GateStatus.CleanupRequired else GateStatus.SignedOut, busy = false,
                     verifiedWorkspaceId = null, verifiedRole = null))
-            } else if (uid != observedUid) {
+            } else if (session.isAnonymous) {
+                if (uid == observedUid && mutableState.value.status == GateStatus.AnonymousSession) return@observeSession
+                cancelOperations()
+                // Anonymous Auth is never authority for an account path. Keep only the UID needed
+                // to prove and perform the same clean departure as any other restricted session.
+                val recoveryValid = RecoveryUidContract.isValid(uid)
+                val canPinForRecovery = recoveryValid && client.claimPinnedIdentity(uid)
+                observedUid = if (canPinForRecovery) uid else null
+                restrictedSession = true
+                setState(mutableState.value.copy(
+                    status = if (canPinForRecovery || !recoveryValid) GateStatus.AnonymousSession
+                        else GateStatus.CleanupRequired,
+                    email = "", password = "", busy = false,
+                    verifiedWorkspaceId = null, verifiedRole = null))
+            } else if (uid != observedUid || mutableState.value.status == GateStatus.AnonymousSession) {
                 if (!isPathSafeAuthUid(uid)) {
                     cancelOperations()
                     // Keep only the Auth UID needed for UID-bound local cleanup. It is never used
                     // to construct a Firestore account or membership path.
                     val canPinForRecovery = RecoveryUidContract.isValid(uid) && client.claimPinnedIdentity(uid)
                     observedUid = if (canPinForRecovery) uid else null
+                    restrictedSession = true
                     setState(mutableState.value.copy(
                         status = if (canPinForRecovery || !RecoveryUidContract.isValid(uid))
                             GateStatus.IdentityUnsupported else GateStatus.CleanupRequired,
@@ -101,6 +118,7 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
                     return@observeSession
                 }
                 observedUid = uid
+                restrictedSession = false
                 verify(uid)
             }
         }
@@ -132,7 +150,7 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
                     }
                 }
             }
-            IdentityEvent.Retry -> if (observedUid != null) {
+            IdentityEvent.Retry -> if (observedUid != null && !restrictedSession) {
                 verify(observedUid!!)
             } else if (mutableState.value.status == GateStatus.ConnectToVerify) {
                 onEvent(IdentityEvent.SignIn)
@@ -148,6 +166,7 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
                     when (outcome) {
                         DepartureOutcome.Clean -> {
                             observedUid = null
+                            restrictedSession = false
                             client = port.replacement()
                             setState(IdentityState(status = GateStatus.SignedOut))
                             observeSession()
@@ -168,6 +187,7 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
                 CleanDepartureCoordinator(port).recover(::cancelSessionAndOperations) { outcome, hadMarker ->
                     if (outcome == DepartureOutcome.Clean && hadMarker) {
                         observedUid = null
+                        restrictedSession = false
                         client = port.replacement()
                         setState(IdentityState(status = GateStatus.SignedOut))
                         observeSession()
@@ -287,14 +307,15 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
         val previousStatus = mutableState.value.status
         val uid = observedUid
         val port = client.departure
-        val unsupportedCleanupReady = if (next.status == GateStatus.IdentityUnsupported && uid != null && port != null) {
+        val canAttemptSignOut = uid != null && port != null &&
+            next.status !in setOf(GateStatus.Loading, GateStatus.SwitchingOut, GateStatus.CleanupRequired)
+        val restrictedCleanupReady = if (canAttemptSignOut && restrictedSession) {
             runCatching {
                 val marker = port.readMarker()
                 marker.readable && marker.marker == null && port.hasProvenEmptyCriticalWork(uid)
             }.getOrDefault(false)
         } else true
-        mutableState.value = next.copy(canSignOut = uid != null && port != null && unsupportedCleanupReady &&
-            next.status !in setOf(GateStatus.Loading, GateStatus.SwitchingOut, GateStatus.CleanupRequired))
+        mutableState.value = next.copy(canSignOut = canAttemptSignOut && restrictedCleanupReady)
         if (next.status != previousStatus) effectChannel.trySend(IdentityEffect.ReplaceRoot(next.status))
     }
 
