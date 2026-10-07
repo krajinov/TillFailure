@@ -4,6 +4,7 @@ import com.delminiusapps.tillfailure.firebase.DEFAULT_PENDING_WRITE_TIMEOUT_MILL
 import com.delminiusapps.tillfailure.firebase.FirebaseCancellation
 import com.delminiusapps.tillfailure.firebase.StableFirebaseFailure
 import com.delminiusapps.tillfailure.persistence.AccountSwitchMarker
+import com.delminiusapps.tillfailure.persistence.RecoveryUidContract
 
 /** A marker is written only after a clean preflight. Its presence always blocks another login. */
 data class DepartureMarkerRead(val marker: AccountSwitchMarker? = null, val readable: Boolean = true)
@@ -67,7 +68,7 @@ class CleanDepartureCoordinator(private val port: CleanDeparturePort) {
         val marker = read.marker
         if (marker == null) { done(DepartureOutcome.Clean, false); return }
         if (marker.schemaVersion != 1 || marker.state != "SwitchingOut" ||
-            !isPathSafeAuthUid(marker.departingUid) || !port.freeze(marker.departingUid)) {
+            !RecoveryUidContract.isValid(marker.departingUid) || !port.freeze(marker.departingUid)) {
             done(DepartureOutcome.CleanupRequired, false)
             return
         }

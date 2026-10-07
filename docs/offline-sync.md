@@ -161,6 +161,8 @@ TillFailure should support one active Firebase account per installation at a tim
 
 Milestone 4 PR 1 implements only a clean-departure subset: freeze, prove the app-owned journal/upload registry and account partition contain no pending or unresolved critical work, and successfully drain SDK pending writes. Failed preflight cancels departure without changing Auth. Once clean, persist a UID-bound switch marker before Auth changes, fence callbacks, sign out, terminate/clear Firestore, prove permitted local cleanup, dispose account scopes, and finish the marker before another login. A failed step or interruption after the marker blocks new login in `CleanupRequired` until cleanup resumes; Android and iOS must prove this natively. PR 5 adds synchronization/reconciliation for pending work. Destructive discard remains unavailable until separately approved; an offline grant is not required for either online departure slice.
 
+An Auth UID that is valid for the encrypted local recovery partition but invalid as one Firestore path segment remains at `IdentityUnsupported` with no account/workspace reads. The app may retain that UID only to perform the same proven-clean native departure and marker recovery. If its protected local registry cannot prove cleanup, sign-out stays hidden and no other account enters; an invalid recovery UID needs support intervention rather than an unsafe path or guessed cleanup.
+
 Full sequence for PR 5 and later; PR 1's clean-only subset above persists its marker after the frozen preflight succeeds:
 
 1. Freeze the departing account (`SwitchingOut` marker with UID and monotonically increasing account epoch); stop accepting new edits.

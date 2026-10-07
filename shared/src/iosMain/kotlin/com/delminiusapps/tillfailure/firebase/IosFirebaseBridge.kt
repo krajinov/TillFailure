@@ -4,11 +4,11 @@ import com.delminiusapps.tillfailure.identity.MembershipDiscoveryResult
 import com.delminiusapps.tillfailure.identity.ProductIdentityClient
 import com.delminiusapps.tillfailure.identity.CleanDeparturePort
 import com.delminiusapps.tillfailure.identity.DepartureMarkerRead
-import com.delminiusapps.tillfailure.identity.isPathSafeAuthUid
 import com.delminiusapps.tillfailure.persistence.AccountPersistenceEnvelope
 import com.delminiusapps.tillfailure.persistence.AccountSwitchMarker
 import com.delminiusapps.tillfailure.persistence.IosAtomicFilePersistence
 import com.delminiusapps.tillfailure.persistence.NativeRecoveryPersistenceBridge
+import com.delminiusapps.tillfailure.persistence.RecoveryUidContract
 
 class NativeFirebaseAuthState(
     val uid: String?,
@@ -96,13 +96,13 @@ class IosProductIdentityClient(
         return when {
             !read.readable -> DepartureMarkerRead(readable = false)
             read.uid == null && read.epoch == 0L -> DepartureMarkerRead()
-            read.uid == null || !isPathSafeAuthUid(read.uid) || read.epoch <= 0L -> DepartureMarkerRead(readable = false)
+            read.uid == null || !RecoveryUidContract.isValid(read.uid) || read.epoch <= 0L -> DepartureMarkerRead(readable = false)
             else -> DepartureMarkerRead(AccountSwitchMarker(departingUid = read.uid,
                 accountEpoch = read.epoch, state = "SwitchingOut"))
         }
     }
 
-    override fun freeze(uid: String): Boolean = bridge.freezeAccount(uid)
+    override fun freeze(uid: String): Boolean = RecoveryUidContract.isValid(uid) && bridge.freezeAccount(uid)
     override fun unfreeze(uid: String) = bridge.unfreezeAccount(uid)
     override fun hasProvenEmptyCriticalWork(uid: String): Boolean = runCatching {
         val record = recoveryStore.read(uid) ?: return@runCatching false
@@ -112,7 +112,7 @@ class IosProductIdentityClient(
     }.getOrDefault(false)
     override fun drain(timeoutMillis: Long, callback: (StableFirebaseFailure?) -> Unit): FirebaseCancellation =
         spike.waitForPendingWrites(0L, timeoutMillis) { callback(it.failure) }
-    override fun persistMarker(uid: String): Boolean = bridge.persistDepartureMarker(uid)
+    override fun persistMarker(uid: String): Boolean = RecoveryUidContract.isValid(uid) && bridge.persistDepartureMarker(uid)
     override fun fenceCallbacks() = bridge.fenceDepartureCallbacks()
     override fun signOut(callback: (StableFirebaseFailure?) -> Unit) =
         bridge.signOutProduct { callback(it.failure?.toStableFailure()) }

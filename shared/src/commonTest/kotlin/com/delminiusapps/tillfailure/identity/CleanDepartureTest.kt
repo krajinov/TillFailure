@@ -72,6 +72,16 @@ class CleanDepartureTest {
         assertFalse(port.canEnter("account_b"))
     }
 
+    @Test fun unsupportedFirestorePathUidStillRecoversItsOwnDepartureMarker() {
+        val port = FakePort()
+        port.marker = AccountSwitchMarker(departingUid = "unsafe/uid", accountEpoch = 7, state = "SwitchingOut")
+        var result: Pair<DepartureOutcome, Boolean>? = null
+        CleanDepartureCoordinator(port).recover({}, { outcome, hadMarker -> result = outcome to hadMarker })
+        assertEquals(DepartureOutcome.Clean to true, result)
+        assertEquals(null, port.marker)
+        assertFalse(port.signedIn)
+    }
+
     private class FakePort : CleanDeparturePort {
         override fun isRetired() = false
         var marker: AccountSwitchMarker? = null

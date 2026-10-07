@@ -15,6 +15,7 @@ struct iOSApp: App {
         FirebaseSpikeHarness.runIfRequested(bridge: bridge)
         ProductIdentityHarness.runIfRequested(bridge: bridge)
         CleanDepartureHarness.runIfRequested(password: ProcessInfo.processInfo.environment["TF_PR1_TEST_PASSWORD"])
+        CleanDepartureHarness.runUnsupportedIfRequested(password: ProcessInfo.processInfo.environment["TF_PR1_TEST_PASSWORD"])
         CleanDepartureHarness.runInterruptedPhaseIfRequested(password: ProcessInfo.processInfo.environment["TF_PR1_TEST_PASSWORD"])
         NativeRevocationHarness.runIfRequested(password: ProcessInfo.processInfo.environment["TF_PR1_TEST_PASSWORD"])
         #else
@@ -25,7 +26,13 @@ struct iOSApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView(firebaseBridge: firebaseBridge, recoveryBridge: recoveryBridge)
+            #if DEBUG
+            ContentView(firebaseBridge: firebaseBridge, recoveryBridge: recoveryBridge,
+                        showDevelopmentCatalog: true)
+            #else
+            ContentView(firebaseBridge: firebaseBridge, recoveryBridge: recoveryBridge,
+                        showDevelopmentCatalog: false)
+            #endif
         }
     }
 }

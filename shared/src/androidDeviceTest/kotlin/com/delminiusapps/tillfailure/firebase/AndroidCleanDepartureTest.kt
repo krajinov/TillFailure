@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.test.platform.app.InstrumentationRegistry
 import com.delminiusapps.tillfailure.identity.CleanDepartureCoordinator
 import com.delminiusapps.tillfailure.identity.DepartureOutcome
+import com.delminiusapps.tillfailure.identity.isPathSafeAuthUid
 import com.delminiusapps.tillfailure.persistence.AccountPersistenceEnvelope
 import com.delminiusapps.tillfailure.persistence.AndroidAtomicFilePersistence
 import com.delminiusapps.tillfailure.persistence.MutationJournalEntry
@@ -32,7 +33,7 @@ class AndroidCleanDepartureTest {
 
     private fun reset() {
         context.getSharedPreferences("tillfailure_identity_pin_v1", Context.MODE_PRIVATE).edit().clear().commit()
-        for (account in listOf(uid, "pr1_trainer")) runCatching { store.delete(account) }
+        for (account in listOf(uid, "pr1_trainer", "pr1_unsupported/uid")) runCatching { store.delete(account) }
     }
 
     private fun signedInA(): AndroidFirebaseSpikeClient {
@@ -143,6 +144,38 @@ class AndroidCleanDepartureTest {
             assertNull(restarted.readMarker().marker)
             assertFalse(restarted.hasPinnedIdentity())
         }
+        reset()
+    }
+
+    @Test fun unsupportedAuthUidRecoversItsMarkerAndNeverNeedsAnUnsafeFirestorePath() {
+        reset()
+        val unsafeUid = "pr1_unsupported/uid"
+        assertFalse(isPathSafeAuthUid(unsafeUid))
+        val client = fresh()
+        FirebaseAuth.getInstance(client.firebaseApp).signOut()
+        assertNull(await<StableFirebaseFailure?> { done ->
+            client.signIn("pr1-unsupported@example.invalid", password, 0L, done)
+        })
+        assertEquals(unsafeUid, FirebaseAuth.getInstance(client.firebaseApp).currentUser?.uid)
+        assertTrue(client.claimPinnedIdentity(unsafeUid))
+        assertTrue(client.hasProvenEmptyCriticalWork(unsafeUid))
+        assertTrue(client.freeze(unsafeUid))
+        assertNull(await<StableFirebaseFailure?> { done -> client.drain(5_000, done) })
+        assertTrue(client.persistMarker(unsafeUid))
+        val restarted = client.replacement() as AndroidFirebaseSpikeClient
+        assertEquals(unsafeUid, restarted.readMarker().marker?.departingUid)
+        assertEquals(DepartureOutcome.Clean to true, await<Pair<DepartureOutcome, Boolean>> { done ->
+            CleanDepartureCoordinator(restarted).recover({}, { outcome, hadMarker -> done(outcome to hadMarker) })
+        })
+        assertNull(store.read(unsafeUid))
+        assertNull(restarted.readMarker().marker)
+        val b = restarted.replacement() as AndroidFirebaseSpikeClient
+        assertNull(await<StableFirebaseFailure?> { done ->
+            b.signIn("pr1-trainer@example.invalid", password, 0L, done)
+        })
+        assertTrue(b.claimPinnedIdentity("pr1_trainer"))
+        assertEquals(FirebaseDataOrigin.SERVER,
+            await<FirebaseDocumentResult> { done -> b.getDocument("users/pr1_trainer", 0L, done) }.document?.origin)
         reset()
     }
 

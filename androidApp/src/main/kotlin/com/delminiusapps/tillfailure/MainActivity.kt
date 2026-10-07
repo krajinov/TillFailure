@@ -21,7 +21,7 @@ class MainActivity : ComponentActivity() {
             val identityClient = remember {
                 if (BuildConfig.DEBUG) AndroidProductIdentitySession.get(applicationContext) else null
             }
-            App(identityClient = identityClient)
+            App(identityClient = identityClient, showDevelopmentCatalog = BuildConfig.DEBUG)
         }
     }
 }

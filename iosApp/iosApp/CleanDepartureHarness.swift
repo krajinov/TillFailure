@@ -113,6 +113,48 @@ enum CleanDepartureHarness {
         return String(data: data, encoding: .utf8)!
     }
 
+    static func runUnsupportedIfRequested(password: String?) {
+        guard ProcessInfo.processInfo.environment["TILLFAILURE_PR1_UNSUPPORTED"] == "1" else { return }
+        try? FileManager.default.removeItem(at: resultURL)
+        guard let password, password.count >= 8,
+              let defaults = UserDefaults(suiteName: "tillfailure.pr1.unsupported.harness") else {
+            record("PR1_UNSUPPORTED configuration=FAIL"); exit(1)
+        }
+        defaults.removePersistentDomain(forName: "tillfailure.pr1.unsupported.harness")
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("TillFailurePR1UnsupportedHarness")
+        try? FileManager.default.removeItem(at: root)
+        let recovery = RecoveryPersistenceBridge(rootURL: root)
+        let bridge = FirebaseNativeBridge(productMemoryCache: true, identityDefaults: defaults)
+        let client = IosProductIdentityClient(bridge: bridge, recoveryBridge: recovery)
+        let uid = "pr1_unsupported/uid"
+        _ = bridge.signIn(email: "pr1-unsupported@example.invalid", password: password, accountEpoch: 0) { result in
+            guard result.failure == nil, bridge.debugCurrentUid == uid,
+                  client.claimPinnedIdentity(uid: uid), client.hasProvenEmptyCriticalWork(uid: uid),
+                  client.freeze(uid: uid) else {
+                record("PR1_UNSUPPORTED preflight=FAIL"); exit(1)
+            }
+            _ = client.drain(timeoutMillis: 5_000) { failure in
+                guard failure == nil, client.persistMarker(uid: uid) else {
+                    record("PR1_UNSUPPORTED marker=FAIL"); exit(1)
+                }
+                let resumedBridge = bridge.replacementBridge() as! FirebaseNativeBridge
+                let resumed = IosProductIdentityClient(bridge: resumedBridge, recoveryBridge: recovery)
+                guard resumedBridge.readDepartureMarker().uid == uid else {
+                    record("PR1_UNSUPPORTED markerRead=FAIL"); exit(1)
+                }
+                CleanDepartureCoordinator(port: resumed).recover(disposeAccountCallbacks: {}) { outcome, hadMarker in
+                    guard outcome == .clean, hadMarker.boolValue, resumedBridge.readDepartureMarker().uid == nil,
+                          !resumedBridge.hasPinnedIdentity() else {
+                        record("PR1_UNSUPPORTED recovery=FAIL"); exit(1)
+                    }
+                    record("PR1_UNSUPPORTED recovery=PASS")
+                    verifyB(phase: 5, bridge: resumedBridge.replacementBridge() as! FirebaseNativeBridge,
+                            recovery: recovery, password: password)
+                }
+            }
+        }
+    }
+
     static func runInterruptedPhaseIfRequested(password: String?) {
         let env = ProcessInfo.processInfo.environment
         let staging = env["TILLFAILURE_PR1_DEPARTURE_STAGE"]

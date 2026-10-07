@@ -22,10 +22,10 @@ import com.delminiusapps.tillfailure.identity.MembershipDiscoveryResult
 import com.delminiusapps.tillfailure.identity.ProductIdentityClient
 import com.delminiusapps.tillfailure.identity.CleanDeparturePort
 import com.delminiusapps.tillfailure.identity.DepartureMarkerRead
-import com.delminiusapps.tillfailure.identity.isPathSafeAuthUid
 import com.delminiusapps.tillfailure.persistence.AccountPersistenceEnvelope
 import com.delminiusapps.tillfailure.persistence.AccountSwitchMarker
 import com.delminiusapps.tillfailure.persistence.AndroidAtomicFilePersistence
+import com.delminiusapps.tillfailure.persistence.RecoveryUidContract
 
 class AndroidFirebaseSpikeClient(
     context: Context,
@@ -346,7 +346,7 @@ class AndroidFirebaseSpikeClient(
         val epoch = identityPin.getLong("switchEpoch", 0L)
         when {
             uid == null && epoch == 0L -> DepartureMarkerRead()
-            uid == null || !isPathSafeAuthUid(uid) || epoch <= 0L -> DepartureMarkerRead(readable = false)
+            uid == null || !RecoveryUidContract.isValid(uid) || epoch <= 0L -> DepartureMarkerRead(readable = false)
             else -> DepartureMarkerRead(AccountSwitchMarker(departingUid = uid, accountEpoch = epoch, state = "SwitchingOut"))
         }
     }.getOrDefault(DepartureMarkerRead(readable = false))
@@ -354,7 +354,7 @@ class AndroidFirebaseSpikeClient(
     override fun isRetired(): Boolean = terminated.get()
 
     override fun freeze(uid: String): Boolean = synchronized(callbackLock) {
-        if (terminated.get() || !isPathSafeAuthUid(uid)) false
+        if (terminated.get() || !RecoveryUidContract.isValid(uid)) false
         else if (accountFrozen && readMarker().marker?.departingUid == uid) true
         else if (accountFrozen) false
         else if (readMarker().marker == null && auth.currentUser?.uid != uid) false
@@ -376,7 +376,7 @@ class AndroidFirebaseSpikeClient(
 
     override fun persistMarker(uid: String): Boolean = synchronized(identityPinLock) {
         runCatching {
-            if (!accountFrozen || readMarker().marker != null || !isPathSafeAuthUid(uid)) return@runCatching false
+            if (!accountFrozen || readMarker().marker != null || !RecoveryUidContract.isValid(uid)) return@runCatching false
             val epoch = identityPin.getLong("lastEpoch", 0L) + 1L
             if (epoch <= 0L) return@runCatching false
             identityPin.edit().putString("switchUid", uid).putLong("switchEpoch", epoch)

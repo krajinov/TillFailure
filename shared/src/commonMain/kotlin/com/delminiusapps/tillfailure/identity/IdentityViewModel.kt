@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
+import com.delminiusapps.tillfailure.persistence.RecoveryUidContract
 
 @kotlinx.serialization.Serializable
 enum class GateStatus {
@@ -80,9 +81,15 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
                     verifiedWorkspaceId = null, verifiedRole = null))
             } else if (uid != observedUid) {
                 if (!isPathSafeAuthUid(uid)) {
-                    observedUid = null
                     cancelOperations()
-                    setState(mutableState.value.copy(status = GateStatus.IdentityUnsupported, busy = false,
+                    // Keep only the Auth UID needed for UID-bound local cleanup. It is never used
+                    // to construct a Firestore account or membership path.
+                    val canPinForRecovery = RecoveryUidContract.isValid(uid) && client.claimPinnedIdentity(uid)
+                    observedUid = if (canPinForRecovery) uid else null
+                    setState(mutableState.value.copy(
+                        status = if (canPinForRecovery || !RecoveryUidContract.isValid(uid))
+                            GateStatus.IdentityUnsupported else GateStatus.CleanupRequired,
+                        email = "", password = "", busy = false,
                         verifiedWorkspaceId = null, verifiedRole = null))
                     return@observeSession
                 }
@@ -105,7 +112,8 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
             is IdentityEvent.PasswordChanged -> mutableState.value = mutableState.value.copy(password = event.value)
             IdentityEvent.SignIn -> {
                 if (mutableState.value.busy ||
-                    mutableState.value.status !in setOf(GateStatus.SignedOut, GateStatus.InvalidCredentials) ||
+                    mutableState.value.status !in setOf(GateStatus.SignedOut, GateStatus.InvalidCredentials,
+                        GateStatus.ConnectToVerify) ||
                     client.hasPinnedIdentity()) return
                 val email = mutableState.value.email.trim()
                 val password = mutableState.value.password
@@ -124,11 +132,15 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
                     }
                 }
             }
-            IdentityEvent.Retry -> observedUid?.let(::verify)
+            IdentityEvent.Retry -> if (observedUid != null) {
+                verify(observedUid!!)
+            } else if (mutableState.value.status == GateStatus.ConnectToVerify) {
+                onEvent(IdentityEvent.SignIn)
+            }
             IdentityEvent.SignOut -> {
                 val uid = observedUid ?: return
                 val port = client.departure ?: return
-                if (mutableState.value.busy || mutableState.value.status in
+                if (!mutableState.value.canSignOut || mutableState.value.busy || mutableState.value.status in
                     setOf(GateStatus.Loading, GateStatus.SwitchingOut, GateStatus.CleanupRequired)) return
                 setState(mutableState.value.copy(status = GateStatus.SwitchingOut, busy = true,
                     verifiedWorkspaceId = null, verifiedRole = null))
@@ -273,7 +285,15 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
 
     private fun setState(next: IdentityState) {
         val previousStatus = mutableState.value.status
-        mutableState.value = next.copy(canSignOut = observedUid != null && client.departure != null &&
+        val uid = observedUid
+        val port = client.departure
+        val unsupportedCleanupReady = if (next.status == GateStatus.IdentityUnsupported && uid != null && port != null) {
+            runCatching {
+                val marker = port.readMarker()
+                marker.readable && marker.marker == null && port.hasProvenEmptyCriticalWork(uid)
+            }.getOrDefault(false)
+        } else true
+        mutableState.value = next.copy(canSignOut = uid != null && port != null && unsupportedCleanupReady &&
             next.status !in setOf(GateStatus.Loading, GateStatus.SwitchingOut, GateStatus.CleanupRequired))
         if (next.status != previousStatus) effectChannel.trySend(IdentityEffect.ReplaceRoot(next.status))
     }

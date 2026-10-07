@@ -27,7 +27,7 @@ This flow proves typed Navigation 3, destination-scoped Koin ViewModels, lifecyc
 
 No Firebase-backed product feature, production authentication flow, role selector, deployment, or cloud resource is implemented. Milestone 3 adds only emulator/debug SDK adapters and bounded backend/persistence probes. See the [Milestone 3 report](docs/milestones/milestone-3-report.md) for current evidence and the [Milestone 1 report](docs/milestones/milestone-1-report.md) for foundation evidence.
 
-Debug builds expose **Open development UI catalog** on Foundation Home. The catalog contains centralized TillFailure foundations/components and five deterministic, nonfunctional visual compositions. Android uses `BuildConfig.DEBUG`; iOS uses `_isDebugAssertConfiguration()`, so the entry is not supplied to release hosts. The fixtures do not authenticate, persist data, or bypass a production shell.
+Debug builds expose **Open development UI catalog** from the product identity gate. It opens a separate Foundation fixture root with five deterministic, nonfunctional visual compositions and a return control; returning recreates the product gate and repeats its server checks. Android uses `BuildConfig.DEBUG` and iOS uses `#if DEBUG`, so Release hosts do not offer the entry. The fixtures do not authenticate, persist account data, or authorize a role.
 
 The Android technical flow was exercised during implementation, and the interactive iOS navigation/scoping/lifecycle flow was subsequently passed manually by the user on an iPhone 16e simulator. Process-death and durable restoration remain unverified and out of scope.
 

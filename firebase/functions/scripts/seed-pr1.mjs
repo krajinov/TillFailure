@@ -23,6 +23,8 @@ const identities = [
   { uid: "pr1_no_account", email: "pr1-no-account@example.invalid" },
   { uid: "pr1_disabled", email: "pr1-disabled@example.invalid", account: "disabled", membership: "active", role: "client" },
   { uid: "pr1_revoked", email: "pr1-revoked@example.invalid", account: "active", membership: "revoked", role: "client" },
+  // Valid Firebase Auth/recovery UID, deliberately invalid as a Firestore path segment.
+  { uid: "pr1_unsupported/uid", email: "pr1-unsupported@example.invalid" },
 ];
 
 for (const identity of identities) {

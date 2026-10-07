@@ -59,9 +59,9 @@ private val identitySavedState = SavedStateConfiguration {
 }
 
 @Composable
-fun IdentityRoot(client: ProductIdentityClient?) {
+fun IdentityRoot(client: ProductIdentityClient?, onOpenDevelopmentCatalog: (() -> Unit)? = null) {
     if (client == null) {
-        IdentityScreen(IdentityState(status = GateStatus.Unconfigured), {})
+        IdentityScreen(IdentityState(status = GateStatus.Unconfigured), {}, onOpenDevelopmentCatalog)
         return
     }
     val backStack = rememberNavBackStack(identitySavedState, IdentityGateDestination)
@@ -72,7 +72,7 @@ fun IdentityRoot(client: ProductIdentityClient?) {
             entry<IdentityGateDestination> {
                 val viewModel: IdentityViewModel = koinViewModel(parameters = { parametersOf(client) })
                 val state by viewModel.state.collectAsStateWithLifecycle()
-                IdentityStateNavigation(state, viewModel.effect, viewModel::onEvent)
+                IdentityStateNavigation(state, viewModel.effect, viewModel::onEvent, onOpenDevelopmentCatalog)
             }
         },
     )
@@ -85,6 +85,7 @@ private fun IdentityStateNavigation(
     state: IdentityState,
     effect: Flow<IdentityEffect>,
     onEvent: (IdentityEvent) -> Unit,
+    onOpenDevelopmentCatalog: (() -> Unit)?,
 ) {
     val backStack = rememberNavBackStack(identitySavedState, IdentityStateDestination(GateStatus.Loading))
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -113,13 +114,17 @@ private fun IdentityStateNavigation(
     NavDisplay(
         backStack = backStack,
         entryProvider = entryProvider {
-            entry<IdentityStateDestination> { IdentityScreen(state, onEvent) }
+            entry<IdentityStateDestination> { IdentityScreen(state, onEvent, onOpenDevelopmentCatalog) }
         },
     )
 }
 
 @Composable
-fun IdentityScreen(state: IdentityState, onEvent: (IdentityEvent) -> Unit) {
+fun IdentityScreen(
+    state: IdentityState,
+    onEvent: (IdentityEvent) -> Unit,
+    onOpenDevelopmentCatalog: (() -> Unit)? = null,
+) {
     Column(
         modifier = Modifier.fillMaxSize()
             .background(TillFailureTheme.colors.background)
@@ -134,7 +139,9 @@ fun IdentityScreen(state: IdentityState, onEvent: (IdentityEvent) -> Unit) {
                 GateStatus.Loading -> "Verifying your account online…"
                 GateStatus.SignedOut -> "Sign in to continue."
                 GateStatus.InvalidCredentials -> "Email or password is incorrect."
-                GateStatus.IdentityUnsupported -> "This account ID is not supported. Contact support."
+                GateStatus.IdentityUnsupported -> if (state.canSignOut)
+                    "This account ID cannot access workspaces. You can safely sign out."
+                    else "This account ID cannot access workspaces. Safe sign-out is unavailable; contact support."
                 GateStatus.NoAccount -> "Your sign-in is valid, but your account is not ready."
                 GateStatus.AccountDisabled -> "This account is disabled. Contact support."
                 GateStatus.WorkspaceGate -> "No active workspace membership was found. Ask your trainer or operator for access."
@@ -178,7 +185,7 @@ fun IdentityScreen(state: IdentityState, onEvent: (IdentityEvent) -> Unit) {
             state.status != GateStatus.CleanupRequired
         ) {
             Button(onClick = { onEvent(IdentityEvent.Retry) }, enabled = !state.busy) { Text("Recheck access") }
-        } else if (state.status == GateStatus.ConnectToVerify && state.email.isNotEmpty()) {
+        } else if (state.status == GateStatus.ConnectToVerify) {
             Button(onClick = { onEvent(IdentityEvent.Retry) }) { Text("Retry") }
         }
         if (state.status == GateStatus.CleanupRequired) {
@@ -186,6 +193,11 @@ fun IdentityScreen(state: IdentityState, onEvent: (IdentityEvent) -> Unit) {
         }
         if (state.canSignOut) {
             Button(onClick = { onEvent(IdentityEvent.SignOut) }, enabled = !state.busy) { Text("Sign out") }
+        }
+        if (onOpenDevelopmentCatalog != null) {
+            Button(onClick = onOpenDevelopmentCatalog) { Text("Open development UI catalog") }
+            Text("Debug visual fixtures only; this does not verify an account or role.",
+                color = TillFailureTheme.colors.secondaryText)
         }
     }
 }

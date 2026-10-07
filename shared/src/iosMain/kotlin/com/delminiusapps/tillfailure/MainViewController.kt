@@ -9,9 +9,11 @@ import com.delminiusapps.tillfailure.persistence.NativeRecoveryPersistenceBridge
 fun MainViewController(
     nativeFirebaseBridge: NativeFirebaseBridge? = null,
     nativeRecoveryBridge: NativeRecoveryPersistenceBridge? = null,
+    showDevelopmentCatalog: Boolean = false,
 ) = ComposeUIViewController {
     App(
         identityClient = if (nativeFirebaseBridge is NativeIdentityBridge && nativeRecoveryBridge != null)
             IosProductIdentityClient(nativeFirebaseBridge, nativeRecoveryBridge) else null,
+        showDevelopmentCatalog = showDevelopmentCatalog,
     )
 }
