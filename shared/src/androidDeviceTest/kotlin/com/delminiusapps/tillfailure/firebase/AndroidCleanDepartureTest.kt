@@ -207,6 +207,28 @@ class AndroidCleanDepartureTest {
         reset()
     }
 
+    @Test fun hostResolvesLiveGenerationWhenProductGateReturnsAfterDeparture() {
+        reset()
+        val initial = AndroidProductIdentitySession.get(context)
+        FirebaseAuth.getInstance(initial.firebaseApp).signOut()
+        assertNull(await<FirebaseUnitResult> { done -> initial.signInAnonymously(0L, done) }.failure)
+        val departingUid = FirebaseAuth.getInstance(initial.firebaseApp).currentUser?.uid
+        assertNotNull(departingUid)
+        assertTrue(initial.claimPinnedIdentity(departingUid))
+        assertEquals(DepartureOutcome.Clean, await<DepartureOutcome> { done ->
+            CleanDepartureCoordinator(initial).depart(departingUid, {}, done)
+        })
+        // The ViewModel replaces its client after clean departure. The host supplier must then
+        // return that live generation when the Debug catalog is closed and the gate remounts.
+        val replacement = initial.replacement() as AndroidFirebaseSpikeClient
+        val remounted = AndroidProductIdentitySession.get(context)
+        assertTrue(remounted === replacement)
+        assertFalse(remounted.isRetired())
+        assertNull(await<FirebaseAuthSession> { done -> remounted.observeSession(0L, done) }.uid)
+        assertNull(store.read(departingUid))
+        reset()
+    }
+
     private fun <T> await(seconds: Long = 15, start: ((T) -> Unit) -> Unit): T {
         val result = AtomicReference<T>()
         val done = CountDownLatch(1)

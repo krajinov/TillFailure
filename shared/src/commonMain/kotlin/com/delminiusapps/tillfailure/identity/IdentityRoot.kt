@@ -58,6 +58,9 @@ private val identitySavedState = SavedStateConfiguration {
     }
 }
 
+internal fun canOpenDevelopmentCatalog(state: IdentityState): Boolean =
+    !state.busy && state.status !in setOf(GateStatus.Loading, GateStatus.SwitchingOut, GateStatus.CleanupRequired)
+
 @Composable
 fun IdentityRoot(client: ProductIdentityClient?, onOpenDevelopmentCatalog: (() -> Unit)? = null) {
     if (client == null) {
@@ -198,7 +201,7 @@ fun IdentityScreen(
         if (state.canSignOut) {
             Button(onClick = { onEvent(IdentityEvent.SignOut) }, enabled = !state.busy) { Text("Sign out") }
         }
-        if (onOpenDevelopmentCatalog != null) {
+        if (onOpenDevelopmentCatalog != null && canOpenDevelopmentCatalog(state)) {
             Button(onClick = onOpenDevelopmentCatalog) { Text("Open development UI catalog") }
             Text("Debug visual fixtures only; this does not verify an account or role.",
                 color = TillFailureTheme.colors.secondaryText)

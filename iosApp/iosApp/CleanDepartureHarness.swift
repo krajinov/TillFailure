@@ -198,6 +198,46 @@ enum CleanDepartureHarness {
         }
     }
 
+    static func runCatalogReturnIfRequested() {
+        guard ProcessInfo.processInfo.environment["TILLFAILURE_PR1_CATALOG_RETURN"] == "1" else { return }
+        try? FileManager.default.removeItem(at: resultURL)
+        guard let defaults = UserDefaults(suiteName: "tillfailure.pr1.catalog-return.harness") else {
+            record("PR1_CATALOG_RETURN configuration=FAIL"); exit(1)
+        }
+        defaults.removePersistentDomain(forName: "tillfailure.pr1.catalog-return.harness")
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("TillFailurePR1CatalogReturnHarness")
+        try? FileManager.default.removeItem(at: root)
+        let recovery = RecoveryPersistenceBridge(rootURL: root)
+        let originalBridge = FirebaseNativeBridge(productMemoryCache: true, identityDefaults: defaults)
+        let client = IosProductIdentityClient(bridge: originalBridge, recoveryBridge: recovery)
+        originalBridge.signInAnonymously { result in
+            guard case .success(let uid) = result, client.claimPinnedIdentity(uid: uid) else {
+                record("PR1_CATALOG_RETURN preflight=FAIL"); exit(1)
+            }
+            CleanDepartureCoordinator(port: client).depart(uid: uid, disposeAccountCallbacks: {}) { outcome in
+                guard outcome == .clean, originalBridge.isRetired() else {
+                    record("PR1_CATALOG_RETURN departure=FAIL"); exit(1)
+                }
+                _ = client.replacement()
+                // MainViewController's supplier uses the original injected bridge's active successor
+                // when the product gate is mounted again after the catalog is closed.
+                let returnedClient = IosProductIdentityClient(
+                    bridge: originalBridge.activeBridge(), recoveryBridge: recovery)
+                guard !returnedClient.isRetired() else {
+                    record("PR1_CATALOG_RETURN liveClient=FAIL"); exit(1)
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+                    record("PR1_CATALOG_RETURN session=FAIL timeout"); exit(1)
+                }
+                _ = returnedClient.observeSession(epoch: 0) { session in
+                    let ready = session.uid == nil && !session.isAnonymous
+                    record("PR1_CATALOG_RETURN session=\(ready ? "PASS" : "FAIL")")
+                    exit(ready ? 0 : 1)
+                }
+            }
+        }
+    }
+
     static func runInterruptedPhaseIfRequested(password: String?) {
         let env = ProcessInfo.processInfo.environment
         let staging = env["TILLFAILURE_PR1_DEPARTURE_STAGE"]

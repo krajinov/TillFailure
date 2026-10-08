@@ -26,12 +26,17 @@ internal fun appSurface(debugCatalogEnabled: Boolean, catalogRequested: Boolean)
 
 /** The catalog has its own fixture navigation and no product identity client or role authority. */
 @Composable
-fun App(identityClient: ProductIdentityClient? = null, showDevelopmentCatalog: Boolean = false) {
+fun App(identityClientProvider: () -> ProductIdentityClient? = { null }, showDevelopmentCatalog: Boolean = false) {
     var catalogRequested by remember { mutableStateOf(false) }
     TillFailureTheme {
         when (appSurface(showDevelopmentCatalog, catalogRequested)) {
-            AppSurface.ProductGate -> IdentityRoot(identityClient,
-                onOpenDevelopmentCatalog = if (showDevelopmentCatalog) {{ catalogRequested = true }} else null)
+            AppSurface.ProductGate -> {
+                // This branch leaves composition while the fixture catalog is open. On return,
+                // resolve the current native generation instead of reusing a retired client.
+                val currentClient = remember { identityClientProvider() }
+                IdentityRoot(currentClient,
+                    onOpenDevelopmentCatalog = if (showDevelopmentCatalog) {{ catalogRequested = true }} else null)
+            }
             AppSurface.DevelopmentCatalog -> Column(
                 Modifier.fillMaxSize().background(TillFailureTheme.colors.background).safeDrawingPadding()
             ) {

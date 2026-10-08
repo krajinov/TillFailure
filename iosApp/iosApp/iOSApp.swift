@@ -17,6 +17,7 @@ struct iOSApp: App {
         CleanDepartureHarness.runIfRequested(password: ProcessInfo.processInfo.environment["TF_PR1_TEST_PASSWORD"])
         CleanDepartureHarness.runUnsupportedIfRequested(password: ProcessInfo.processInfo.environment["TF_PR1_TEST_PASSWORD"])
         CleanDepartureHarness.runAnonymousIfRequested(password: ProcessInfo.processInfo.environment["TF_PR1_TEST_PASSWORD"])
+        CleanDepartureHarness.runCatalogReturnIfRequested()
         CleanDepartureHarness.runInterruptedPhaseIfRequested(password: ProcessInfo.processInfo.environment["TF_PR1_TEST_PASSWORD"])
         NativeRevocationHarness.runIfRequested(password: ProcessInfo.processInfo.environment["TF_PR1_TEST_PASSWORD"])
         #else

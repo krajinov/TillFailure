@@ -12,8 +12,10 @@ fun MainViewController(
     showDevelopmentCatalog: Boolean = false,
 ) = ComposeUIViewController {
     App(
-        identityClient = if (nativeFirebaseBridge is NativeIdentityBridge && nativeRecoveryBridge != null)
-            IosProductIdentityClient(nativeFirebaseBridge, nativeRecoveryBridge) else null,
+        identityClientProvider = {
+            if (nativeFirebaseBridge is NativeIdentityBridge && nativeRecoveryBridge != null)
+                IosProductIdentityClient(nativeFirebaseBridge.activeBridge(), nativeRecoveryBridge) else null
+        },
         showDevelopmentCatalog = showDevelopmentCatalog,
     )
 }
