@@ -2,6 +2,8 @@ package com.delminiusapps.tillfailure.firebase
 
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.firebase.auth.FirebaseAuth
+import com.delminiusapps.tillfailure.identity.GateStatus
+import com.delminiusapps.tillfailure.identity.IdentityViewModel
 import com.delminiusapps.tillfailure.identity.MembershipDiscoveryResult
 import com.delminiusapps.tillfailure.identity.checkAccount
 import com.delminiusapps.tillfailure.identity.checkMembership
@@ -59,6 +61,46 @@ class AndroidProductIdentityTest {
             client.terminateAndClear { ended.countDown() }
             ended.await(15, TimeUnit.SECONDS)
         }
+    }
+
+    @Test fun unverifiedEmailSessionReachesTheUnverifiedGateBeforeAuthorization() {
+        val password = InstrumentationRegistry.getArguments().getString("pr1Password")
+            ?: error("Pass -e pr1Password for the local emulator identity")
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val client = AndroidFirebaseSpikeClient(context, FirebaseEmulatorConfiguration(host = "10.0.2.2"), AccountCallbackFence())
+        try {
+            FirebaseAuth.getInstance(client.firebaseApp).signOut()
+            val signIn = await<StableFirebaseFailure?> { done ->
+                client.signIn("pr1-unverified@example.invalid", password, 0L) { done(it) }
+            }
+            assertNull(signIn)
+            // The freshly refreshed session propagates the verification state from Auth; it is not a
+            // cached observed flag and not the entered email.
+            val refresh = await<FirebaseSessionRefresh> { done -> client.refreshSession(0L, done) }
+            assertEquals("pr1-unverified@example.invalid", refresh.session?.email)
+            assertEquals(false, refresh.session?.emailVerified)
+            val observed = await<FirebaseAuthSession> { done ->
+                client.observeSession(0L) { session -> done(session) }
+            }
+            assertEquals(false, observed.emailVerified)
+            // The shared gate must stop before account/workspace/membership authorization.
+            val model = IdentityViewModel(client)
+            awaitStatus(model, GateStatus.UnverifiedEmail)
+            assertNull(model.state.value.verifiedRole)
+        } finally {
+            val ended = CountDownLatch(1)
+            client.terminateAndClear { ended.countDown() }
+            ended.await(15, TimeUnit.SECONDS)
+        }
+    }
+
+    private fun awaitStatus(model: IdentityViewModel, status: GateStatus, timeoutMs: Long = 20_000) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (model.state.value.status == status) return
+            Thread.sleep(50)
+        }
+        assertEquals(status, model.state.value.status)
     }
 
     private fun <T> await(start: ((T) -> Unit) -> Unit): T {

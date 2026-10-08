@@ -7,6 +7,7 @@ import com.delminiusapps.tillfailure.persistence.AccountSwitchMarker
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class CleanDepartureTest {
@@ -82,7 +83,41 @@ class CleanDepartureTest {
         assertFalse(port.signedIn)
     }
 
+    @Test fun preMarkerIntervalIsVisibleAndJoinsExactlyOnce() {
+        val ownership = CleanDepartureOwnership()
+        assertEquals(DepartureProgress.Idle, ownership.progress())
+        assertNull(ownership.currentUid())
+        val ownerSeen = mutableListOf<DepartureOutcome>()
+        val joinerSeen = mutableListOf<DepartureOutcome>()
+        assertTrue(ownership.lease("account_a") { ownerSeen += it })
+        assertEquals(DepartureProgress.PreMarker, ownership.progress())
+        assertEquals("account_a", ownership.currentUid())
+        // A recreated graph joins the in-flight departure instead of starting a competing one.
+        assertEquals("account_a", ownership.observeInFlight { joinerSeen += it })
+        assertFalse(ownership.lease("account_a") { })
+        ownership.markPostMarker("account_a")
+        assertEquals(DepartureProgress.PostMarker, ownership.progress())
+        ownership.settle("account_a", DepartureOutcome.Clean)
+        assertEquals(listOf(DepartureOutcome.Clean), ownerSeen)
+        assertEquals(listOf(DepartureOutcome.Clean), joinerSeen)
+        assertEquals(DepartureProgress.Idle, ownership.progress())
+        assertNull(ownership.currentUid())
+        assertTrue(ownership.isSettled())
+    }
+
+    @Test fun coordinatorPublishesTheDurableMarkerBoundaryBeforeCleanup() {
+        val port = FakePort()
+        assertTrue(port.ownership.lease("account_a") { })
+        var outcome: DepartureOutcome? = null
+        CleanDepartureCoordinator(port).depart("account_a", {}, { outcome = it })
+        assertEquals(DepartureOutcome.Clean, outcome)
+        assertEquals(DepartureProgress.PostMarker, port.progressAtSignOut)
+        port.ownership.settle("account_a", outcome!!)
+        assertEquals(DepartureProgress.Idle, port.ownership.progress())
+    }
+
     private class FakePort : CleanDeparturePort {
+        override val ownership = CleanDepartureOwnership()
         override fun isRetired() = false
         var marker: AccountSwitchMarker? = null
         var markerReadable = true
@@ -92,6 +127,7 @@ class CleanDepartureTest {
         var drainFailure: StableFirebaseFailure? = null
         var failAt: String? = null
         var fenceCount = 0
+        var progressAtSignOut: DepartureProgress? = null
 
         fun canEnter(uid: String) = marker == null && !signedIn && uid == "account_b"
         override fun readMarker() = DepartureMarkerRead(marker, markerReadable)
@@ -108,6 +144,7 @@ class CleanDepartureTest {
         }
         override fun fenceCallbacks() { fenceCount++ }
         override fun signOut(callback: (StableFirebaseFailure?) -> Unit) {
+            progressAtSignOut = ownership.progress()
             if (failAt == "signOut") callback(StableFirebaseFailure(StableFirebaseErrorCode.UNKNOWN, false))
             else { signedIn = false; callback(null) }
         }

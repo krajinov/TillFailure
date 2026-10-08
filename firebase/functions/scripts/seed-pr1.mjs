@@ -23,16 +23,19 @@ const identities = [
   { uid: "pr1_no_account", email: "pr1-no-account@example.invalid" },
   { uid: "pr1_disabled", email: "pr1-disabled@example.invalid", account: "disabled", membership: "active", role: "client" },
   { uid: "pr1_revoked", email: "pr1-revoked@example.invalid", account: "active", membership: "revoked", role: "client" },
+  // Valid active account and membership documents, but the Auth email is deliberately unverified.
+  { uid: "pr1_unverified", email: "pr1-unverified@example.invalid", account: "active", membership: "active", role: "client", verified: false },
   // Valid Firebase Auth/recovery UID, deliberately invalid as a Firestore path segment.
   { uid: "pr1_unsupported/uid", email: "pr1-unsupported@example.invalid" },
 ];
 
 for (const identity of identities) {
+  const emailVerified = identity.verified !== false;
   try {
-    await auth.createUser({ uid: identity.uid, email: identity.email, password, emailVerified: true });
+    await auth.createUser({ uid: identity.uid, email: identity.email, password, emailVerified });
   } catch (error) {
     if (error.code !== "auth/uid-already-exists" && error.code !== "auth/email-already-exists") throw error;
-    await auth.updateUser(identity.uid, { email: identity.email, password, emailVerified: true });
+    await auth.updateUser(identity.uid, { email: identity.email, password, emailVerified });
   }
   if (identity.account) {
     await db.doc(`users/${identity.uid}`).set({ schemaVersion: 1, accountStatus: identity.account, lifecycleRevision: 1 });

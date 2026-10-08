@@ -2,6 +2,7 @@ package com.delminiusapps.tillfailure.firebase
 
 import com.delminiusapps.tillfailure.identity.MembershipDiscoveryResult
 import com.delminiusapps.tillfailure.identity.ProductIdentityClient
+import com.delminiusapps.tillfailure.identity.CleanDepartureOwnership
 import com.delminiusapps.tillfailure.identity.CleanDeparturePort
 import com.delminiusapps.tillfailure.identity.DepartureMarkerRead
 import com.delminiusapps.tillfailure.persistence.AccountPersistenceEnvelope
@@ -13,6 +14,16 @@ import com.delminiusapps.tillfailure.persistence.RecoveryUidContract
 class NativeFirebaseAuthState(
     val uid: String?,
     val isAnonymous: Boolean,
+    val email: String?,
+    val emailVerified: Boolean,
+)
+
+class NativeFirebaseSessionRefresh(
+    val uid: String?,
+    val isAnonymous: Boolean,
+    val email: String?,
+    val emailVerified: Boolean,
+    val failure: NativeFirebaseFailure?,
 )
 
 class NativeFirebaseFailure(
@@ -57,11 +68,13 @@ class NativeDepartureMarkerRead(val uid: String?, val epoch: Long, val readable:
 
 interface NativeIdentityBridge : NativeFirebaseBridge {
     fun activeBridge(): NativeIdentityBridge
+    /** Process-level departure owner, held by the hosted bridge that survives host recreation. */
+    val ownership: CleanDepartureOwnership
     fun isRetired(): Boolean
     fun hasPinnedIdentity(): Boolean
     fun claimPinnedIdentity(uid: String): Boolean
     fun signIn(email: String, password: String, accountEpoch: Long, callback: (NativeFirebaseUnitResult) -> Unit): String
-    fun refreshSession(accountEpoch: Long, callback: (NativeFirebaseUnitResult) -> Unit): String
+    fun refreshSession(accountEpoch: Long, callback: (NativeFirebaseSessionRefresh) -> Unit): String
     fun discoverMemberships(uid: String, accountEpoch: Long, callback: (NativeMembershipDiscoveryResult) -> Unit): String
     fun readDepartureMarker(): NativeDepartureMarkerRead
     fun freezeAccount(uid: String): Boolean
@@ -81,6 +94,8 @@ class IosProductIdentityClient(
     private val spike = IosFirebaseSpikeClient(bridge)
     private val recoveryStore = IosAtomicFilePersistence(recoveryBridge)
     override val departure: CleanDeparturePort get() = this
+    /** Forwarded to the process-level bridge so it survives host/root recreation. */
+    override val ownership: CleanDepartureOwnership get() = bridge.ownership
     override fun isRetired(): Boolean = bridge.isRetired()
 
     override fun hasPinnedIdentity(): Boolean = bridge.hasPinnedIdentity()
@@ -136,8 +151,17 @@ class IosProductIdentityClient(
         return FirebaseCancellation { bridge.cancel(token) }
     }
 
-    override fun refreshSession(epoch: Long, callback: (StableFirebaseFailure?) -> Unit): FirebaseCancellation {
-        val token = bridge.refreshSession(epoch) { callback(it.failure?.toStableFailure()) }
+    override fun refreshSession(epoch: Long, callback: (FirebaseSessionRefresh) -> Unit): FirebaseCancellation {
+        val token = bridge.refreshSession(epoch) { result ->
+            val failure = result.failure
+            if (failure != null) {
+                callback(FirebaseSessionRefresh(failure = failure.toStableFailure()))
+            } else {
+                callback(FirebaseSessionRefresh(session = FirebaseAuthSession(
+                    uid = result.uid, isAnonymous = result.isAnonymous,
+                    email = result.email, emailVerified = result.emailVerified)))
+            }
+        }
         return FirebaseCancellation { bridge.cancel(token) }
     }
 
@@ -167,7 +191,9 @@ class IosFirebaseSpikeClient(
     private val bridge: NativeFirebaseBridge,
 ) : FirebaseSpikeClient {
     override fun observeSession(accountEpoch: Long, callback: (FirebaseAuthSession) -> Unit): FirebaseCancellation {
-        val token = bridge.observeSession(accountEpoch) { state -> callback(FirebaseAuthSession(state.uid, state.isAnonymous)) }
+        val token = bridge.observeSession(accountEpoch) { state ->
+            callback(FirebaseAuthSession(state.uid, state.isAnonymous, state.email, state.emailVerified))
+        }
         return FirebaseCancellation { bridge.cancel(token) }
     }
 

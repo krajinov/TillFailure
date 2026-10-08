@@ -20,6 +20,7 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import com.delminiusapps.tillfailure.identity.MembershipDiscoveryResult
 import com.delminiusapps.tillfailure.identity.ProductIdentityClient
+import com.delminiusapps.tillfailure.identity.CleanDepartureOwnership
 import com.delminiusapps.tillfailure.identity.CleanDeparturePort
 import com.delminiusapps.tillfailure.identity.DepartureMarkerRead
 import com.delminiusapps.tillfailure.persistence.AccountPersistenceEnvelope
@@ -44,6 +45,12 @@ class AndroidFirebaseSpikeClient(
     private val identityPin = context.applicationContext.getSharedPreferences("tillfailure_identity_pin_v1", Context.MODE_PRIVATE)
     private var accountFrozen = false
     override val departure: CleanDeparturePort get() = this
+    /**
+     * Process-level departure owner. This client instance is retained across Activity recreation by
+     * [AndroidProductIdentitySession], so an in-progress pre-marker departure stays visible to the
+     * recreated account graph instead of being orphaned with a discarded cancellation.
+     */
+    override val ownership = CleanDepartureOwnership()
     // Serializes SDK issuance and callback delivery with the moment teardown retires this client.
     // The gate is released as soon as an SDK operation is issued; asynchronous work never holds it.
     private val callbackLock = Any()
@@ -135,7 +142,9 @@ class AndroidFirebaseSpikeClient(
         val cancelled = AtomicBoolean(false)
         val listener = FirebaseAuth.AuthStateListener { observed ->
             deliverIfCurrent(accountEpoch, cancelled) {
-                callback(FirebaseAuthSession(observed.currentUser?.uid, observed.currentUser?.isAnonymous == true))
+                val user = observed.currentUser
+                callback(FirebaseAuthSession(user?.uid, user?.isAnonymous == true, user?.email,
+                    user?.isEmailVerified == true))
             }
         }
         if (issueIfLive { auth.addAuthStateListener(listener); true } == null) return FirebaseCancellation {}
@@ -167,18 +176,29 @@ class AndroidFirebaseSpikeClient(
         return FirebaseCancellation { cancelled.set(true) }
     }
 
-    override fun refreshSession(epoch: Long, callback: (StableFirebaseFailure?) -> Unit): FirebaseCancellation {
+    override fun refreshSession(epoch: Long, callback: (FirebaseSessionRefresh) -> Unit): FirebaseCancellation {
         val cancelled = AtomicBoolean(false)
         val user = auth.currentUser ?: run {
-            callback(StableFirebaseFailure(StableFirebaseErrorCode.UNAUTHENTICATED, false))
+            callback(FirebaseSessionRefresh(failure = StableFirebaseFailure(StableFirebaseErrorCode.UNAUTHENTICATED, false)))
             return FirebaseCancellation {}
         }
         val task = issueIfLive { user.getIdToken(true) } ?: run {
-            callback(terminatedFailure())
+            callback(FirebaseSessionRefresh(failure = terminatedFailure()
+                ?: StableFirebaseFailure(StableFirebaseErrorCode.FAILED_PRECONDITION, false)))
             return FirebaseCancellation {}
         }
-        task.addOnSuccessListener { deliverIfCurrent(epoch, cancelled) { callback(null) } }
-            .addOnFailureListener { error -> deliverIfCurrent(epoch, cancelled) { callback(mapFailure(error)) } }
+        task.addOnSuccessListener {
+            deliverIfCurrent(epoch, cancelled) {
+                // Read the freshly refreshed verification state from Auth; the observed session may
+                // have been cached and is not authority for the unverified-email gate.
+                val current = auth.currentUser
+                callback(FirebaseSessionRefresh(session = FirebaseAuthSession(
+                    uid = current?.uid, isAnonymous = current?.isAnonymous == true,
+                    email = current?.email, emailVerified = current?.isEmailVerified == true)))
+            }
+        }.addOnFailureListener { error -> deliverIfCurrent(epoch, cancelled) {
+            callback(FirebaseSessionRefresh(failure = mapFailure(error)))
+        } }
         return FirebaseCancellation { cancelled.set(true) }
     }
 

@@ -1,7 +1,16 @@
 package com.delminiusapps.tillfailure.identity
 
+import com.delminiusapps.tillfailure.firebase.FirebaseAuthSession
 import com.delminiusapps.tillfailure.firebase.FirebaseDataOrigin
 import com.delminiusapps.tillfailure.firebase.FirebaseDocumentSnapshot
+
+/**
+ * The explicit unverified-email gate precondition: a non-anonymous email/password session whose
+ * freshly checked Auth user is not verified stops before any account/workspace authorization. Shared
+ * so both native hosts can prove the outcome natively rather than only from a cached flag.
+ */
+fun requiresUnverifiedEmailGate(session: FirebaseAuthSession): Boolean =
+    !session.isAnonymous && session.email != null && !session.emailVerified
 
 /** Firebase Auth UIDs remain raw document IDs for the MVP. Never rewrite an unsupported UID. */
 fun isPathSafeAuthUid(uid: String?): Boolean =

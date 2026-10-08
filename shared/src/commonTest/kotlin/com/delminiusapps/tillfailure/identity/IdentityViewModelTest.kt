@@ -5,10 +5,18 @@ import com.delminiusapps.tillfailure.firebase.FirebaseCancellation
 import com.delminiusapps.tillfailure.firebase.FirebaseDataOrigin
 import com.delminiusapps.tillfailure.firebase.FirebaseDocumentResult
 import com.delminiusapps.tillfailure.firebase.FirebaseDocumentSnapshot
+import com.delminiusapps.tillfailure.firebase.FirebaseSessionRefresh
 import com.delminiusapps.tillfailure.firebase.StableFirebaseErrorCode
 import com.delminiusapps.tillfailure.firebase.StableFirebaseFailure
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class IdentityViewModelTest {
     @Test fun restoreRequiresServerAccountAndExactMembershipThenRevocationRemovesAccess() {
@@ -197,6 +205,87 @@ class IdentityViewModelTest {
         assertEquals(GateStatus.CleanupRequired, restarted.state.value.status)
     }
 
+    @Test fun unverifiedEmailWithValidAccountAndMembershipStopsBeforeAuthorization() {
+        val client = FakeIdentityClient()
+        // The freshly refreshed Auth user is unverified, while the *observed* session and the entered
+        // form value both claim otherwise; the observed/entered values must not be authority.
+        client.freshSession = FirebaseAuthSession(
+            uid = "alice", isAnonymous = false, email = "alice@example.invalid", emailVerified = false)
+        val model = IdentityViewModel(client)
+        model.onEvent(IdentityEvent.EmailChanged("spoofed@example.invalid"))
+        client.emitSession("alice")
+        assertEquals(GateStatus.UnverifiedEmail, model.state.value.status)
+        assertEquals(null, model.state.value.verifiedRole)
+        assertEquals(emptyList(), client.getPaths)
+        assertEquals(0, client.discoveryCount)
+
+        // After the account email becomes verified, the safe retry reaches authorization.
+        client.freshSession = client.freshSession.copy(emailVerified = true)
+        model.onEvent(IdentityEvent.Retry)
+        assertEquals(GateStatus.MembershipVerifiedFeaturePending, model.state.value.status)
+        assertEquals("client", model.state.value.verifiedRole)
+    }
+
+    @Test fun recreatedRootJoinsStalledPreMarkerDepartureInsteadOfVerifyingThenRecovers() {
+        val client = FakeIdentityClient()
+        val port = FakeDeparturePort(client).apply { drainStalled = true }
+        client.departurePort = port
+
+        val (firstStore, first) = scoped(client)
+        client.emitSession("alice")
+        assertEquals(GateStatus.MembershipVerifiedFeaturePending, first.state.value.status)
+
+        first.onEvent(IdentityEvent.SignOut)
+        assertEquals(GateStatus.SwitchingOut, first.state.value.status)
+        assertEquals(0, port.signOutCount)
+        assertNull(port.marker)
+        assertEquals(DepartureProgress.PreMarker, port.ownership.progress())
+
+        // The Activity/root is recreated mid-drain: the old graph is cleared and a new root is built
+        // on the same process-level client, therefore the same in-flight departure owner.
+        firstStore.clear()
+        val readsBefore = client.getPaths.size
+        val discoveriesBefore = client.discoveryCount
+        val (_, second) = scoped(client)
+
+        // Pre-fix the recreated root re-observed the still-signed-in session and reached
+        // MembershipVerifiedFeaturePending; it must instead join the in-flight departure.
+        assertEquals(GateStatus.SwitchingOut, second.state.value.status)
+        assertNull(second.state.value.verifiedRole)
+        assertEquals(readsBefore, client.getPaths.size)
+        assertEquals(discoveriesBefore, client.discoveryCount)
+
+        // The stalled drain completes late.
+        port.completeDrain(null)
+        assertEquals(GateStatus.SignedOut, second.state.value.status)
+        assertEquals(1, port.signOutCount)
+        assertEquals(1, port.replacementCount)
+        assertNull(port.marker)
+        assertEquals(DepartureProgress.Idle, port.ownership.progress())
+    }
+
+    @Test fun recreatedRootAdoptsCancelledStalledDepartureAndResumesFreshAuthorization() {
+        val client = FakeIdentityClient()
+        val port = FakeDeparturePort(client).apply { drainStalled = true }
+        client.departurePort = port
+        val (firstStore, first) = scoped(client)
+        client.emitSession("alice")
+        first.onEvent(IdentityEvent.SignOut)
+        assertEquals(GateStatus.SwitchingOut, first.state.value.status)
+        firstStore.clear()
+
+        val (_, second) = scoped(client)
+        assertEquals(GateStatus.SwitchingOut, second.state.value.status)
+
+        // Offline, the drain fails: the departure is cancelled before any durable change, Auth is
+        // unchanged, and the recreated root safely resumes fresh server authorization.
+        port.completeDrain(StableFirebaseFailure(StableFirebaseErrorCode.DEADLINE_EXCEEDED, true))
+        assertEquals(GateStatus.MembershipVerifiedFeaturePending, second.state.value.status)
+        assertEquals("client", second.state.value.verifiedRole)
+        assertEquals(0, port.signOutCount)
+        assertNull(port.marker)
+    }
+
     private class FakeIdentityClient : ProductIdentityClient {
         var departurePort: CleanDeparturePort? = null
         override val departure: CleanDeparturePort? get() = departurePort
@@ -208,12 +297,15 @@ class IdentityViewModelTest {
         )
         val listeners = mutableMapOf<String, (FirebaseDocumentResult) -> Unit>()
         var refreshFailure: StableFirebaseFailure? = null
+        var freshSession: FirebaseAuthSession = FirebaseAuthSession(
+            uid = "alice", isAnonymous = false, email = "alice@example.invalid", emailVerified = true)
         var deferAccount = false
         var deferredAccount: ((FirebaseDocumentResult) -> Unit)? = null
         val getPaths = mutableListOf<String>()
         var discoveryCount = 0
         var refreshCount = 0
         private var session: ((FirebaseAuthSession) -> Unit)? = null
+        private var currentSession: FirebaseAuthSession? = null
         private var pinnedUid: String? = null
 
         override fun hasPinnedIdentity(): Boolean = pinnedUid != null
@@ -223,21 +315,41 @@ class IdentityViewModelTest {
             return true
         }
 
+        /** Models Auth sign-out clearing the observed session. */
+        fun clearSession() {
+            val delivered = FirebaseAuthSession(uid = null, isAnonymous = false)
+            currentSession = delivered
+            session?.invoke(delivered)
+        }
+
+        /** Models the durable marker completion clearing the installation identity pin. */
+        fun clearPin() { pinnedUid = null }
+
         fun emitSession(uid: String?, anonymous: Boolean = false) {
-            session?.invoke(FirebaseAuthSession(uid, anonymous))
+            val delivered = FirebaseAuthSession(
+                uid = uid, isAnonymous = anonymous,
+                email = if (uid != null && !anonymous) "alice@example.invalid" else null,
+                emailVerified = true)
+            currentSession = delivered
+            session?.invoke(delivered)
         }
 
         override fun observeSession(epoch: Long, callback: (FirebaseAuthSession) -> Unit): FirebaseCancellation {
             session = callback
+            // The real SDK delivers the current Auth state on registration; a recreated root would
+            // otherwise re-authorize the still-signed-in session before a departure settles.
+            currentSession?.let(callback)
             return FirebaseCancellation { session = null }
         }
         override fun signIn(email: String, password: String, epoch: Long, callback: (StableFirebaseFailure?) -> Unit): FirebaseCancellation {
             callback(null)
             return FirebaseCancellation {}
         }
-        override fun refreshSession(epoch: Long, callback: (StableFirebaseFailure?) -> Unit): FirebaseCancellation {
+        override fun refreshSession(epoch: Long, callback: (FirebaseSessionRefresh) -> Unit): FirebaseCancellation {
             refreshCount++
-            callback(refreshFailure)
+            val failure = refreshFailure
+            if (failure != null) callback(FirebaseSessionRefresh(failure = failure))
+            else callback(FirebaseSessionRefresh(session = freshSession))
             return FirebaseCancellation {}
         }
         override fun getDocument(path: String, epoch: Long, callback: (FirebaseDocumentResult) -> Unit): FirebaseCancellation {
@@ -262,12 +374,25 @@ class IdentityViewModelTest {
         var cleanRegistry = true
         var failLocalCleanup = false
         var signOutCount = 0
+        var replacementCount = 0
+        var drainStalled = false
+        private var pendingDrain: ((StableFirebaseFailure?) -> Unit)? = null
+        override val ownership = CleanDepartureOwnership()
+        fun completeDrain(failure: StableFirebaseFailure?) {
+            val callback = pendingDrain
+            pendingDrain = null
+            callback?.invoke(failure)
+        }
         override fun isRetired() = false
         override fun readMarker() = DepartureMarkerRead(marker)
         override fun freeze(uid: String) = true
         override fun unfreeze(uid: String) = Unit
         override fun hasProvenEmptyCriticalWork(uid: String) = cleanRegistry
         override fun drain(timeoutMillis: Long, callback: (StableFirebaseFailure?) -> Unit): FirebaseCancellation {
+            if (drainStalled) {
+                pendingDrain = callback
+                return FirebaseCancellation { pendingDrain = null }
+            }
             callback(null)
             return FirebaseCancellation {}
         }
@@ -279,12 +404,22 @@ class IdentityViewModelTest {
         override fun fenceCallbacks() = Unit
         override fun signOut(callback: (StableFirebaseFailure?) -> Unit) {
             signOutCount++
+            client.clearSession()
             callback(null)
         }
         override fun retireFirestore(callback: (StableFirebaseFailure?) -> Unit) = callback(null)
         override fun cleanupLocal(uid: String) = !failLocalCleanup
-        override fun completeMarker(uid: String): Boolean { marker = null; return true }
-        override fun replacement(): ProductIdentityClient = client
+        override fun completeMarker(uid: String): Boolean { marker = null; client.clearPin(); return true }
+        override fun replacement(): ProductIdentityClient { replacementCount++; return client }
+    }
+
+    /** Builds a ViewModel inside a store so a test can clear it, exactly as an Activity/root would. */
+    private fun scoped(client: ProductIdentityClient): Pair<ViewModelStore, IdentityViewModel> {
+        val store = ViewModelStore()
+        val provider = ViewModelProvider.create(store, viewModelFactory {
+            initializer { IdentityViewModel(client) }
+        })
+        return store to provider[IdentityViewModel::class]
     }
 
     companion object {

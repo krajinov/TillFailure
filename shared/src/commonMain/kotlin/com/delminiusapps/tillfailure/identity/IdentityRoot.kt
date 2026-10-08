@@ -149,6 +149,7 @@ fun IdentityScreen(
                     "This anonymous session cannot access workspaces. You can safely sign out."
                     else "This anonymous session cannot access workspaces. Safe sign-out is unavailable; contact support."
                 GateStatus.NoAccount -> "Your sign-in is valid, but your account is not ready."
+                GateStatus.UnverifiedEmail -> "Verify the email on this account, then recheck. Access stays locked until Auth reports it verified."
                 GateStatus.AccountDisabled -> "This account is disabled. Contact support."
                 GateStatus.WorkspaceGate -> "No active workspace membership was found. Ask your trainer or operator for access."
                 GateStatus.MembershipVerifiedFeaturePending -> "Membership verified. This feature is coming soon."

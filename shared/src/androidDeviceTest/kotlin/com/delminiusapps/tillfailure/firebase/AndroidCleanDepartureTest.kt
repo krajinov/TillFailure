@@ -4,6 +4,9 @@ import android.content.Context
 import androidx.test.platform.app.InstrumentationRegistry
 import com.delminiusapps.tillfailure.identity.CleanDepartureCoordinator
 import com.delminiusapps.tillfailure.identity.DepartureOutcome
+import com.delminiusapps.tillfailure.identity.DepartureProgress
+import com.delminiusapps.tillfailure.identity.GateStatus
+import com.delminiusapps.tillfailure.identity.IdentityViewModel
 import com.delminiusapps.tillfailure.identity.isPathSafeAuthUid
 import com.delminiusapps.tillfailure.persistence.AccountPersistenceEnvelope
 import com.delminiusapps.tillfailure.persistence.AndroidAtomicFilePersistence
@@ -227,6 +230,72 @@ class AndroidCleanDepartureTest {
         assertNull(await<FirebaseAuthSession> { done -> remounted.observeSession(0L, done) }.uid)
         assertNull(store.read(departingUid))
         reset()
+    }
+
+    @Test fun stalledPreMarkerDepartureSurvivesRootRecreationAndCompletesOnce() {
+        reset()
+        // The Android host resolves one process-level generation; a recreated root and the departing
+        // graph therefore share the same in-flight departure owner.
+        val existing = AndroidProductIdentitySession.get(context)
+        val client = if (existing.isRetired()) {
+            fresh().also { AndroidProductIdentitySession.replaceIfCurrent(existing, it) }
+        } else existing
+        FirebaseAuth.getInstance(client.firebaseApp).signOut()
+        assertNull(await<StableFirebaseFailure?> { done ->
+            client.signIn("pr1-client@example.invalid", password, 0L, done)
+        })
+        assertTrue(client.claimPinnedIdentity(uid))
+        val port = client.departure
+
+        // The departing graph freezes A and stalls the SDK write drain while offline.
+        val offline = CountDownLatch(1)
+        client.disableNetwork { offline.countDown() }
+        assertTrue(offline.await(10, TimeUnit.SECONDS))
+        client.writeDocument("spikeEcho/pending-root-recreation", mapOf("value" to "pending"), 0L) { }
+        var ownerOutcome: DepartureOutcome? = null
+        assertTrue(port.ownership.lease(uid) { ownerOutcome = it })
+        CleanDepartureCoordinator(port).depart(uid, {}, { outcome -> port.ownership.settle(uid, outcome) })
+        assertEquals(DepartureProgress.PreMarker, port.ownership.progress())
+        assertNull(port.readMarker().marker)
+
+        // Recreate the root mid-drain on the same process-level client: it must join the in-flight
+        // departure and must not verify or display protected membership for the still signed-in A.
+        val recreated = IdentityViewModel(client)
+        assertEquals(GateStatus.SwitchingOut, recreated.state.value.status)
+        assertNull(recreated.state.value.verifiedRole)
+
+        // The network returns; the stalled drain completes and the single departure finishes cleanly.
+        val online = CountDownLatch(1)
+        client.enableNetwork { online.countDown() }
+        assertTrue(online.await(10, TimeUnit.SECONDS))
+        assertTrue(awaitUntil(25_000) { ownerOutcome != null && port.ownership.progress() == DepartureProgress.Idle })
+        assertEquals(DepartureOutcome.Clean, ownerOutcome)
+        assertNull(port.readMarker().marker)
+        assertNull(store.read(uid))
+        assertTrue(awaitUntil(10_000) { recreated.state.value.status == GateStatus.SignedOut })
+
+        // Account B enters on the generation the recreated root now uses, with fresh server proof,
+        // and cannot read A.
+        val b = AndroidProductIdentitySession.get(context)
+        assertTrue(b !== client)
+        assertNull(await<StableFirebaseFailure?> { done ->
+            b.signIn("pr1-trainer@example.invalid", password, 0L, done)
+        })
+        assertTrue(b.claimPinnedIdentity("pr1_trainer"))
+        assertEquals(StableFirebaseErrorCode.PERMISSION_DENIED,
+            await<FirebaseDocumentResult> { done -> b.getDocument("users/$uid", 0L, done) }.failure?.code)
+        assertEquals(FirebaseDataOrigin.SERVER,
+            await<FirebaseDocumentResult> { done -> b.getDocument("users/pr1_trainer", 0L, done) }.document?.origin)
+        reset()
+    }
+
+    private fun awaitUntil(timeoutMs: Long, condition: () -> Boolean): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (condition()) return true
+            Thread.sleep(50)
+        }
+        return condition()
     }
 
     private fun <T> await(seconds: Long = 15, start: ((T) -> Unit) -> Unit): T {

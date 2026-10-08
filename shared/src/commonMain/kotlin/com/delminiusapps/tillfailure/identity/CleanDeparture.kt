@@ -10,6 +10,11 @@ import com.delminiusapps.tillfailure.persistence.RecoveryUidContract
 data class DepartureMarkerRead(val marker: AccountSwitchMarker? = null, val readable: Boolean = true)
 
 interface CleanDeparturePort {
+    /**
+     * Process-level owner of the single in-flight departure. Stable across Activity, identity-root
+     * and ViewModel recreation because the native client/bridge that exposes it survives them.
+     */
+    val ownership: CleanDepartureOwnership
     fun isRetired(): Boolean
     fun readMarker(): DepartureMarkerRead
     fun freeze(uid: String): Boolean
@@ -58,7 +63,11 @@ class CleanDepartureCoordinator(private val port: CleanDeparturePort) {
                     port.unfreeze(uid)
                     done(DepartureOutcome.PreflightBlocked)
                 }
-            } else cleanup(uid, disposeAccountCallbacks, done)
+            } else {
+                // The durable boundary is crossed: every later failure stays recoverable.
+                port.ownership.markPostMarker(uid)
+                cleanup(uid, disposeAccountCallbacks, done)
+            }
         }
     }
 
@@ -72,6 +81,7 @@ class CleanDepartureCoordinator(private val port: CleanDeparturePort) {
             done(DepartureOutcome.CleanupRequired, false)
             return
         }
+        port.ownership.markPostMarker(marker.departingUid)
         cleanup(marker.departingUid, disposeAccountCallbacks) { done(it, true) }
     }
 

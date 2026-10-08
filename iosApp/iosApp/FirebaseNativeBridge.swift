@@ -126,6 +126,9 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
     private let productMemoryCache: Bool
     private let identityDefaults: UserDefaults
     private let transientProductGeneration: Bool
+    /// Process-level departure owner for this bridge generation. The host retains one bridge for the
+    /// process, so an in-progress pre-marker departure stays visible to a recreated account graph.
+    let ownership = CleanDepartureOwnership()
 
     func hasPinnedIdentity() -> Bool {
         Self.identityPinLock.lock()
@@ -347,7 +350,8 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
         return issueIfLive {
             let handle = auth.addStateDidChangeListener { [weak self] _, user in
                 self?.deliverIfEpochMatches(epoch: accountEpoch) {
-                    callback_(NativeFirebaseAuthState(uid: user?.uid, isAnonymous: user?.isAnonymous == true))
+                    callback_(NativeFirebaseAuthState(uid: user?.uid, isAnonymous: user?.isAnonymous == true,
+                        email: user?.email, emailVerified: user?.isEmailVerified == true))
                 }
             }
             return registerCancellation { [weak self] in self?.auth.removeStateDidChangeListener(handle) }
@@ -388,24 +392,33 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
         }
     }
 
-    func refreshSession(accountEpoch: Int64, callback: @escaping (NativeFirebaseUnitResult) -> Void) -> String {
+    func refreshSession(accountEpoch: Int64, callback: @escaping (NativeFirebaseSessionRefresh) -> Void) -> String {
         activate(epoch: accountEpoch)
         guard let user = auth.currentUser else {
             return deliverTerminatedFailure(accountEpoch: accountEpoch) {
-                callback(NativeFirebaseUnitResult(failure: NativeFirebaseFailure(code: "UNAUTHENTICATED", retryable: false)))
+                callback(NativeFirebaseSessionRefresh(uid: nil, isAnonymous: false, email: nil, emailVerified: false,
+                    failure: NativeFirebaseFailure(code: "UNAUTHENTICATED", retryable: false)))
             }
         }
         if let token = issueIfLive({
             let (token, gate) = beginOneShot()
             user.getIDTokenForcingRefresh(true) { [weak self] _, error in
-                self?.deliverOneShot(token: token, gate: gate, accountEpoch: accountEpoch) {
-                    callback(NativeFirebaseUnitResult(failure: error.map(Self.mapAuthFailure)))
+                guard let self else { return }
+                self.deliverOneShot(token: token, gate: gate, accountEpoch: accountEpoch) {
+                    // Read the freshly refreshed verification state; the observed session may be
+                    // cached and is not authority for the unverified-email gate.
+                    let current = self.auth.currentUser
+                    callback(NativeFirebaseSessionRefresh(
+                        uid: current?.uid, isAnonymous: current?.isAnonymous == true,
+                        email: current?.email, emailVerified: current?.isEmailVerified == true,
+                        failure: error.map(Self.mapAuthFailure)))
                 }
             }
             return token
         }) { return token }
         return deliverTerminatedFailure(accountEpoch: accountEpoch) {
-            callback(NativeFirebaseUnitResult(failure: self.terminatedFailure))
+            callback(NativeFirebaseSessionRefresh(uid: nil, isAnonymous: false, email: nil, emailVerified: false,
+                failure: self.terminatedFailure ?? NativeFirebaseFailure(code: "FAILED_PRECONDITION", retryable: false)))
         }
     }
 

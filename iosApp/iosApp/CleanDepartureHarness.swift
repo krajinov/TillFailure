@@ -20,6 +20,19 @@ enum CleanDepartureHarness {
         }
     }
 
+    /// Polls without blocking the main queue, so SDK completions that run on the main thread (and
+    /// may hold the bridge lock) are still delivered while a harness waits for a state transition.
+    private static func pollUntil(timeout: TimeInterval, condition: @escaping () -> Bool,
+                                  completion: @escaping (Bool) -> Void) {
+        let deadline = Date().addingTimeInterval(timeout)
+        func tick() {
+            if condition() { completion(true); return }
+            if Date() >= deadline { completion(false); return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { tick() }
+        }
+        DispatchQueue.main.async { tick() }
+    }
+
     static func runIfRequested(password: String?) {
         guard ProcessInfo.processInfo.environment["TILLFAILURE_PR1_DEPARTURE"] == "1" else { return }
         try? FileManager.default.removeItem(at: resultURL)
@@ -319,6 +332,128 @@ enum CleanDepartureHarness {
                 record("PR1_PHASE_\(phase) recovery=PASS")
                 verifyB(phase: phase, bridge: bridge.replacementBridge() as! FirebaseNativeBridge,
                         recovery: recovery, password: password)
+            }
+        }
+    }
+
+    /// Regression: a non-anonymous email/password session whose freshly checked Auth user is
+    /// unverified stops at the explicit unverified gate before any account/workspace authorization.
+    static func runUnverifiedEmailIfRequested(password: String?) {
+        guard ProcessInfo.processInfo.environment["TILLFAILURE_PR1_UNVERIFIED"] == "1" else { return }
+        try? FileManager.default.removeItem(at: resultURL)
+        guard let password, password.count >= 8,
+              let defaults = UserDefaults(suiteName: "tillfailure.pr1.unverified.harness") else {
+            record("PR1_UNVERIFIED configuration=FAIL"); exit(1)
+        }
+        defaults.removePersistentDomain(forName: "tillfailure.pr1.unverified.harness")
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("TillFailurePR1UnverifiedHarness")
+        try? FileManager.default.removeItem(at: root)
+        let recovery = RecoveryPersistenceBridge(rootURL: root)
+        let bridge = FirebaseNativeBridge(productMemoryCache: true, identityDefaults: defaults)
+        let client = IosProductIdentityClient(bridge: bridge, recoveryBridge: recovery)
+        _ = bridge.signIn(email: "pr1-unverified@example.invalid", password: password, accountEpoch: 0) { signed in
+            guard signed.failure == nil, bridge.debugCurrentUid == "pr1_unverified" else {
+                record("PR1_UNVERIFIED auth=FAIL"); exit(1)
+            }
+            record("PR1_UNVERIFIED auth=PASS")
+            // The freshly refreshed session — not a cached observed flag and not the entered email —
+            // carries the verification state.
+            _ = client.refreshSession(epoch: 0) { refresh in
+                guard refresh.failure == nil, let session = refresh.session else {
+                    record("PR1_UNVERIFIED fresh=FAIL"); exit(1)
+                }
+                let fresh = session.email == "pr1-unverified@example.invalid" && !session.emailVerified
+                record("PR1_UNVERIFIED fresh=\(fresh ? "PASS" : "FAIL")")
+                let predicate = IdentityGateKt.requiresUnverifiedEmailGate(session: session)
+                record("PR1_UNVERIFIED predicate=\(predicate ? "PASS" : "FAIL")")
+                // The shared gate stops before account/workspace/membership authorization. Poll
+                // without blocking the main queue so Auth/Firestore completions keep being delivered.
+                let model = IdentityViewModel(initialClient: client)
+                Self.pollUntil(timeout: 20, condition: {
+                    model.currentState().status == GateStatus.unverifiedemail
+                }) { reached in
+                    let observed = model.currentState()
+                    record("PR1_UNVERIFIED status=\(observed.status.name)")
+                    let blocked = reached && observed.verifiedRole == nil
+                    record("PR1_UNVERIFIED gate=\(blocked ? "PASS" : "FAIL")")
+                    exit(fresh && predicate && blocked ? 0 : 1)
+                }
+            }
+        }
+    }
+
+    /// Regression: a stalled pre-marker departure stays owned across root recreation and completes
+    /// exactly once, with account A/B isolation.
+    static func runRecreatedRootIfRequested(password: String?) {
+        guard ProcessInfo.processInfo.environment["TILLFAILURE_PR1_RECREATED_ROOT"] == "1" else { return }
+        try? FileManager.default.removeItem(at: resultURL)
+        guard let password, password.count >= 8,
+              let defaults = UserDefaults(suiteName: "tillfailure.pr1.recreated-root.harness") else {
+            record("PR1_RECREATED_ROOT configuration=FAIL"); exit(1)
+        }
+        defaults.removePersistentDomain(forName: "tillfailure.pr1.recreated-root.harness")
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("TillFailurePR1RecreatedRootHarness")
+        try? FileManager.default.removeItem(at: root)
+        let recovery = RecoveryPersistenceBridge(rootURL: root)
+        let bridge = FirebaseNativeBridge(productMemoryCache: true, identityDefaults: defaults)
+        let client = IosProductIdentityClient(bridge: bridge, recoveryBridge: recovery)
+        _ = bridge.signIn(email: "pr1-client@example.invalid", password: password, accountEpoch: 0) { signed in
+            guard signed.failure == nil, bridge.debugCurrentUid == "pr1_client",
+                  client.claimPinnedIdentity(uid: "pr1_client") else {
+                record("PR1_RECREATED_ROOT auth=FAIL"); exit(1)
+            }
+            record("PR1_RECREATED_ROOT auth=PASS")
+            bridge.disableNetwork { network in
+                guard network.failure == nil else { record("PR1_RECREATED_ROOT offline=FAIL"); exit(1) }
+                _ = bridge.writeDocument(path: "spikeEcho/pr1-ios-root-recreation",
+                                         fields: ["value": "pending"], accountEpoch: 0) { _ in }
+                var ownerClean = false
+                var ownerSettled = false
+                let leased = client.ownership.lease(uid: "pr1_client") { outcome in
+                    ownerClean = (outcome == .clean)
+                    ownerSettled = true
+                }
+                guard leased else { record("PR1_RECREATED_ROOT lease=FAIL"); exit(1) }
+                CleanDepartureCoordinator(port: client).depart(uid: "pr1_client", disposeAccountCallbacks: {}) { outcome in
+                    client.ownership.settle(uid: "pr1_client", outcome: outcome)
+                }
+                // The pre-marker interval is visible: the account is frozen/draining, no marker yet.
+                let preMarker = client.ownership.progress() == DepartureProgress.premarker &&
+                    bridge.readDepartureMarker().uid == nil
+                record("PR1_RECREATED_ROOT preMarker=\(preMarker ? "PASS" : "FAIL")")
+
+                // Recreate the root: it resolves the same process-level bridge (hence the same owner),
+                // joins the in-flight departure and cannot start a competing one.
+                let recreated = IosProductIdentityClient(bridge: bridge.activeBridge(), recoveryBridge: recovery)
+                var adoptedClean = false
+                let joined = recreated.ownership.observeInFlight { outcome in adoptedClean = (outcome == .clean) }
+                let refused = !recreated.ownership.lease(uid: "pr1_client") { _ in }
+                let visible = (recreated.ownership === client.ownership) && joined == "pr1_client" && refused
+                record("PR1_RECREATED_ROOT visible=\(visible ? "PASS" : "FAIL")")
+
+                bridge.enableNetwork { _ in
+                    Self.pollUntil(timeout: 30, condition: {
+                        ownerSettled && client.ownership.progress() == DepartureProgress.idle
+                    }) { _ in
+                        let recovered = ownerClean && adoptedClean && bridge.readDepartureMarker().uid == nil
+                        record("PR1_RECREATED_ROOT recovery=\(recovered ? "PASS" : "FAIL")")
+                        let b = bridge.replacementBridge() as! FirebaseNativeBridge
+                        _ = b.signIn(email: "pr1-trainer@example.invalid", password: password, accountEpoch: 0) { auth in
+                            let bClient = IosProductIdentityClient(bridge: b, recoveryBridge: recovery)
+                            guard auth.failure == nil, bClient.claimPinnedIdentity(uid: "pr1_trainer") else {
+                                record("PR1_RECREATED_ROOT accountB=FAIL auth"); exit(1)
+                            }
+                            _ = b.getDocument(path: "users/pr1_client", accountEpoch: 0) { denied in
+                                _ = b.getDocument(path: "users/pr1_trainer", accountEpoch: 0) { own in
+                                    let isolated = denied.failure?.code == "PERMISSION_DENIED" &&
+                                        own.document?.isFromCache == false && own.document?.exists == true
+                                    record("PR1_RECREATED_ROOT accountB=\(isolated ? "PASS" : "FAIL")")
+                                    exit(preMarker && visible && recovered && isolated ? 0 : 1)
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

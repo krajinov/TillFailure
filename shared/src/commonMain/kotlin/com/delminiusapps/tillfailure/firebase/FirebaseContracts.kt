@@ -45,7 +45,28 @@ data class StableFirebaseFailure(
 data class FirebaseAuthSession(
     val uid: String?,
     val isAnonymous: Boolean,
+    /** Auth-held email; never the client-entered form value. Null for providers without an email. */
+    val email: String? = null,
+    /**
+     * Email-verification state as last observed from Auth. An observed value may be cached, so
+     * authorization decisions must use the freshly refreshed value in [FirebaseSessionRefresh].
+     */
+    val emailVerified: Boolean = false,
 )
+
+/**
+ * Result of a forced server session refresh. [session] carries the **freshly checked** Auth identity,
+ * including the current email-verification state read from the refreshed token, so a cached observed
+ * flag or a client-entered email is never authority.
+ */
+data class FirebaseSessionRefresh(
+    val failure: StableFirebaseFailure? = null,
+    val session: FirebaseAuthSession? = null,
+) {
+    init {
+        require((failure == null) != (session == null)) { "Exactly one refresh branch is required" }
+    }
+}
 
 data class FirebaseDocumentSnapshot(
     val path: String,

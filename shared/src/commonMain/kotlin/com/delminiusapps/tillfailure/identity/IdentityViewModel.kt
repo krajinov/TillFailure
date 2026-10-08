@@ -14,6 +14,7 @@ import com.delminiusapps.tillfailure.persistence.RecoveryUidContract
 @kotlinx.serialization.Serializable
 enum class GateStatus {
     Loading, SignedOut, InvalidCredentials, IdentityUnsupported, AnonymousSession, NoAccount, AccountDisabled,
+    UnverifiedEmail,
     WorkspaceGate, MembershipVerifiedFeaturePending, UnsupportedSchema, AccessLost,
     ConnectToVerify, Retry, MultipleMemberships, Unconfigured, SessionExpired, CleanupRequired,
     SwitchingOut, DepartureBlocked,
@@ -54,19 +55,34 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
     private var observedUid: String? = null
     private var restrictedSession = false
     private var sessionListener: FirebaseCancellation? = null
+    private var cleared = false
 
     init { recoverOnStartup() }
+
+    /** Current immutable gate state; a small non-flow accessor for native hosts and diagnostics. */
+    fun currentState(): IdentityState = mutableState.value
 
     private fun recoverOnStartup() {
         val port = client.departure
         if (port == null) { observeSession(); return }
-        CleanDepartureCoordinator(port).recover(::cancelSessionAndOperations) { outcome, hadMarker ->
-            if (outcome != DepartureOutcome.Clean) {
-                finish(GateStatus.CleanupRequired)
-            } else {
-                if (hadMarker) client = port.replacement()
-                observeSession()
-            }
+        // A departure started by an earlier account graph may still be draining pending SDK writes
+        // before its durable switch marker exists. Until it settles this recreated root must not
+        // observe or verify the still signed-in session: that older departure can still sign out,
+        // fence callbacks or retire this Firebase client. Join it and adopt its terminal outcome
+        // instead of re-authorizing (and without starting a competing departure).
+        if (port.ownership.observeInFlight(::onDepartureAdopted) != null) {
+            setState(mutableState.value.copy(status = GateStatus.SwitchingOut, busy = true))
+            return
+        }
+        val read = port.readMarker()
+        if (!read.readable) { finish(GateStatus.CleanupRequired); return }
+        val marker = read.marker
+        if (marker == null) { observeSession(); return }
+        // A durable marker from an earlier run: resume its cleanup fail-closed before another login.
+        setState(mutableState.value.copy(status = GateStatus.SwitchingOut, busy = true))
+        if (!port.ownership.lease(marker.departingUid, ::onDepartureAdopted)) return
+        CleanDepartureCoordinator(port).recover(::cancelSessionAndOperations) { outcome, _ ->
+            port.ownership.settle(marker.departingUid, outcome)
         }
     }
 
@@ -162,20 +178,10 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
                     setOf(GateStatus.Loading, GateStatus.SwitchingOut, GateStatus.CleanupRequired)) return
                 setState(mutableState.value.copy(status = GateStatus.SwitchingOut, busy = true,
                     verifiedWorkspaceId = null, verifiedRole = null))
+                // The process-level owner claims the single departure slot; a competing graph joins.
+                if (!port.ownership.lease(uid, ::onDepartureStarted)) return
                 CleanDepartureCoordinator(port).depart(uid, ::cancelSessionAndOperations) { outcome ->
-                    when (outcome) {
-                        DepartureOutcome.Clean -> {
-                            observedUid = null
-                            restrictedSession = false
-                            client = port.replacement()
-                            setState(IdentityState(status = GateStatus.SignedOut))
-                            observeSession()
-                        }
-                        DepartureOutcome.PreflightBlocked -> {
-                            setState(mutableState.value.copy(status = GateStatus.DepartureBlocked, busy = false))
-                        }
-                        DepartureOutcome.CleanupRequired -> finish(GateStatus.CleanupRequired)
-                    }
+                    port.ownership.settle(uid, outcome)
                 }
             }
             IdentityEvent.RetryCleanup -> {
@@ -184,14 +190,20 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
                 if (oldPort.isRetired()) client = oldPort.replacement()
                 val port = client.departure ?: return
                 setState(mutableState.value.copy(status = GateStatus.SwitchingOut, busy = true))
-                CleanDepartureCoordinator(port).recover(::cancelSessionAndOperations) { outcome, hadMarker ->
-                    if (outcome == DepartureOutcome.Clean && hadMarker) {
-                        observedUid = null
-                        restrictedSession = false
-                        client = port.replacement()
-                        setState(IdentityState(status = GateStatus.SignedOut))
-                        observeSession()
-                    } else finish(GateStatus.CleanupRequired)
+                val read = port.readMarker()
+                if (!read.readable) { finish(GateStatus.CleanupRequired); return }
+                val marker = read.marker
+                if (marker == null) {
+                    observedUid = null
+                    restrictedSession = false
+                    client = port.replacement()
+                    setState(IdentityState(status = GateStatus.SignedOut))
+                    observeSession()
+                    return
+                }
+                if (!port.ownership.lease(marker.departingUid, ::onDepartureStarted)) return
+                CleanDepartureCoordinator(port).recover(::cancelSessionAndOperations) { outcome, _ ->
+                    port.ownership.settle(marker.departingUid, outcome)
                 }
             }
         }
@@ -206,11 +218,23 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
             setState(mutableState.value.copy(status = GateStatus.IdentityUnsupported, busy = false))
             return
         }
-        operations += client.refreshSession(0L) { refreshFailure ->
+        operations += client.refreshSession(0L) { refresh ->
             if (request != revision) return@refreshSession
-            if (refreshFailure != null) {
-                setState(mutableState.value.copy(status = failureStatus(refreshFailure), busy = false))
-            } else readAccount(uid, request)
+            val failure = refresh.failure
+            if (failure != null) {
+                setState(mutableState.value.copy(status = failureStatus(failure), busy = false))
+                return@refreshSession
+            }
+            val session = refresh.session
+            if (session == null) { finish(GateStatus.AccessLost); return@refreshSession }
+            // A non-anonymous email/password session whose freshly refreshed Auth user is not
+            // verified must stop before any account/workspace/membership authorization. A cached
+            // observed flag or a client-entered email is never authority.
+            if (requiresUnverifiedEmailGate(session)) {
+                setState(mutableState.value.copy(status = GateStatus.UnverifiedEmail, busy = false))
+                return@refreshSession
+            }
+            readAccount(uid, request)
         }
     }
 
@@ -298,6 +322,37 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
         }
     }
 
+    /** Terminal outcome of a departure this graph started, or one it joined at startup. */
+    private fun onDepartureStarted(outcome: DepartureOutcome) = onDepartureSettled(outcome, startedHere = true)
+    private fun onDepartureAdopted(outcome: DepartureOutcome) = onDepartureSettled(outcome, startedHere = false)
+
+    private fun onDepartureSettled(outcome: DepartureOutcome, startedHere: Boolean) {
+        // A graph cleared by Activity/root recreation must not act on the shared outcome; the live
+        // recreated graph is the one that adopts it, so exactly one graph rebuilds the root.
+        if (cleared) return
+        val port = client.departure
+        when (outcome) {
+            DepartureOutcome.Clean -> {
+                observedUid = null
+                restrictedSession = false
+                if (port != null) client = port.replacement()
+                setState(IdentityState(status = GateStatus.SignedOut))
+                observeSession()
+            }
+            DepartureOutcome.PreflightBlocked -> {
+                if (startedHere) {
+                    setState(mutableState.value.copy(status = GateStatus.DepartureBlocked, busy = false))
+                } else {
+                    // The joined departure was cancelled before any durable change; the account is
+                    // intact and unfrozen, so this recreated root safely resumes verification.
+                    setState(mutableState.value.copy(status = GateStatus.SignedOut, busy = false))
+                    observeSession()
+                }
+            }
+            DepartureOutcome.CleanupRequired -> finish(GateStatus.CleanupRequired)
+        }
+    }
+
     private fun finish(status: GateStatus) {
         setState(mutableState.value.copy(status = status, busy = false,
             verifiedWorkspaceId = null, verifiedRole = null))
@@ -341,6 +396,7 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
     }
 
     override fun onCleared() {
+        cleared = true
         cancelOperations()
         sessionListener?.cancel()
         effectChannel.close()
