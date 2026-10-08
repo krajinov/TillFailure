@@ -187,14 +187,18 @@ class AndroidFirebaseSpikeClient(
                 ?: StableFirebaseFailure(StableFirebaseErrorCode.FAILED_PRECONDITION, false)))
             return FirebaseCancellation {}
         }
-        task.addOnSuccessListener {
+        task.addOnSuccessListener { token ->
             deliverIfCurrent(epoch, cancelled) {
-                // Read the freshly refreshed verification state from Auth; the observed session may
-                // have been cached and is not authority for the unverified-email gate.
-                val current = auth.currentUser
+                // Read identity from the freshly minted ID token, not the cached FirebaseUser
+                // profile: getIdToken refreshes only the token while only reload refreshes profile
+                // data, so an out-of-band email-verification change (in either direction) must come
+                // from the new token's `email_verified`/`email` claims.
+                val claims = token.claims
+                val claimEmail = claims["email"] as? String
                 callback(FirebaseSessionRefresh(session = FirebaseAuthSession(
-                    uid = current?.uid, isAnonymous = current?.isAnonymous == true,
-                    email = current?.email, emailVerified = current?.isEmailVerified == true)))
+                    uid = user.uid, isAnonymous = user.isAnonymous,
+                    email = claimEmail ?: user.email,
+                    emailVerified = claims["email_verified"] as? Boolean ?: false)))
             }
         }.addOnFailureListener { error -> deliverIfCurrent(epoch, cancelled) {
             callback(FirebaseSessionRefresh(failure = mapFailure(error)))

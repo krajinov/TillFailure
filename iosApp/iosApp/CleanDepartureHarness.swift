@@ -458,6 +458,63 @@ enum CleanDepartureHarness {
         }
     }
 
+    /// Regression: an out-of-band email verification is observed on Recheck without a new sign-in.
+    static func runRecheckVerificationIfRequested(password: String?) {
+        guard ProcessInfo.processInfo.environment["TILLFAILURE_PR1_RECHECK"] == "1" else { return }
+        try? FileManager.default.removeItem(at: resultURL)
+        guard let password, password.count >= 8,
+              let defaults = UserDefaults(suiteName: "tillfailure.pr1.recheck.harness") else {
+            record("PR1_RECHECK configuration=FAIL"); exit(1)
+        }
+        defaults.removePersistentDomain(forName: "tillfailure.pr1.recheck.harness")
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("TillFailurePR1RecheckHarness")
+        try? FileManager.default.removeItem(at: root)
+        let recovery = RecoveryPersistenceBridge(rootURL: root)
+        let bridge = FirebaseNativeBridge(productMemoryCache: true, identityDefaults: defaults)
+        let client = IosProductIdentityClient(bridge: bridge, recoveryBridge: recovery)
+        guard setEmailVerified(uid: "pr1_unverified", verified: false) else {
+            record("PR1_RECHECK fixture=FAIL"); exit(1)
+        }
+        _ = bridge.signIn(email: "pr1-unverified@example.invalid", password: password, accountEpoch: 0) { signed in
+            guard signed.failure == nil, bridge.debugCurrentUid == "pr1_unverified" else {
+                record("PR1_RECHECK auth=FAIL"); exit(1)
+            }
+            _ = client.refreshSession(epoch: 0) { before in
+                let stale = before.failure == nil && before.session?.emailVerified == false
+                record("PR1_RECHECK before=\(stale ? "PASS" : "FAIL")")
+                // The account is verified out of band while this client stays signed in.
+                let updated = setEmailVerified(uid: "pr1_unverified", verified: true)
+                record("PR1_RECHECK outOfBand=\(updated ? "PASS" : "FAIL")")
+                _ = client.refreshSession(epoch: 0) { after in
+                    let fresh = after.failure == nil && after.session?.emailVerified == true
+                    record("PR1_RECHECK after=\(fresh ? "PASS" : "FAIL")")
+                    _ = setEmailVerified(uid: "pr1_unverified", verified: false)
+                    exit(stale && updated && fresh ? 0 : 1)
+                }
+            }
+        }
+    }
+
+    /// Applies an out-of-band Admin email-verification change on the local Auth emulator.
+    @discardableResult
+    private static func setEmailVerified(uid: String, verified: Bool) -> Bool {
+        let endpoint = "http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/projects/demo-tillfailure-m3/accounts:update"
+        guard let url = URL(string: endpoint) else { return false }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer owner", forHTTPHeaderField: "Authorization")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["localId": uid, "emailVerified": verified])
+        var ok = false
+        let semaphore = DispatchSemaphore(value: 0)
+        URLSession.shared.dataTask(with: request) { _, response, _ in
+            if let http = response as? HTTPURLResponse { ok = (200...299).contains(http.statusCode) }
+            semaphore.signal()
+        }.resume()
+        _ = semaphore.wait(timeout: .now() + 15)
+        return ok
+    }
+
     private static func verifyB(phase: Int, bridge: FirebaseNativeBridge,
                                 recovery: RecoveryPersistenceBridge, password: String) {
         _ = bridge.signIn(email: "pr1-trainer@example.invalid", password: password, accountEpoch: 0) { result in

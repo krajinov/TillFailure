@@ -404,14 +404,24 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
             let (token, gate) = beginOneShot()
             user.getIDTokenForcingRefresh(true) { [weak self] _, error in
                 guard let self else { return }
-                self.deliverOneShot(token: token, gate: gate, accountEpoch: accountEpoch) {
-                    // Read the freshly refreshed verification state; the observed session may be
-                    // cached and is not authority for the unverified-email gate.
-                    let current = self.auth.currentUser
-                    callback(NativeFirebaseSessionRefresh(
-                        uid: current?.uid, isAnonymous: current?.isAnonymous == true,
-                        email: current?.email, emailVerified: current?.isEmailVerified == true,
-                        failure: error.map(Self.mapAuthFailure)))
+                if let error {
+                    self.deliverOneShot(token: token, gate: gate, accountEpoch: accountEpoch) {
+                        callback(NativeFirebaseSessionRefresh(uid: nil, isAnonymous: false, email: nil, emailVerified: false,
+                            failure: Self.mapAuthFailure(error)))
+                    }
+                    return
+                }
+                // `getIDTokenForcingRefresh` fetches only a token; `reload` is the operation that
+                // refreshes user profile data such as email verification. Reload before reading the
+                // user so an out-of-band verification change (in either direction) is observed now.
+                user.reload { [weak self] reloadError in
+                    guard let self else { return }
+                    self.deliverOneShot(token: token, gate: gate, accountEpoch: accountEpoch) {
+                        callback(NativeFirebaseSessionRefresh(
+                            uid: user.uid, isAnonymous: user.isAnonymous, email: user.email,
+                            emailVerified: user.isEmailVerified,
+                            failure: reloadError.map(Self.mapAuthFailure)))
+                    }
                 }
             }
             return token

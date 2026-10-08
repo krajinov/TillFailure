@@ -20,6 +20,7 @@ struct iOSApp: App {
         CleanDepartureHarness.runCatalogReturnIfRequested()
         CleanDepartureHarness.runInterruptedPhaseIfRequested(password: ProcessInfo.processInfo.environment["TF_PR1_TEST_PASSWORD"])
         CleanDepartureHarness.runUnverifiedEmailIfRequested(password: ProcessInfo.processInfo.environment["TF_PR1_TEST_PASSWORD"])
+        CleanDepartureHarness.runRecheckVerificationIfRequested(password: ProcessInfo.processInfo.environment["TF_PR1_TEST_PASSWORD"])
         CleanDepartureHarness.runRecreatedRootIfRequested(password: ProcessInfo.processInfo.environment["TF_PR1_TEST_PASSWORD"])
         NativeRevocationHarness.runIfRequested(password: ProcessInfo.processInfo.environment["TF_PR1_TEST_PASSWORD"])
         #else

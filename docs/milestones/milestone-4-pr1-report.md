@@ -81,3 +81,20 @@ Two `chatgpt-codex-connector` P2 findings on PR #4 review `5455541651` were fixe
 | Backend and Rules | `node --check scripts/seed-pr1.mjs`, `npm --prefix firebase/functions run build`, `npm --prefix firebase/functions run test:emulators` | Seed script syntax OK and TypeScript build passed; the seed now adds an `emailVerified: false` `pr1_unverified` identity with active account/membership documents. Fresh local emulator suite: **97/97 passed, 0 failed**. |
 
 These results are new runs for this follow-up on a local API 29 Android emulator and a signed iOS 26.2 simulator. The earlier backend/Rules, sign-in, revocation and process-restart results above retain their original run attribution and were not rerun here. Physical iOS Keychain/Data Protection behavior and production-provider UID compatibility remain unverified.
+
+## Recheck reload follow-up — 2026-10-08
+
+`chatgpt-codex-connector` P2 finding `4220677246` on PR #4 review `5458739670` was fixed.
+
+**Finding `4220677246` — reload the user profile before reading verification.** `refreshSession` forced an ID-token fetch (`getIdToken(true)` / `getIDTokenForcingRefresh(true)`) but then read `isEmailVerified` from the cached `FirebaseUser`. Firebase documents `getIdToken` as a token fetch and `reload` as the operation that refreshes profile data, so after an out-of-band verification change a **Recheck** could remain stuck at `UnverifiedEmail` (and an out-of-band de-verification could retain stale authority). The Android adapter now reads the `email`/`email_verified` claims of the freshly minted ID token, and the iOS adapter now calls `user.reload()` before reading the user, so the refreshed session always reflects the current server verification state.
+
+### Fresh verification
+
+| Layer | Command or runtime check | Result |
+|---|---|---|
+| Shared Kotlin (Android host + iOS simulator) | `./gradlew :shared:allTests` | Passed; **Android host 90/90, iOS simulator 90/90, 0 failures**. |
+| Android native adapter, API 29 emulator | `:shared:assembleAndroidDeviceTest` + `adb shell am instrument` filtered to `AndroidCleanDepartureTest,AndroidProductIdentityTest` against the real Auth/Firestore emulators | **12/12 passed.** New `recheckObservesAnOutOfBandEmailVerificationWithoutSigningInAgain` reproduces the pre-fix failure — after the account is verified out of band it observed `emailVerified == false` (`expected:<true> but was:<false>`, because `getIdToken(true)` did not refresh the cached profile) — and passes after the fix, with the shared gate then reaching `MembershipVerifiedFeaturePending` without another sign-in. |
+| iOS native Swift bridge, signed iOS 26.2 simulator | Opt-in `CleanDepartureHarness` | New `PR1_RECHECK before=PASS outOfBand=PASS after=PASS` on the fixed bridge; the same harness reported `after=FAIL` with only the iOS fix reverted, reproducing the pre-fix failure. The unverified and root-recreation harnesses still pass (`PR1_UNVERIFIED … gate=PASS`; `PR1_RECREATED_ROOT … accountB=PASS`). |
+| iOS build isolation | Signed `xcodebuild` Debug simulator build with local signing | Built successfully. |
+
+The recheck probe drives the local Auth emulator's Admin REST surface, so `iosApp/iosApp/Info.plist` now carries a loopback-only (`NSAllowsLocalNetworking` plus `127.0.0.1`/`localhost` exception domains) ATS exception for the opt-in Debug harness; the product SDK path and public loads are unaffected. The earlier backend/Rules, sign-in, revocation and process-restart results above retain their original run attribution; no backend code changed for this follow-up.

@@ -9,12 +9,15 @@ import com.delminiusapps.tillfailure.identity.checkAccount
 import com.delminiusapps.tillfailure.identity.checkMembership
 import com.delminiusapps.tillfailure.identity.IdentityDecision
 import org.junit.Test
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /** Requires `npm run seed:pr1` against the local Auth and Firestore emulators. */
 class AndroidProductIdentityTest {
@@ -91,6 +94,53 @@ class AndroidProductIdentityTest {
             val ended = CountDownLatch(1)
             client.terminateAndClear { ended.countDown() }
             ended.await(15, TimeUnit.SECONDS)
+        }
+    }
+
+    @Test fun recheckObservesAnOutOfBandEmailVerificationWithoutSigningInAgain() {
+        val password = InstrumentationRegistry.getArguments().getString("pr1Password")
+            ?: error("Pass -e pr1Password for the local emulator identity")
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val client = AndroidFirebaseSpikeClient(context, FirebaseEmulatorConfiguration(host = "10.0.2.2"), AccountCallbackFence())
+        try {
+            assertTrue(setEmailVerified("pr1_unverified", false)) // deterministic fixture baseline
+            FirebaseAuth.getInstance(client.firebaseApp).signOut()
+            assertNull(await<StableFirebaseFailure?> { done ->
+                client.signIn("pr1-unverified@example.invalid", password, 0L) { done(it) }
+            })
+            val stale = await<FirebaseSessionRefresh> { done -> client.refreshSession(0L, done) }
+            assertEquals(false, stale.session?.emailVerified)
+            // The account is verified out of band while this client stays signed in.
+            assertTrue(setEmailVerified("pr1_unverified", true))
+            // Recheck must observe the fresh state from a forced refresh, not a cached profile.
+            val refreshed = await<FirebaseSessionRefresh> { done -> client.refreshSession(0L, done) }
+            assertEquals(true, refreshed.session?.emailVerified)
+            assertEquals("pr1-unverified@example.invalid", refreshed.session?.email)
+            // The shared gate now authorizes past the unverified gate without another sign-in.
+            val model = IdentityViewModel(client)
+            awaitStatus(model, GateStatus.MembershipVerifiedFeaturePending)
+        } finally {
+            setEmailVerified("pr1_unverified", false)
+            val ended = CountDownLatch(1)
+            client.terminateAndClear { ended.countDown() }
+            ended.await(15, TimeUnit.SECONDS)
+        }
+    }
+
+    /** Out-of-band Admin change against the local Auth emulator, as a support/verification flow would. */
+    private fun setEmailVerified(uid: String, verified: Boolean): Boolean {
+        val connection = URL(
+            "http://10.0.2.2:9099/identitytoolkit.googleapis.com/v1/projects/demo-tillfailure-m3/accounts:update"
+        ).openConnection() as HttpURLConnection
+        return try {
+            connection.requestMethod = "POST"
+            connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.setRequestProperty("Authorization", "Bearer owner")
+            connection.outputStream.use { it.write("""{"localId":"$uid","emailVerified":$verified}""".toByteArray()) }
+            connection.responseCode in 200..299
+        } finally {
+            connection.disconnect()
         }
     }
 
