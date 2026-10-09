@@ -218,12 +218,17 @@ describe("system catalog entitlement lifecycle", () => {
     await seed("client", "ws");
     const activate = activation("client", "ws", "activate", 0, 1);
     assert.equal((await transitionMembership(db, activate)).activeMembershipCount, 1);
+    const discoveryRef = db.doc("users/client/membershipRefs/ws");
+    assert.deepEqual((await discoveryRef.get()).data(), { schemaVersion: 1, status: "active" });
     assert.equal((await transitionMembership(db, activate)).replayed, true);
+    assert.deepEqual((await discoveryRef.get()).data(), { schemaVersion: 1, status: "active" });
     assert.equal(await accountCount("client"), 1);
     assert.deepEqual(await workspaceCounts("ws"), { roster: 1, contributions: 1, revision: 2, status: "active" });
     assert.equal((await transitionMembership(db, activation("client", "ws", "revoke", 1, 2, { nextStatus: "revoked" }))).activeMembershipCount, 0);
+    assert.equal((await discoveryRef.get()).exists, false);
     assert.deepEqual(await workspaceCounts("ws"), { roster: 0, contributions: 0, revision: 3, status: "active" });
     assert.equal((await transitionMembership(db, activation("client", "ws", "restore", 2, 3))).activeMembershipCount, 1);
+    assert.deepEqual((await discoveryRef.get()).data(), { schemaVersion: 1, status: "active" });
     assert.deepEqual(await workspaceCounts("ws"), { roster: 1, contributions: 1, revision: 4, status: "active" });
     assert.equal(await accountCount("client"), 1);
   });

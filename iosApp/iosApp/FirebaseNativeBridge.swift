@@ -1,4 +1,5 @@
 import CoreFoundation
+import CryptoKit
 import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
@@ -55,11 +56,11 @@ private final class FirebaseAppGenerations {
     private var sequence: Int64 = 0
 
     /// Configures a uniquely named app for this bridge, even when another bridge is live.
-    func acquire(projectID: String) -> Generation {
+    func acquire(projectID: String, preferredName: String? = nil) -> Generation {
         lock.lock()
         defer { lock.unlock() }
         sequence += 1
-        let appName = "tillfailure-\(projectID)-\(sequence)"
+        let appName = preferredName ?? "tillfailure-\(projectID)-\(sequence)"
         let options = FirebaseOptions(googleAppID: "1:1234567890:ios:0000000000000000", gcmSenderID: "1234567890")
         options.apiKey = "fake-emulator-api-key"
         options.projectID = projectID
@@ -88,7 +89,8 @@ private final class FirebaseAppGenerations {
     }
 }
 
-final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
+final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
+    private static let identityPinLock = NSLock()
     /// Thread-safe single-settlement gate for one-shot operations. Exactly one of the
     /// SDK completion, explicit cancellation, timeout, or global termination claims it,
     /// so a callback is delivered at most once and completed tokens are never retained.
@@ -113,27 +115,86 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
     private var cancellations: [String: () -> Void] = [:]
     private var currentEpoch: Int64 = 0
     private var terminated = false
+    private var accountFrozen = false
+    private var successor: FirebaseNativeBridge?
+    private let identityPinKey = "tillfailure.identityPin.v1.sha256"
+    private let switchUidKey = "tillfailure.departure.v1.uid"
+    private let switchEpochKey = "tillfailure.departure.v1.epoch"
+    private let lastEpochKey = "tillfailure.departure.v1.lastEpoch"
+    private let productAppNameKey = "tillfailure.identity.productAppName.v1"
+    private let emulatorHost: String
+    private let productMemoryCache: Bool
+    private let identityDefaults: UserDefaults
+    private let transientProductGeneration: Bool
+    /// Process-level departure owner for this bridge generation. The host retains one bridge for the
+    /// process, so an in-progress pre-marker departure stays visible to a recreated account graph.
+    let ownership = CleanDepartureOwnership()
+
+    func hasPinnedIdentity() -> Bool {
+        Self.identityPinLock.lock()
+        defer { Self.identityPinLock.unlock() }
+        return identityDefaults.object(forKey: identityPinKey) != nil
+    }
+
+    func claimPinnedIdentity(uid: String) -> Bool {
+        Self.identityPinLock.lock()
+        defer { Self.identityPinLock.unlock() }
+        let digest = SHA256.hash(data: Data(uid.utf8)).map { String(format: "%02x", $0) }.joined()
+        if let existing = identityDefaults.string(forKey: identityPinKey) { return existing == digest }
+        if identityDefaults.object(forKey: identityPinKey) != nil { return false }
+        identityDefaults.set(digest, forKey: identityPinKey)
+        return identityDefaults.synchronize()
+    }
 
     #if DEBUG
     var debugAppName: String { generation.appName }
+    var debugCurrentUid: String? { auth.currentUser?.uid }
     var debugBeforeWriteIssuance: (() -> Void)?
     var debugDidIssueWrite: (() -> Void)?
     #endif
 
-    init(host: String = "127.0.0.1", projectID: String = "demo-tillfailure-m3") {
+    init(host: String = "127.0.0.1", projectID: String = "demo-tillfailure-m3", productMemoryCache: Bool = false,
+         identityDefaults: UserDefaults = .standard, transientProductGeneration: Bool = false) {
         precondition(projectID.hasPrefix("demo-"), "The Firebase spike requires an emulator-only demo project")
         precondition(["127.0.0.1", "localhost"].contains(host), "The Firebase spike requires loopback")
+        emulatorHost = host
+        self.productMemoryCache = productMemoryCache
+        self.identityDefaults = identityDefaults
+        self.transientProductGeneration = transientProductGeneration
         // One generation per bridge: an overlapping bridge and a later recreation both receive
         // fresh Auth/Firestore instances independent of this bridge's teardown.
-        let current = FirebaseAppGenerations.shared.acquire(projectID: projectID)
+        let preferredName: String?
+        if productMemoryCache {
+            Self.identityPinLock.lock()
+            if let existing = identityDefaults.string(forKey: productAppNameKey) {
+                preferredName = transientProductGeneration ? "\(existing)-retry-\(UUID().uuidString)" : existing
+            } else {
+                let created = "tillfailure-\(projectID)-product-\(UUID().uuidString)"
+                identityDefaults.set(created, forKey: productAppNameKey)
+                precondition(identityDefaults.synchronize(), "Cannot persist product Firebase generation")
+                preferredName = transientProductGeneration ? "\(created)-retry-\(UUID().uuidString)" : created
+            }
+            Self.identityPinLock.unlock()
+        } else {
+            preferredName = nil
+        }
+        let current = FirebaseAppGenerations.shared.acquire(projectID: projectID, preferredName: preferredName)
         generation = current
         let app = current.app
         auth = Auth.auth(app: app)
-        auth.useEmulator(withHost: host, port: 9099)
+        #if DEBUG
+        let authPort = Int(ProcessInfo.processInfo.environment["TF_AUTH_EMULATOR_PORT"] ?? "") ?? 9099
+        let firestorePort = Int(ProcessInfo.processInfo.environment["TF_FIRESTORE_EMULATOR_PORT"] ?? "") ?? 8080
+        #else
+        let authPort = 9099
+        let firestorePort = 8080
+        #endif
+        auth.useEmulator(withHost: host, port: authPort)
         firestore = Firestore.firestore(app: app)
         let settings = firestore.settings
-        settings.host = "\(host):8080"
+        settings.host = "\(host):\(firestorePort)"
         settings.isSSLEnabled = false
+        if productMemoryCache { settings.cacheSettings = MemoryCacheSettings() }
         firestore.settings = settings
         super.init()
     }
@@ -155,6 +216,116 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
         defer { lock.unlock() }
         guard !terminated else { return nil }
         return try issue()
+    }
+
+    private func issueIfWritable<T>(_ issue: () throws -> T) rethrows -> T? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !terminated && !accountFrozen else { return nil }
+        return try issue()
+    }
+
+    func readDepartureMarker() -> NativeDepartureMarkerRead {
+        Self.identityPinLock.lock()
+        defer { Self.identityPinLock.unlock() }
+        let uid = identityDefaults.string(forKey: switchUidKey)
+        let epoch = identityDefaults.object(forKey: switchEpochKey) as? Int64 ?? 0
+        let readable = (uid == nil && epoch == 0) || (uid != nil && epoch > 0)
+        return NativeDepartureMarkerRead(uid: uid, epoch: epoch, readable: readable)
+    }
+
+    func freezeAccount(uid: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !terminated else { return false }
+        let marker = readDepartureMarker()
+        guard marker.readable else { return false }
+        if accountFrozen { return marker.uid == uid }
+        if marker.uid == nil && auth.currentUser?.uid != uid { return false }
+        if marker.uid != nil && (marker.uid != uid || (auth.currentUser?.uid != nil && auth.currentUser?.uid != uid)) {
+            return false
+        }
+        accountFrozen = true
+        return true
+    }
+
+    func isRetired() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return terminated
+    }
+
+    func activeBridge() -> NativeIdentityBridge {
+        lock.lock()
+        let next = successor
+        lock.unlock()
+        return next?.activeBridge() ?? self
+    }
+
+    func unfreezeAccount(uid: String) {
+        lock.lock()
+        accountFrozen = false
+        lock.unlock()
+    }
+
+    func persistDepartureMarker(uid: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        Self.identityPinLock.lock()
+        defer { Self.identityPinLock.unlock() }
+        guard accountFrozen, identityDefaults.object(forKey: switchUidKey) == nil else { return false }
+        let last = identityDefaults.object(forKey: lastEpochKey) as? Int64 ?? 0
+        guard last < Int64.max else { return false }
+        identityDefaults.set(uid, forKey: switchUidKey)
+        identityDefaults.set(last + 1, forKey: switchEpochKey)
+        identityDefaults.set(last + 1, forKey: lastEpochKey)
+        return identityDefaults.synchronize()
+    }
+
+    func fenceDepartureCallbacks() {
+        lock.lock()
+        currentEpoch += 1
+        let outstanding = Array(cancellations.values)
+        cancellations.removeAll()
+        lock.unlock()
+        outstanding.forEach { $0() }
+    }
+
+    func signOutProduct(callback: @escaping (NativeFirebaseUnitResult) -> Void) {
+        do {
+            try auth.signOut()
+            callback(NativeFirebaseUnitResult(failure: nil))
+        } catch {
+            callback(NativeFirebaseUnitResult(failure: Self.mapAuthFailure(error)))
+        }
+    }
+
+    func completeDepartureMarker(uid: String) -> Bool {
+        Self.identityPinLock.lock()
+        defer { Self.identityPinLock.unlock() }
+        guard identityDefaults.string(forKey: switchUidKey) == uid else { return false }
+        let digest = SHA256.hash(data: Data(uid.utf8)).map { String(format: "%02x", $0) }.joined()
+        if let pin = identityDefaults.string(forKey: identityPinKey), pin != digest { return false }
+        identityDefaults.removeObject(forKey: identityPinKey)
+        guard identityDefaults.synchronize() else { return false }
+        if productMemoryCache {
+            identityDefaults.set("tillfailure-\(generation.projectID)-product-\(UUID().uuidString)",
+                                 forKey: productAppNameKey)
+            guard identityDefaults.synchronize() else { return false }
+        }
+        identityDefaults.removeObject(forKey: switchUidKey)
+        identityDefaults.removeObject(forKey: switchEpochKey)
+        return identityDefaults.synchronize()
+    }
+
+    func replacementBridge() -> NativeIdentityBridge {
+        let fresh = FirebaseNativeBridge(host: emulatorHost, projectID: generation.projectID,
+                                         productMemoryCache: productMemoryCache, identityDefaults: identityDefaults,
+                                         transientProductGeneration: readDepartureMarker().uid != nil)
+        lock.lock()
+        successor = fresh
+        lock.unlock()
+        return fresh
     }
 
     private func deliverIfLive(_ deliver: () -> Void) {
@@ -186,7 +357,8 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
         return issueIfLive {
             let handle = auth.addStateDidChangeListener { [weak self] _, user in
                 self?.deliverIfEpochMatches(epoch: accountEpoch) {
-                    callback_(NativeFirebaseAuthState(uid: user?.uid, isAnonymous: user?.isAnonymous == true))
+                    callback_(NativeFirebaseAuthState(uid: user?.uid, isAnonymous: user?.isAnonymous == true,
+                        email: user?.email, emailVerified: user?.isEmailVerified == true))
                 }
             }
             return registerCancellation { [weak self] in self?.auth.removeStateDidChangeListener(handle) }
@@ -211,6 +383,86 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
         }
     }
 
+    func signIn(email: String, password: String, accountEpoch: Int64, callback: @escaping (NativeFirebaseUnitResult) -> Void) -> String {
+        activate(epoch: accountEpoch)
+        if let token = issueIfWritable({
+            let (token, gate) = beginOneShot()
+            auth.signIn(withEmail: email, password: password) { [weak self] _, error in
+                self?.deliverOneShot(token: token, gate: gate, accountEpoch: accountEpoch) {
+                    callback(NativeFirebaseUnitResult(failure: error.map(Self.mapAuthFailure)))
+                }
+            }
+            return token
+        }) { return token }
+        return deliverTerminatedFailure(accountEpoch: accountEpoch) {
+            callback(NativeFirebaseUnitResult(failure: self.terminatedFailure ?? NativeFirebaseFailure(code: "FAILED_PRECONDITION", retryable: false)))
+        }
+    }
+
+    func refreshSession(accountEpoch: Int64, callback: @escaping (NativeFirebaseSessionRefresh) -> Void) -> String {
+        activate(epoch: accountEpoch)
+        guard let user = auth.currentUser else {
+            return deliverTerminatedFailure(accountEpoch: accountEpoch) {
+                callback(NativeFirebaseSessionRefresh(uid: nil, isAnonymous: false, email: nil, emailVerified: false,
+                    failure: NativeFirebaseFailure(code: "UNAUTHENTICATED", retryable: false)))
+            }
+        }
+        if let token = issueIfLive({
+            let (token, gate) = beginOneShot()
+            user.getIDTokenForcingRefresh(true) { [weak self] _, error in
+                guard let self else { return }
+                if let error {
+                    self.deliverOneShot(token: token, gate: gate, accountEpoch: accountEpoch) {
+                        callback(NativeFirebaseSessionRefresh(uid: nil, isAnonymous: false, email: nil, emailVerified: false,
+                            failure: Self.mapAuthFailure(error)))
+                    }
+                    return
+                }
+                // `getIDTokenForcingRefresh` fetches only a token; `reload` is the operation that
+                // refreshes user profile data such as email verification. Reload before reading the
+                // user so an out-of-band verification change (in either direction) is observed now.
+                user.reload { [weak self] reloadError in
+                    guard let self else { return }
+                    self.deliverOneShot(token: token, gate: gate, accountEpoch: accountEpoch) {
+                        callback(NativeFirebaseSessionRefresh(
+                            uid: user.uid, isAnonymous: user.isAnonymous, email: user.email,
+                            emailVerified: user.isEmailVerified,
+                            failure: reloadError.map(Self.mapAuthFailure)))
+                    }
+                }
+            }
+            return token
+        }) { return token }
+        return deliverTerminatedFailure(accountEpoch: accountEpoch) {
+            callback(NativeFirebaseSessionRefresh(uid: nil, isAnonymous: false, email: nil, emailVerified: false,
+                failure: self.terminatedFailure ?? NativeFirebaseFailure(code: "FAILED_PRECONDITION", retryable: false)))
+        }
+    }
+
+    func discoverMemberships(uid: String, accountEpoch: Int64, callback: @escaping (NativeMembershipDiscoveryResult) -> Void) -> String {
+        activate(epoch: accountEpoch)
+        if let token = issueIfLive({
+            let (token, gate) = beginOneShot()
+            firestore.collection("users/\(uid)/membershipRefs")
+                .whereField("status", isEqualTo: "active")
+                .whereField("schemaVersion", isEqualTo: 1)
+                .limit(to: 20)
+                .getDocuments(source: .server) { [weak self] snapshot, error in
+                    guard let self else { return }
+                    self.deliverOneShot(token: token, gate: gate, accountEpoch: accountEpoch) {
+                        callback(NativeMembershipDiscoveryResult(
+                            documents: snapshot?.documents.map { self.nativeDocument($0) },
+                            failure: error.map(Self.mapFailure)
+                        ))
+                    }
+                }
+            return token
+        }) { return token }
+        return deliverTerminatedFailure(accountEpoch: accountEpoch) {
+            callback(NativeMembershipDiscoveryResult(documents: nil, failure: self.terminatedFailure))
+        }
+    }
+
     func listenDocument(path: String, accountEpoch: Int64, callback_: @escaping (NativeFirebaseDocumentResult) -> Void) -> String {
         activate(epoch: accountEpoch)
         // A terminated bridge registers no listener instead of attaching to a dead instance.
@@ -229,7 +481,7 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
         #if DEBUG
         debugBeforeWriteIssuance?()
         #endif
-        if let token = issueIfLive({
+        if let token = issueIfWritable({
             let (token, gate) = beginOneShot()
             firestore.document(path).setData(fields) { [weak self] error in
                 guard let self else { return }
@@ -242,7 +494,7 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
             #endif
             return token
         }) { return token }
-        let failure = terminatedFailure!
+        let failure = terminatedFailure ?? NativeFirebaseFailure(code: "FAILED_PRECONDITION", retryable: false)
         return deliverTerminatedFailure(accountEpoch: accountEpoch) {
             callback_(NativeFirebaseUnitResult(failure: failure))
         }
@@ -250,7 +502,7 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
 
     func increment(path: String, field: String, by: Int64, accountEpoch: Int64, callback_: @escaping (NativeFirebaseDocumentResult) -> Void) -> String {
         activate(epoch: accountEpoch)
-        if let token = issueIfLive({
+        if let token = issueIfWritable({
             let (token, gate) = beginOneShot()
             let reference = firestore.document(path)
             firestore.runTransaction({ transaction, errorPointer -> Any? in
@@ -286,7 +538,7 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
             }
             return token
         }) { return token }
-        let failure = terminatedFailure!
+        let failure = terminatedFailure ?? NativeFirebaseFailure(code: "FAILED_PRECONDITION", retryable: false)
         return deliverTerminatedFailure(accountEpoch: accountEpoch) {
             callback_(NativeFirebaseDocumentResult(document: nil, failure: failure))
         }
@@ -355,14 +607,14 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
         firestore.terminate { [self] terminationError in
             guard terminationError == nil else {
                 // Even a partial teardown retires the app: the dead instances must never be reissued.
-                FirebaseAppGenerations.shared.delete(generation)
+                FirebaseAppGenerations.shared.delete(self.generation)
                 callback_(NativeFirebaseUnitResult(failure: terminationError.map(Self.mapFailure)))
                 return
             }
             firestore.clearPersistence { clearError in
                 // Delete the retired app only after its Firestore instance is terminated and its
                 // persistence cleared; a newer generation never depends on this cleanup.
-                FirebaseAppGenerations.shared.delete(generation)
+                FirebaseAppGenerations.shared.delete(self.generation)
                 callback_(NativeFirebaseUnitResult(failure: clearError.map(Self.mapFailure)))
             }
         }
@@ -370,7 +622,7 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
 
     func signInAnonymously(completion: @escaping (Result<String, Error>) -> Void) {
         do {
-            let issued = try issueIfLive {
+            let issued = try issueIfWritable {
                 try auth.signOut()
                 auth.signInAnonymously { [weak self] result, error in
                     self?.deliverIfLive {
@@ -386,7 +638,7 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
             completion(.failure(error))
             return
         }
-        let failure = terminatedFailure!
+        let failure = terminatedFailure ?? NativeFirebaseFailure(code: "FAILED_PRECONDITION", retryable: false)
         DispatchQueue.main.async {
             completion(.failure(NSError(
                 domain: "TillFailureFirebaseSpike",
@@ -483,17 +735,33 @@ final class FirebaseNativeBridge: NSObject, NativeFirebaseBridge {
     private func documentResult(snapshot: DocumentSnapshot?, error: Error?) -> NativeFirebaseDocumentResult {
         if let error { return NativeFirebaseDocumentResult(document: nil, failure: Self.mapFailure(error)) }
         guard let snapshot else { return Self.unknownDocumentResult() }
-        let fields = snapshot.data()?.mapValues { String(describing: $0) } ?? [:]
-        return NativeFirebaseDocumentResult(
-            document: NativeFirebaseDocument(
-                path: snapshot.reference.path,
-                fields: fields,
-                exists: snapshot.exists,
-                isFromCache: snapshot.metadata.isFromCache,
-                hasPendingWrites: snapshot.metadata.hasPendingWrites
-            ),
-            failure: nil
+        return NativeFirebaseDocumentResult(document: nativeDocument(snapshot), failure: nil)
+    }
+
+    private func nativeDocument(_ snapshot: DocumentSnapshot) -> NativeFirebaseDocument {
+        NativeFirebaseDocument(
+            path: snapshot.reference.path,
+            fields: snapshot.data()?.mapValues { String(describing: $0) } ?? [:],
+            exists: snapshot.exists,
+            isFromCache: snapshot.metadata.isFromCache,
+            hasPendingWrites: snapshot.metadata.hasPendingWrites
         )
+    }
+
+    private static func mapAuthFailure(_ error: Error) -> NativeFirebaseFailure {
+        let nsError = error as NSError
+        if nsError.domain == AuthErrorDomain {
+            switch nsError.code {
+            case 17004, 17008, 17009, 17011:
+                return NativeFirebaseFailure(code: "INVALID_CREDENTIALS", retryable: false)
+            case 17005, 17017, 17021:
+                return NativeFirebaseFailure(code: "UNAUTHENTICATED", retryable: false)
+            case 17020:
+                return NativeFirebaseFailure(code: "UNAVAILABLE", retryable: true)
+            default: break
+            }
+        }
+        return NativeFirebaseFailure(code: "UNKNOWN", retryable: false)
     }
 
     private static func unknownDocumentResult() -> NativeFirebaseDocumentResult {

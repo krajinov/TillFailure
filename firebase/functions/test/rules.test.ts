@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { after, before, beforeEach, describe, it } from "node:test";
 import { assertFails, assertSucceeds, initializeTestEnvironment, RulesTestEnvironment } from "@firebase/rules-unit-testing";
-import { collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from "firebase/firestore";
+import { collection, collectionGroup, doc, getDoc, getDocs, limit, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { deleteObject, ref, uploadString } from "firebase/storage";
 import { publishAssignment } from "../src/assigned-program.js";
 import { transitionAccountLifecycle, transitionMembership, transitionWorkspace } from "../src/catalog.js";
@@ -11,12 +11,19 @@ import { commandId } from "../src/hashing.js";
 
 let environment: RulesTestEnvironment;
 
+function verifiedContext(uid: string) {
+  return environment.authenticatedContext(uid, {
+    email: `${uid}@example.invalid`,
+    email_verified: true
+  });
+}
+
 before(async () => {
   if (!process.env.FIRESTORE_EMULATOR_HOST || !process.env.FIREBASE_STORAGE_EMULATOR_HOST) throw new Error("Rules tests require local emulators");
   environment = await initializeTestEnvironment({
     projectId: SPIKE_PROJECT_ID,
-    firestore: { rules: await readFile("../firestore.rules", "utf8"), host: "127.0.0.1", port: 8080 },
-    storage: { rules: await readFile("../storage.rules", "utf8"), host: "127.0.0.1", port: 9199 }
+    firestore: { rules: await readFile("../firestore.rules", "utf8"), host: "127.0.0.1", port: Number(process.env.FIRESTORE_EMULATOR_HOST.split(":").at(-1)) },
+    storage: { rules: await readFile("../storage.rules", "utf8"), host: "127.0.0.1", port: Number(process.env.FIREBASE_STORAGE_EMULATOR_HOST.split(":").at(-1)) }
   });
 });
 
@@ -46,9 +53,97 @@ async function seedEligibleAssignment(): Promise<void> {
 }
 
 describe("Firestore and Storage rules", () => {
+  it("allows only server-verifiable self account, workspace and bounded active membership discovery", async () => {
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, "users/alice"), { schemaVersion: 1, accountStatus: "active" });
+      await setDoc(doc(db, "users/bob"), { schemaVersion: 1, accountStatus: "active" });
+      await setDoc(doc(db, "workspaces/one"), { schemaVersion: 1, status: "active" });
+      await setDoc(doc(db, "workspaces/one/memberships/alice"), { schemaVersion: 1, workspaceId: "one", userId: "alice", status: "active", role: "client" });
+      await setDoc(doc(db, "workspaces/one/memberships/bob"), { schemaVersion: 1, workspaceId: "one", userId: "bob", status: "active", role: "trainer" });
+      await setDoc(doc(db, "users/alice/membershipRefs/one"), { schemaVersion: 1, status: "active" });
+      await setDoc(doc(db, "users/bob/membershipRefs/one"), { schemaVersion: 1, status: "active" });
+    });
+    const alice = verifiedContext("alice").firestore();
+    await assertSucceeds(getDoc(doc(alice, "users/alice")));
+    await assertFails(getDoc(doc(alice, "users/bob")));
+    await assertSucceeds(getDoc(doc(alice, "workspaces/one")));
+    await assertSucceeds(getDoc(doc(alice, "workspaces/one/memberships/alice")));
+    await assertFails(getDoc(doc(alice, "workspaces/one/memberships/bob")));
+    const discovery = query(collection(alice, "users/alice/membershipRefs"), where("status", "==", "active"), where("schemaVersion", "==", 1), limit(20));
+    await assertSucceeds(getDocs(discovery));
+    await assertFails(getDocs(query(collection(alice, "users/bob/membershipRefs"), where("status", "==", "active"), where("schemaVersion", "==", 1), limit(20))));
+    await assertFails(getDocs(query(collectionGroup(alice, "memberships"), where("userId", "==", "alice"), where("status", "==", "active"), where("schemaVersion", "==", 1), limit(20))));
+    await assertFails(getDocs(query(collection(alice, "users/alice/membershipRefs"), where("status", "==", "active"), limit(20))));
+    await assertFails(getDocs(query(collection(alice, "users/alice/membershipRefs"), where("status", "==", "active"), where("schemaVersion", "==", 1), limit(21))));
+    await assertFails(setDoc(doc(alice, "workspaces/one/memberships/alice"), { role: "trainer" }));
+  });
+
+  it("does not disclose another membership whose stored userId names the caller", async () => {
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, "users/alice"), { schemaVersion: 1, accountStatus: "active" });
+      await setDoc(doc(db, "users/bob"), { schemaVersion: 1, accountStatus: "active" });
+      await setDoc(doc(db, "workspaces/one"), { schemaVersion: 1, status: "active" });
+      await setDoc(doc(db, "workspaces/one/memberships/alice"), { schemaVersion: 1, workspaceId: "one", userId: "alice", status: "active", role: "client" });
+      await setDoc(doc(db, "workspaces/one/memberships/bob"), { schemaVersion: 1, workspaceId: "one", userId: "alice", status: "active", role: "trainer", privatePayload: "bob-only" });
+      await setDoc(doc(db, "users/alice/membershipRefs/one"), { schemaVersion: 1, status: "active" });
+    });
+    const alice = verifiedContext("alice").firestore();
+    const refs = await assertSucceeds(getDocs(query(collection(alice, "users/alice/membershipRefs"), where("status", "==", "active"), where("schemaVersion", "==", 1), limit(20))));
+    assert.deepEqual(refs.docs.map((item) => item.id), ["one"]);
+    await assertFails(getDoc(doc(alice, "workspaces/one/memberships/bob")));
+    await assertFails(getDocs(query(collectionGroup(alice, "memberships"), where("userId", "==", "alice"), where("status", "==", "active"), where("schemaVersion", "==", 1), limit(20))));
+  });
+
+  it("denies protected reads to the seeded unverified identity despite active records", async () => {
+    const uid = "pr1_unverified";
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, `users/${uid}`), { schemaVersion: 1, accountStatus: "active" });
+      await setDoc(doc(db, `users/${uid}/authorizations/systemCatalog`), { schemaVersion: 1, status: "active", activeMembershipCount: 1 });
+      await setDoc(doc(db, `users/${uid}/membershipRefs/one`), { schemaVersion: 1, status: "active" });
+      await setDoc(doc(db, "workspaces/one"), { schemaVersion: 1, status: "active" });
+      await setDoc(doc(db, `workspaces/one/memberships/${uid}`), { schemaVersion: 1, workspaceId: "one", userId: uid, status: "active", role: "client" });
+      await setDoc(doc(db, "systemExercises/published"), { schemaVersion: 1, status: "published" });
+      await setDoc(doc(db, `users/${uid}/workspaces/one/assignedPrograms/asg`), { schemaVersion: 1, clientId: uid, workspaceId: "one", assignmentId: "asg" });
+    });
+    const unverified = environment.authenticatedContext(uid, { email: "pr1-unverified@example.invalid", email_verified: false }).firestore();
+    await assertSucceeds(getDoc(doc(unverified, `users/${uid}`)));
+    for (const path of [
+      "workspaces/one", `workspaces/one/memberships/${uid}`,
+      "systemExercises/published", `users/${uid}/workspaces/one/assignedPrograms/asg`
+    ]) await assertFails(getDoc(doc(unverified, path)));
+    await assertFails(getDocs(query(collection(unverified, `users/${uid}/membershipRefs`), where("status", "==", "active"), where("schemaVersion", "==", 1), limit(20))));
+    await assertFails(getDocs(query(collection(unverified, "systemExercises"), where("status", "==", "published"))));
+    const verified = verifiedContext(uid).firestore();
+    await assertSucceeds(getDoc(doc(verified, "workspaces/one")));
+    await assertSucceeds(getDoc(doc(verified, `workspaces/one/memberships/${uid}`)));
+  });
+
+  it("denies disabled, revoked, malformed and forged membership records", async () => {
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, "users/disabled"), { schemaVersion: 1, accountStatus: "disabled" });
+      await setDoc(doc(db, "users/revoked"), { schemaVersion: 1, accountStatus: "active" });
+      await setDoc(doc(db, "users/forged"), { schemaVersion: 1, accountStatus: "active" });
+      await setDoc(doc(db, "users/role_forger"), { schemaVersion: 1, accountStatus: "active" });
+      await setDoc(doc(db, "workspaces/one"), { schemaVersion: 1, status: "active" });
+      await setDoc(doc(db, "workspaces/one/memberships/disabled"), { schemaVersion: 1, workspaceId: "one", userId: "disabled", status: "active", role: "client" });
+      await setDoc(doc(db, "workspaces/one/memberships/revoked"), { schemaVersion: 1, workspaceId: "one", userId: "revoked", status: "revoked", role: "client" });
+      await setDoc(doc(db, "workspaces/one/memberships/forged"), { schemaVersion: 2, workspaceId: "other", userId: "forged", status: "active", role: "trainer" });
+      await setDoc(doc(db, "workspaces/one/memberships/role_forger"), { schemaVersion: 1, workspaceId: "one", userId: "role_forger", status: "active", role: "admin" });
+    });
+    for (const uid of ["disabled", "revoked", "forged", "role_forger"]) {
+      const db = verifiedContext(uid).firestore();
+      await assertSucceeds(getDoc(doc(db, `users/${uid}`)));
+      await assertFails(getDoc(doc(db, "workspaces/one")));
+      await assertFails(getDoc(doc(db, `workspaces/one/memberships/${uid}`)));
+    }
+  });
   it("requires active trusted entitlement and published status for catalog reads", async () => {
     await seedEligibleAssignment();
-    const client = environment.authenticatedContext("client").firestore();
+    const client = verifiedContext("client").firestore();
     await assertSucceeds(getDoc(doc(client, "systemExercises/published")));
     await assertFails(getDoc(doc(client, "systemExercises/draft")));
     await assertSucceeds(getDocs(query(collection(client, "systemExercises"), where("status", "==", "published"))));
@@ -72,7 +167,7 @@ describe("Firestore and Storage rules", () => {
       await setDoc(doc(db, "systemExercises/published"), { schemaVersion: 1, name: "Squat", status: "published" });
     });
 
-    const client = environment.authenticatedContext("client").firestore();
+    const client = verifiedContext("client").firestore();
     await assertFails(getDoc(doc(client, "systemExercises/published")));
 
     const adminDb = emulatorFirestore();
@@ -125,7 +220,7 @@ describe("Firestore and Storage rules", () => {
       await setDoc(doc(db, "systemExercises/published"), { schemaVersion: 1, name: "Squat", status: "published" });
     });
 
-    const client = environment.authenticatedContext("client").firestore();
+    const client = verifiedContext("client").firestore();
     await assertFails(getDoc(doc(client, "systemExercises/published")));
 
     const adminDb = emulatorFirestore();
@@ -208,7 +303,7 @@ describe("Firestore and Storage rules", () => {
       const workspaceA = `ws_partial_${suffix}_a`;
       const workspaceB = `ws_partial_${suffix}_b`;
       await seedPartial(uid, workspaceA, workspaceB, "active");
-      const client = environment.authenticatedContext(uid).firestore();
+      const client = verifiedContext(uid).firestore();
       await assertSucceeds(getDoc(doc(client, "systemExercises/published")));
       await environment.withSecurityRulesDisabled(async (context) => {
         const path = damageAccountSchema ? `users/${uid}` : `users/${uid}/authorizations/systemCatalog`;
@@ -241,7 +336,7 @@ describe("Firestore and Storage rules", () => {
     // even after the schema is repaired, so only a genuine addition grants access again.
     const driftUid = "partial_drift";
     await seedPartial(driftUid, "ws_partial_drift_a", "ws_partial_drift_b", "inactive");
-    const driftClient = environment.authenticatedContext(driftUid).firestore();
+    const driftClient = verifiedContext(driftUid).firestore();
     await assertFails(getDoc(doc(driftClient, "systemExercises/published")));
     await environment.withSecurityRulesDisabled(async (context) => {
       await updateDoc(doc(context.firestore(), `users/${driftUid}/authorizations/systemCatalog`), { schemaVersion: 5 });
@@ -286,7 +381,7 @@ describe("Firestore and Storage rules", () => {
       await setDoc(doc(db, `workspaces/ws_neutral_suspended/memberships/${uid}`), { schemaVersion: 1, workspaceId: "ws_neutral_suspended", userId: uid, role: "client", status: "active", revision: 3, catalogContributionActive: false });
       await setDoc(doc(db, "systemExercises/published"), { schemaVersion: 1, name: "Squat", status: "published" });
     });
-    const client = environment.authenticatedContext(uid).firestore();
+    const client = verifiedContext(uid).firestore();
     await assertFails(getDoc(doc(client, "systemExercises/published")));
 
     // Revoking the non-contributing relationship in the suspended workspace is a zero contribution
@@ -350,7 +445,7 @@ describe("Firestore and Storage rules", () => {
         await setDoc(doc(db, "systemExercises/published"), { schemaVersion: 1, name: "Squat", status: "published" });
       });
 
-      const client = environment.authenticatedContext(uid).firestore();
+      const client = verifiedContext(uid).firestore();
       await assertFails(getDoc(doc(client, "systemExercises/published")));
 
       const adminDb = emulatorFirestore();
@@ -390,7 +485,7 @@ describe("Firestore and Storage rules", () => {
       await setDoc(doc(db, "systemExercises/published"), { schemaVersion: 1, name: "Squat", status: "published" });
     });
 
-    const client = environment.authenticatedContext("client").firestore();
+    const client = verifiedContext("client").firestore();
     await assertSucceeds(getDoc(doc(client, "systemExercises/published")));
 
     const adminDb = emulatorFirestore();
@@ -459,7 +554,7 @@ describe("Firestore and Storage rules", () => {
         await setDoc(doc(db, "systemExercises/published"), { schemaVersion: 1, name: "Squat", status: "published" });
       });
 
-      const client = environment.authenticatedContext(uid).firestore();
+      const client = verifiedContext(uid).firestore();
       await assertFails(getDoc(doc(client, "systemExercises/published")));
 
       const adminDb = emulatorFirestore();
@@ -518,8 +613,8 @@ describe("Firestore and Storage rules", () => {
 
   it("gates snapshots by direct account/workspace/membership/assignment checks and hides sources", async () => {
     await seedEligibleAssignment();
-    const client = environment.authenticatedContext("client").firestore();
-    const other = environment.authenticatedContext("other").firestore();
+    const client = verifiedContext("client").firestore();
+    const other = verifiedContext("other").firestore();
     const snapshotPath = "users/client/workspaces/ws/assignedPrograms/asg/snapshots/content";
     await assertSucceeds(getDoc(doc(client, snapshotPath)));
     await assertSucceeds(getDoc(doc(client, `${snapshotPath}/workouts/day/exercises/item`)));
@@ -541,7 +636,7 @@ describe("Firestore and Storage rules", () => {
       await setDoc(doc(db, `${base}/plannedWorkouts/plan`), { clientId: "client", workspaceId: "ws", assignmentId: "asg", snapshotId: "content" });
       await setDoc(doc(db, `${base}/manifests/download`), { clientId: "client", workspaceId: "ws", assignmentId: "asg" });
     });
-    const client = environment.authenticatedContext("client").firestore();
+    const client = verifiedContext("client").firestore();
     const reads = [base, `${base}/snapshots/content`, `${base}/snapshots/content/workouts/day`, `${base}/snapshots/content/workouts/day/exercises/item`, `${base}/plannedWorkouts/plan`, `${base}/manifests/download`];
     for (const path of reads) await assertSucceeds(getDoc(doc(client, path)));
     await assertSucceeds(getDocs(collection(client, "users/client/workspaces/ws/assignedPrograms")));
@@ -566,7 +661,7 @@ describe("Firestore and Storage rules", () => {
     await environment.withSecurityRulesDisabled(async (context) => {
       await context.firestore().doc("users/client/authorizations/systemCatalog").delete();
     });
-    const client = environment.authenticatedContext("client").firestore();
+    const client = verifiedContext("client").firestore();
     await assertSucceeds(getDoc(doc(client, base)));
     await assertSucceeds(getDoc(doc(client, `${base}/snapshots/content`)));
     const adminDb = emulatorFirestore();
@@ -619,8 +714,8 @@ describe("Firestore and Storage rules", () => {
     assert.equal(trustedHeader.get("assignmentId"), "asg-trusted");
     assert.equal(trustedHeader.get("schemaVersion"), 1);
 
-    const client = environment.authenticatedContext("client").firestore();
-    const other = environment.authenticatedContext("other").firestore();
+    const client = verifiedContext("client").firestore();
+    const other = verifiedContext("other").firestore();
 
     // The documented discovery query: the owner's exact account/workspace header collection.
     const headers = await assertSucceeds(getDocs(collection(client, collectionPath)));
@@ -690,8 +785,8 @@ describe("Firestore and Storage rules", () => {
       await setDoc(doc(db, "workspaces/other"), { schemaVersion: 1, status: "active" });
       await setDoc(doc(db, "workspaces/other/assignedPrograms/asg-cross"), { schemaVersion: 1, workspaceId: "other", clientId: "client", assignmentId: "asg-cross", trainerId: "trainer", status: "active", revision: 1 });
     });
-    const trainer = environment.authenticatedContext("trainer").firestore();
-    const client = environment.authenticatedContext("client").firestore();
+    const trainer = verifiedContext("trainer").firestore();
+    const client = verifiedContext("client").firestore();
     const ownQuery = query(collection(trainer, indexPath), where("schemaVersion", "==", 1), where("workspaceId", "==", "ws"), where("trainerId", "==", "trainer"), where("status", "==", "active"));
     const ownIndexes = await assertSucceeds(getDocs(ownQuery));
     assert.deepEqual(ownIndexes.docs.map((document) => document.id), ["asg-owned"]);
@@ -729,14 +824,14 @@ describe("Firestore and Storage rules", () => {
   });
 
   it("allows an owner write and rejects forged ownership with stable permission denial", async () => {
-    const client = environment.authenticatedContext("client").firestore();
+    const client = verifiedContext("client").firestore();
     await assertSucceeds(setDoc(doc(client, "spikeEcho/client/documents/doc"), { ownerUid: "client", value: "accepted", counter: 0 }));
     await assertFails(setDoc(doc(client, "spikeEcho/other/documents/doc"), { ownerUid: "client", value: "forged", counter: 0 }));
   });
 
   it("denies client writes to server-authoritative lifecycle, count, lock, and index documents", async () => {
     await seedEligibleAssignment();
-    const client = environment.authenticatedContext("client").firestore();
+    const client = verifiedContext("client").firestore();
     await assertFails(setDoc(doc(client, "workspaces/ws"), { schemaVersion: 1, status: "active", membershipRevision: 99, activeMembershipCount: 99 }));
     await assertFails(setDoc(doc(client, "workspaces/ws/memberships/client"), { schemaVersion: 1, userId: "client", role: "trainer", status: "active", revision: 99, catalogContributionActive: true }));
     await assertFails(setDoc(doc(client, "workspaces/ws/assignedPrograms/asg"), { schemaVersion: 1, status: "active", revision: 99 }));
@@ -747,8 +842,8 @@ describe("Firestore and Storage rules", () => {
   });
 
   it("enforces owner, MIME, metadata, and size for Storage", async () => {
-    const ownerStorage = environment.authenticatedContext("client").storage();
-    const otherStorage = environment.authenticatedContext("other").storage();
+    const ownerStorage = verifiedContext("client").storage();
+    const otherStorage = verifiedContext("other").storage();
     await assertSucceeds(uploadString(ref(ownerStorage, "spikeUploads/client/ok"), "safe", "raw", { contentType: "text/plain", customMetadata: { ownerUid: "client" } }));
     await assertFails(uploadString(ref(otherStorage, "spikeUploads/client/no"), "safe", "raw", { contentType: "text/plain", customMetadata: { ownerUid: "other" } }));
     await assertFails(uploadString(ref(ownerStorage, "spikeUploads/client/no-mime"), "safe", "raw", { contentType: "application/octet-stream", customMetadata: { ownerUid: "client" } }));
@@ -782,7 +877,7 @@ describe("Firestore and Storage rules", () => {
       await setDoc(doc(db, "workspaces/ws_missing_schema"), { status: "active", membershipRevision: 1, activeRosterCount: 0, catalogContributionCount: 0 });
       await setDoc(doc(db, "systemExercises/published"), { schemaVersion: 1, name: "Squat", status: "published" });
     });
-    const client = environment.authenticatedContext("ws_damaged").firestore();
+    const client = verifiedContext("ws_damaged").firestore();
     await assertFails(getDoc(doc(client, "systemExercises/published")));
     const before = {
       workspace: (await adminDb.doc("workspaces/ws_missing_schema").get()).data(),

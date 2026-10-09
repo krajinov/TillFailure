@@ -297,6 +297,7 @@ final class RecoveryPersistenceBridge: NSObject, NativeRecoveryPersistenceBridge
     }
 
     #if DEBUG
+    func debugFileURL(uid: String) -> URL { fileURL(for: uid) }
     /// Test-only injection: when set, configuring the required commit metadata for the temporary
     /// file throws, so the harness can prove that a pre-commit failure preserves the previously
     /// committed record, never commits the new payload, and removes the temporary file.

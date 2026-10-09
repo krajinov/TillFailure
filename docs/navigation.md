@@ -25,6 +25,7 @@ Launch
         -> OnlineMembershipCheck
            -> PendingInvitation/Auth or AcceptInvitation
            -> NeedsOnboarding/Onboarding
+           -> MultipleValidMemberships/WorkspaceChoice
            -> ActiveClient/ClientShell
            -> ActiveTrainer/TrainerShell
            -> NoActiveWorkspace/WorkspaceGate
@@ -37,13 +38,15 @@ Launch
 
 Online protected navigation is driven by server-sourced membership. A splash timeout or cached role must not choose the normal shell. The restricted offline shell is a local availability decision for a previously verified UID, bounded grant, and cache-verified workout—not server authorization. An offline device cannot immediately discover remote revocation; reconnect revalidates and server Rules independently deny stale requests. The canonical policy and proposed seven-day bound are in [offline-sync.md](offline-sync.md).
 
+Milestone 4 issues no offline grant because its duration is unapproved and no downloaded workout exists. Its offline branch therefore reaches `ConnectToVerify`, or Locked Recovery for unresolved UID-owned data; the restricted workout shell remains a later feature. Trainer provisioning is operator-only; mobile navigation can show pending status and recheck membership but cannot initiate the privileged command.
+
 ## Destination hierarchy
 
 | Graph/shell | Destinations | Notes |
 |---|---|---|
 | Auth | Welcome, SignIn, ForgotPassword | Clears protected stacks; invitation context survives through auth via a safe opaque token reference |
 | Invitation | InvitationPreview, AcceptInvitation | Link can arrive signed out or signed in; server validates token/account binding at acceptance |
-| Onboarding | PersonalInfo, Goal, Experience, Constraints, Complete | Step state belongs to one onboarding feature/flow; not five unrelated ViewModels by default |
+| Onboarding | PersonalInfo, Complete; Goal, Experience, Constraints only after product/privacy approval | Step state belongs to one onboarding feature/flow; health/constraint collection is not approved for Milestone 4 |
 | Client shell | Home, Workouts, Schedule, Progress, Messages, Profile | Bottom destinations retain bounded state per shell; details push above the selected root |
 | Client details | WorkoutDetail, ActiveWorkout, WorkoutSummary, HistoryDetail, AppointmentDetail, ProgressEntry, Conversation, Settings | ActiveWorkout restoration is repository-driven; completion clears/replaces the active-workout segment |
 | Trainer shell | Dashboard, Clients, Programs, Schedule, Messages, Profile | Role-specific roots; no client-only destination is reachable by forged key without domain authorization |
@@ -64,9 +67,10 @@ Android intent filters and iOS Universal Link/custom URL handling remain in thei
 
 ## Session, role, and stack rules
 
-- First sign-in, invitation acceptance, and creation of an offline eligibility grant require connectivity and server verification. Online restoration waits for a server membership result; offline restoration may enter only the restricted workout shell described above.
-- Sign-out/account switch is a stateful flow, not an immediate Auth call: freeze edits, inspect app-owned pending mutations/uploads, synchronize/cancel/explicitly discard, fence callbacks, terminate/clean up, dispose scopes, then replace protected stacks. The full protocol and failure/process-death states are canonical in `offline-sync.md`.
+- First sign-in, invitation acceptance, and any future offline eligibility grant require connectivity and server verification. Online restoration waits for a server membership result; Milestone 4 issues no grant, so offline restoration cannot enter a protected shell.
+- Sign-out/account switch is a stateful flow, not an immediate Auth call: PR 1 allows only proven clean departure on both hosts; PR 5 adds synchronization/reconciliation for pending work. Destructive discard requires separate approval. Fence callbacks, terminate/clean up, dispose scopes, then replace protected stacks. The full protocol and failure/process-death states are canonical in `offline-sync.md`.
 - The MVP has one active account per installation and no hot switch. A new repository/ViewModel/navigation scope is created only after departure isolation completes. Koin scope creation does not isolate Firebase persistent cache.
+- A Debug-only development catalog opens as a separate visual-fixture root from a stable identity gate; the entry is hidden during busy departure and cleanup. It never receives the product identity client or selects a role; returning to the product root resolves the current native client generation, creates a new gate and repeats online authorization. Release hosts do not expose the catalog entry.
 - Membership revocation or role change replaces the entire role shell after it is server-observed. Rejected unsynchronized data remains in UID-scoped Locked Recovery rather than being silently deleted. A trainer-to-client role change cannot preserve trainer detail screens.
 - Back from the root shell follows platform convention; back never returns to onboarding/auth after successful transition. Invitation tokens are removed from navigation state after consumption.
 - Process restoration serializes only safe stable keys plus an account-switch recovery stage outside navigation. A destination reloads server-authorized data online or locally eligible downloaded data offline.

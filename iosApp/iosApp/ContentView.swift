@@ -4,11 +4,14 @@ import Shared
 
 struct ComposeView: UIViewControllerRepresentable {
     let firebaseBridge: NativeFirebaseBridge?
+    let recoveryBridge: NativeRecoveryPersistenceBridge?
+    let showDevelopmentCatalog: Bool
 
     func makeUIViewController(context: Self.Context) -> UIViewController {
         MainViewControllerKt.MainViewController(
-            showDevelopmentCatalog: _isDebugAssertConfiguration(),
-            nativeFirebaseBridge: firebaseBridge
+            nativeFirebaseBridge: firebaseBridge,
+            nativeRecoveryBridge: recoveryBridge,
+            showDevelopmentCatalog: showDevelopmentCatalog
         )
     }
 
@@ -17,9 +20,12 @@ struct ComposeView: UIViewControllerRepresentable {
 
 struct ContentView: View {
     let firebaseBridge: NativeFirebaseBridge?
+    let recoveryBridge: NativeRecoveryPersistenceBridge?
+    let showDevelopmentCatalog: Bool
 
     var body: some View {
-        ComposeView(firebaseBridge: firebaseBridge)
+        ComposeView(firebaseBridge: firebaseBridge, recoveryBridge: recoveryBridge,
+                    showDevelopmentCatalog: showDevelopmentCatalog)
             .ignoresSafeArea()
     }
 }

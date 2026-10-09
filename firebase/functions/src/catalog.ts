@@ -225,6 +225,7 @@ export async function transitionMembership(db: Firestore, input: MembershipTrans
   const entitlementRef = db.doc(`users/${input.uid}/authorizations/systemCatalog`);
   const workspaceRef = db.doc(`workspaces/${input.workspaceId}`);
   const membershipRef = db.doc(`workspaces/${input.workspaceId}/memberships/${input.uid}`);
+  const discoveryRef = db.doc(`users/${input.uid}/membershipRefs/${input.workspaceId}`);
   return db.runTransaction(async (transaction) => {
     const documents = await transaction.getAll(receiptRef, accountRef, entitlementRef, workspaceRef, membershipRef);
     const receipt = documents[0]!;
@@ -293,6 +294,11 @@ export async function transitionMembership(db: Firestore, input: MembershipTrans
       revision: membershipRevision,
       catalogContributionActive: newContributes
     });
+    if (becomesActive) {
+      transaction.set(discoveryRef, { schemaVersion: 1, status: "active" });
+    } else {
+      transaction.delete(discoveryRef);
+    }
     transaction.update(entitlementRef, {
       status: entitlementStatus,
       activeMembershipCount: nextCount,

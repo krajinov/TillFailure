@@ -7,7 +7,8 @@ service cloud.firestore {
 
     function activeAccount(uid) {
       let account = get(/databases/$(database)/documents/users/$(uid));
-      return account.data.schemaVersion == 1 && account.data.accountStatus == "active";
+      return request.auth.token.email_verified == true
+        && account.data.schemaVersion == 1 && account.data.accountStatus == "active";
     }
 
     function catalogEntitled(uid) {
@@ -40,6 +41,62 @@ service cloud.firestore {
         && membership.data.userId == uid
         && membership.data.role == "trainer"
         && membership.data.status == "active";
+    }
+
+    function activeOwnMembership(wid, uid) {
+      let membership = get(/databases/$(database)/documents/workspaces/$(wid)/memberships/$(uid));
+      return membership.data.schemaVersion == 1
+        && membership.data.workspaceId == wid
+        && membership.data.userId == uid
+        && membership.data.status == "active"
+        && membership.data.role in ["client", "trainer"];
+    }
+
+    // PR 1 only exposes the signed-in user's own account and verified access paths. All writes,
+    // including bootstrap, role and membership changes, stay trusted/server-owned.
+    match /users/{uid} {
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow list, write: if false;
+
+      // Trusted membership transitions maintain a minimal caller-owned discovery directory.
+      // Its documents contain no membership payload; every selected workspace and membership is
+      // subsequently point-read through the path-bound rules below.
+      match /membershipRefs/{wid} {
+        allow get: if signedIn()
+          && request.auth.uid == uid
+          && activeAccount(uid)
+          && resource.data.schemaVersion == 1
+          && resource.data.status == "active";
+        allow list: if signedIn()
+          && request.auth.uid == uid
+          && activeAccount(uid)
+          && request.query.limit <= 20
+          && resource.data.schemaVersion == 1
+          && resource.data.status == "active";
+        allow write: if false;
+      }
+    }
+
+    match /workspaces/{wid} {
+      allow get: if signedIn()
+        && activeAccount(request.auth.uid)
+        && resource.data.schemaVersion == 1
+        && resource.data.status == "active"
+        && activeOwnMembership(wid, request.auth.uid);
+      allow list, write: if false;
+
+      match /memberships/{memberUid} {
+        allow get: if signedIn()
+          && request.auth.uid == memberUid
+          && activeAccount(memberUid)
+          && activeWorkspace(wid)
+          && resource.data.schemaVersion == 1
+          && resource.data.workspaceId == wid
+          && resource.data.userId == memberUid
+          && resource.data.status == "active"
+          && resource.data.role in ["client", "trainer"];
+        allow list, write: if false;
+      }
     }
 
     function assignmentReadable(uid, wid, aid) {
