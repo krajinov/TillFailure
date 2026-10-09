@@ -11,7 +11,9 @@
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test --test-concurrency=1 lib/test/**/*.test.js",
     "test:emulators": "node scripts/run-emulator-tests.mjs",
-    "seed:pr1": "node scripts/seed-pr1.mjs"
+    "seed:pr1": "node scripts/seed-pr1.mjs",
+    "seed:pr2": "node scripts/seed-pr2.mjs",
+    "provision:pr2:emulator": "npm run build && node lib/src/provisioning-cli.js"
   },
   "dependencies": {
     "firebase-admin": "14.4.0",

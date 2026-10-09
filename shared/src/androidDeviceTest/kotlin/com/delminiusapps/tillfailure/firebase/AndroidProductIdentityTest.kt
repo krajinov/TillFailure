@@ -9,6 +9,7 @@ import com.delminiusapps.tillfailure.identity.checkAccount
 import com.delminiusapps.tillfailure.identity.checkMembership
 import com.delminiusapps.tillfailure.identity.IdentityDecision
 import org.junit.Test
+import org.junit.Assume.assumeTrue
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.CountDownLatch
@@ -21,6 +22,49 @@ import kotlin.test.assertTrue
 
 /** Requires `npm run seed:pr1` against the local Auth and Firestore emulators. */
 class AndroidProductIdentityTest {
+    @Test fun pr2OperatorProvisioningChangesOnlyServerVerifiedTrainerRoot() {
+        val args = InstrumentationRegistry.getArguments()
+        val stage = args.getString("pr2Stage")
+        assumeTrue("Run with pr2Stage=pending or verified against the PR 2 fixture", stage == "pending" || stage == "verified")
+        val password = args.getString("pr2Password") ?: error("Pass -e pr2Password for the local emulator identity")
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val client = AndroidFirebaseSpikeClient(context, emulatorConfiguration(), AccountCallbackFence(), productMemoryCache = true)
+        try {
+            if (stage == "pending") {
+                assertNull(await<StableFirebaseFailure?> { done ->
+                    client.signIn("pr2-trainer@example.invalid", password, 0L) { done(it) }
+                })
+            } else {
+                assertEquals("pr2_trainer", FirebaseAuth.getInstance(client.firebaseApp).currentUser?.uid)
+            }
+            // Constructing the gate with the already signed-in native SDK exercises restoration.
+            val model = IdentityViewModel(client)
+            if (stage == "pending") {
+                awaitStatus(model, GateStatus.WorkspaceGate)
+                assertNull(model.state.value.verifiedRole)
+                model.onEvent(com.delminiusapps.tillfailure.identity.IdentityEvent.Retry)
+                awaitStatus(model, GateStatus.WorkspaceGate)
+                assertEquals(StableFirebaseErrorCode.PERMISSION_DENIED,
+                    await<FirebaseDocumentResult> { done ->
+                        client.getDocument("workspaces/pr2_workspace/trainerProfiles/pr2_trainer", 0L, done)
+                    }.failure?.code)
+            } else {
+                awaitStatus(model, GateStatus.TrainerHome)
+                assertEquals("trainer", model.state.value.verifiedRole)
+                assertEquals("pr2_workspace", model.state.value.verifiedWorkspaceId)
+                val profile = await<FirebaseDocumentResult> { done ->
+                    client.getDocument("workspaces/pr2_workspace/trainerProfiles/pr2_trainer", 0L, done)
+                }
+                assertNull(profile.failure)
+                assertEquals("pr2_trainer", profile.document?.fields?.get("userId"))
+            }
+        } finally {
+            val ended = CountDownLatch(1)
+            client.terminateAndClear { ended.countDown() }
+            ended.await(15, TimeUnit.SECONDS)
+        }
+    }
+
     @Test fun invalidPasswordIsClassifiedWithoutGrantingAnIdentity() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val client = AndroidFirebaseSpikeClient(context, emulatorConfiguration(), AccountCallbackFence())
