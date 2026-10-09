@@ -209,8 +209,7 @@ class AndroidFirebaseSpikeClient(
     override fun discoverMemberships(uid: String, epoch: Long, callback: (MembershipDiscoveryResult) -> Unit): FirebaseCancellation {
         val cancelled = AtomicBoolean(false)
         val task = issueIfLive {
-            firestore.collectionGroup("memberships")
-                .whereEqualTo("userId", uid)
+            firestore.collection("users/$uid/membershipRefs")
                 .whereEqualTo("status", "active")
                 .whereEqualTo("schemaVersion", 1)
                 .limit(20)

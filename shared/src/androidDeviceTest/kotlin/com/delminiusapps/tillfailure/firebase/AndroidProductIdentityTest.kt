@@ -23,7 +23,7 @@ import kotlin.test.assertTrue
 class AndroidProductIdentityTest {
     @Test fun invalidPasswordIsClassifiedWithoutGrantingAnIdentity() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val client = AndroidFirebaseSpikeClient(context, FirebaseEmulatorConfiguration(host = "10.0.2.2"), AccountCallbackFence())
+        val client = AndroidFirebaseSpikeClient(context, emulatorConfiguration(), AccountCallbackFence())
         try {
             FirebaseAuth.getInstance(client.firebaseApp).signOut()
             val failure = await<StableFirebaseFailure?> { done ->
@@ -42,7 +42,7 @@ class AndroidProductIdentityTest {
         val password = InstrumentationRegistry.getArguments().getString("pr1Password")
             ?: error("Pass -e pr1Password for the local emulator identity")
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val client = AndroidFirebaseSpikeClient(context, FirebaseEmulatorConfiguration(host = "10.0.2.2"), AccountCallbackFence())
+        val client = AndroidFirebaseSpikeClient(context, emulatorConfiguration(), AccountCallbackFence())
         try {
             val signIn = await<StableFirebaseFailure?> { done ->
                 client.signIn("pr1-client@example.invalid", password, 0L) { done(it) }
@@ -53,6 +53,7 @@ class AndroidProductIdentityTest {
             val discovery = await<MembershipDiscoveryResult> { done -> client.discoverMemberships("pr1_client", 0L, done) }
             assertNull(discovery.failure)
             assertEquals(1, discovery.documents?.size)
+            assertEquals("users/pr1_client/membershipRefs/pr1_workspace", discovery.documents?.single()?.path)
             val workspace = await<FirebaseDocumentResult> { done -> client.getDocument("workspaces/pr1_workspace", 0L, done) }.document
             val membership = await<FirebaseDocumentResult> { done ->
                 client.getDocument("workspaces/pr1_workspace/memberships/pr1_client", 0L, done)
@@ -70,7 +71,7 @@ class AndroidProductIdentityTest {
         val password = InstrumentationRegistry.getArguments().getString("pr1Password")
             ?: error("Pass -e pr1Password for the local emulator identity")
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val client = AndroidFirebaseSpikeClient(context, FirebaseEmulatorConfiguration(host = "10.0.2.2"), AccountCallbackFence())
+        val client = AndroidFirebaseSpikeClient(context, emulatorConfiguration(), AccountCallbackFence())
         try {
             FirebaseAuth.getInstance(client.firebaseApp).signOut()
             val signIn = await<StableFirebaseFailure?> { done ->
@@ -90,6 +91,16 @@ class AndroidProductIdentityTest {
             val model = IdentityViewModel(client)
             awaitStatus(model, GateStatus.UnverifiedEmail)
             assertNull(model.state.value.verifiedRole)
+            // The UI gate is not the Rules boundary: the same signed-in SDK must independently
+            // be denied workspace, exact membership and discovery reads.
+            assertEquals(StableFirebaseErrorCode.PERMISSION_DENIED,
+                await<FirebaseDocumentResult> { done -> client.getDocument("workspaces/pr1_workspace", 0L, done) }.failure?.code)
+            assertEquals(StableFirebaseErrorCode.PERMISSION_DENIED,
+                await<FirebaseDocumentResult> { done ->
+                    client.getDocument("workspaces/pr1_workspace/memberships/pr1_unverified", 0L, done)
+                }.failure?.code)
+            assertEquals(StableFirebaseErrorCode.PERMISSION_DENIED,
+                await<MembershipDiscoveryResult> { done -> client.discoverMemberships("pr1_unverified", 0L, done) }.failure?.code)
         } finally {
             val ended = CountDownLatch(1)
             client.terminateAndClear { ended.countDown() }
@@ -101,7 +112,7 @@ class AndroidProductIdentityTest {
         val password = InstrumentationRegistry.getArguments().getString("pr1Password")
             ?: error("Pass -e pr1Password for the local emulator identity")
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val client = AndroidFirebaseSpikeClient(context, FirebaseEmulatorConfiguration(host = "10.0.2.2"), AccountCallbackFence())
+        val client = AndroidFirebaseSpikeClient(context, emulatorConfiguration(), AccountCallbackFence())
         try {
             assertTrue(setEmailVerified("pr1_unverified", false)) // deterministic fixture baseline
             FirebaseAuth.getInstance(client.firebaseApp).signOut()
@@ -130,7 +141,7 @@ class AndroidProductIdentityTest {
     /** Out-of-band Admin change against the local Auth emulator, as a support/verification flow would. */
     private fun setEmailVerified(uid: String, verified: Boolean): Boolean {
         val connection = URL(
-            "http://10.0.2.2:9099/identitytoolkit.googleapis.com/v1/projects/demo-tillfailure-m3/accounts:update"
+            "http://10.0.2.2:${emulatorConfiguration().authPort}/identitytoolkit.googleapis.com/v1/projects/demo-tillfailure-m3/accounts:update"
         ).openConnection() as HttpURLConnection
         return try {
             connection.requestMethod = "POST"
@@ -142,6 +153,15 @@ class AndroidProductIdentityTest {
         } finally {
             connection.disconnect()
         }
+    }
+
+    private fun emulatorConfiguration(): FirebaseEmulatorConfiguration {
+        val arguments = InstrumentationRegistry.getArguments()
+        return FirebaseEmulatorConfiguration(
+            host = "10.0.2.2",
+            authPort = arguments.getString("authPort")?.toIntOrNull() ?: 9099,
+            firestorePort = arguments.getString("firestorePort")?.toIntOrNull() ?: 8080,
+        )
     }
 
     private fun awaitStatus(model: IdentityViewModel, status: GateStatus, timeoutMs: Long = 20_000) {

@@ -30,8 +30,17 @@ class AndroidCleanDepartureTest {
     private val context: Context get() = InstrumentationRegistry.getInstrumentation().context
     private val store: AndroidAtomicFilePersistence get() = AndroidAtomicFilePersistence(context)
 
+    private fun emulatorConfiguration(): FirebaseEmulatorConfiguration {
+        val arguments = InstrumentationRegistry.getArguments()
+        return FirebaseEmulatorConfiguration(
+            host = "10.0.2.2",
+            authPort = arguments.getString("authPort")?.toIntOrNull() ?: 9099,
+            firestorePort = arguments.getString("firestorePort")?.toIntOrNull() ?: 8080,
+        )
+    }
+
     private fun fresh(): AndroidFirebaseSpikeClient = AndroidFirebaseSpikeClient(
-        context, FirebaseEmulatorConfiguration(host = "10.0.2.2"), AccountCallbackFence(), productMemoryCache = true,
+        context, emulatorConfiguration(), AccountCallbackFence(), productMemoryCache = true,
     )
 
     private fun reset() {
@@ -236,7 +245,7 @@ class AndroidCleanDepartureTest {
         reset()
         // The Android host resolves one process-level generation; a recreated root and the departing
         // graph therefore share the same in-flight departure owner.
-        val existing = AndroidProductIdentitySession.get(context)
+        val existing = AndroidProductIdentitySession.get(context, emulatorConfiguration())
         val client = if (existing.isRetired()) {
             fresh().also { AndroidProductIdentitySession.replaceIfCurrent(existing, it) }
         } else existing

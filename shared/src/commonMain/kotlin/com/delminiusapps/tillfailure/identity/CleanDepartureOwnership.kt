@@ -69,12 +69,17 @@ class CleanDepartureOwnership {
         }
     }
 
-    /** Joins an in-flight departure without starting one; returns its UID or null when idle. */
-    fun observeInFlight(onSettled: (DepartureOutcome) -> Unit): String? = lock.locked {
+    /**
+     * Joins an in-flight departure without starting one. [onJoined] publishes the waiting state
+     * while the slot is locked, before settlement can take the observer. It must not call back into
+     * this owner. No state is published when the owner is idle.
+     */
+    fun observeInFlight(onJoined: () -> Unit = {}, onSettled: (DepartureOutcome) -> Unit): String? = lock.locked {
         val uid = departingUid
         if (uid == null) {
             null
         } else {
+            onJoined()
             observers += onSettled
             uid
         }

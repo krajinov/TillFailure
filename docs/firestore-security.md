@@ -7,6 +7,8 @@ Review date: **2026-09-20**
 
 Authentication answers who the caller is; the active membership document answers what the caller may do in a workspace. Protected workspace data requires an active account, active workspace, and `workspaces/{workspaceId}/memberships/{request.auth.uid}.status == "active"`, plus the path's role/ownership checks. Global `systemExercises` instead uses the fixed account entitlement described below; it grants no workspace role or access. A locally cached role/entitlement, navigation shell, custom claim, or hidden UI is never authorization.
 
+For the Milestone 4 PR 1 email/password slice, Firestore Rules also require `request.auth.token.email_verified == true` for protected workspace, membership, caller-owned discovery, catalog, and assignment reads. The own `users/{uid}` account document remains readable for account-state checks; it grants no protected access by itself. Membership discovery lists only minimal trusted `users/{uid}/membershipRefs/{wid}` records under the caller's UID and then point-reads the exact membership. Collection-group membership listing is denied: filtering a record by its `userId` field cannot prove that the document ID is the caller's UID. Trusted membership transitions create or remove the caller-owned reference in the same transaction. Existing memberships need a reviewed directory backfill; absent references fail closed.
+
 Roles for MVP:
 
 - `trainer`: manages the single-trainer workspace, clients, programming, availability, review, and trainer-only notes.
@@ -22,6 +24,7 @@ Membership role/status/tenant IDs and immutable owner IDs are protected by field
 | Path | Read | Create | Update | Delete/archive | Required validation |
 |---|---|---|---|---|---|
 | `users/{uid}` | Own | Trusted account bootstrap | Own safe fields; status/email linkage/lifecycleRevision trusted | Trusted lifecycle | Exact UID; field allowlist; bounded strings/enums |
+| `users/{uid}/membershipRefs/{wid}` | Own verified account; bounded active directory query | Trusted membership transition | Trusted membership transition | Trusted membership transition | Minimal schema/status only; no membership payload or client writes; exact membership point-read still required |
 | `users/{uid}/authorizations/systemCatalog` | Own active account, for display only; Rules may point-read | Trusted bootstrap/lifecycle | Trusted lifecycle only | Trusted lifecycle/retention | Count/status/revision/audit entirely server-owned; no client create/update/delete |
 | `lifecycleCommands/{id}` | Trusted only | Trusted lifecycle transaction | Immutable receipt | Trusted retention | Scoped caller/target/key, request hash, committed result; no mobile access |
 | `users/{uid}/deviceTokens/{id}` | Own; trusted sender | Own | Own safe token metadata; trusted invalidation | Own/trusted | UID, platform, installation ownership; token never publicly readable |

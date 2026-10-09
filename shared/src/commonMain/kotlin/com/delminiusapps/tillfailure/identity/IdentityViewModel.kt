@@ -70,8 +70,10 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
         // observe or verify the still signed-in session: that older departure can still sign out,
         // fence callbacks or retire this Firebase client. Join it and adopt its terminal outcome
         // instead of re-authorizing (and without starting a competing departure).
-        if (port.ownership.observeInFlight(::onDepartureAdopted) != null) {
-            setState(mutableState.value.copy(status = GateStatus.SwitchingOut, busy = true))
+        if (port.ownership.observeInFlight(
+                onJoined = { setState(mutableState.value.copy(status = GateStatus.SwitchingOut, busy = true)) },
+                onSettled = ::onDepartureAdopted,
+            ) != null) {
             return
         }
         val read = port.readMarker()
@@ -267,11 +269,11 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
             if (documents.size > 1) { finish(GateStatus.MultipleMemberships); return@discoverMemberships }
             val discovered = documents.single()
             val pieces = discovered.path.split('/')
-            if (pieces.size != 4 || pieces[0] != "workspaces" || pieces[2] != "memberships" || pieces[3] != uid ||
-                discovered.fields["schemaVersion"] != "1" || discovered.fields["userId"] != uid ||
-                discovered.fields["workspaceId"] != pieces[1] || discovered.fields["status"] != "active"
+            if (pieces.size != 4 || pieces[0] != "users" || pieces[1] != uid ||
+                pieces[2] != "membershipRefs" || !isPathSafeAuthUid(pieces[3]) ||
+                discovered.fields["schemaVersion"] != "1" || discovered.fields["status"] != "active"
             ) { finish(GateStatus.AccessLost); return@discoverMemberships }
-            val wid = pieces[1]
+            val wid = pieces[3]
             operations += client.getDocument("workspaces/$wid", 0L) { workspaceResult ->
                 if (request != revision) return@getDocument
                 if (workspaceResult.failure != null) { fail(workspaceResult.failure); return@getDocument }

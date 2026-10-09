@@ -376,7 +376,14 @@ enum CleanDepartureHarness {
                     record("PR1_UNVERIFIED status=\(observed.status.name)")
                     let blocked = reached && observed.verifiedRole == nil
                     record("PR1_UNVERIFIED gate=\(blocked ? "PASS" : "FAIL")")
-                    exit(fresh && predicate && blocked ? 0 : 1)
+                    _ = bridge.getDocument(path: "workspaces/pr1_workspace", accountEpoch: 0) { workspace in
+                        let workspaceDenied = workspace.failure?.code == "PERMISSION_DENIED"
+                        _ = bridge.discoverMemberships(uid: "pr1_unverified", accountEpoch: 0) { discovery in
+                            let discoveryDenied = discovery.failure?.code == "PERMISSION_DENIED"
+                            record("PR1_UNVERIFIED rules=\(workspaceDenied && discoveryDenied ? "PASS" : "FAIL")")
+                            exit(fresh && predicate && blocked && workspaceDenied && discoveryDenied ? 0 : 1)
+                        }
+                    }
                 }
             }
         }
@@ -426,7 +433,9 @@ enum CleanDepartureHarness {
                 // joins the in-flight departure and cannot start a competing one.
                 let recreated = IosProductIdentityClient(bridge: bridge.activeBridge(), recoveryBridge: recovery)
                 var adoptedClean = false
-                let joined = recreated.ownership.observeInFlight { outcome in adoptedClean = (outcome == .clean) }
+                let joined = recreated.ownership.observeInFlight(onJoined: {}, onSettled: { outcome in
+                    adoptedClean = (outcome == .clean)
+                })
                 let refused = !recreated.ownership.lease(uid: "pr1_client") { _ in }
                 let visible = (recreated.ownership === client.ownership) && joined == "pr1_client" && refused
                 record("PR1_RECREATED_ROOT visible=\(visible ? "PASS" : "FAIL")")
@@ -488,8 +497,13 @@ enum CleanDepartureHarness {
                 _ = client.refreshSession(epoch: 0) { after in
                     let fresh = after.failure == nil && after.session?.emailVerified == true
                     record("PR1_RECHECK after=\(fresh ? "PASS" : "FAIL")")
-                    _ = setEmailVerified(uid: "pr1_unverified", verified: false)
-                    exit(stale && updated && fresh ? 0 : 1)
+                    _ = bridge.discoverMemberships(uid: "pr1_unverified", accountEpoch: 0) { discovery in
+                        let directory = discovery.failure == nil &&
+                            discovery.documents?.map(\.path) == ["users/pr1_unverified/membershipRefs/pr1_workspace"]
+                        record("PR1_RECHECK directory=\(directory ? "PASS" : "FAIL")")
+                        _ = setEmailVerified(uid: "pr1_unverified", verified: false)
+                        exit(stale && updated && fresh && directory ? 0 : 1)
+                    }
                 }
             }
         }
@@ -498,7 +512,8 @@ enum CleanDepartureHarness {
     /// Applies an out-of-band Admin email-verification change on the local Auth emulator.
     @discardableResult
     private static func setEmailVerified(uid: String, verified: Bool) -> Bool {
-        let endpoint = "http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/projects/demo-tillfailure-m3/accounts:update"
+        let port = Int(ProcessInfo.processInfo.environment["TF_AUTH_EMULATOR_PORT"] ?? "") ?? 9099
+        let endpoint = "http://127.0.0.1:\(port)/identitytoolkit.googleapis.com/v1/projects/demo-tillfailure-m3/accounts:update"
         guard let url = URL(string: endpoint) else { return false }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"

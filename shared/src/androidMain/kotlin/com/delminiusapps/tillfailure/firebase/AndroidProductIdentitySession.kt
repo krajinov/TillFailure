@@ -7,9 +7,12 @@ object AndroidProductIdentitySession {
     private var current: AndroidFirebaseSpikeClient? = null
 
     @Synchronized
-    fun get(context: Context): AndroidFirebaseSpikeClient = current ?: AndroidFirebaseSpikeClient(
+    fun get(
+        context: Context,
+        configuration: FirebaseEmulatorConfiguration = FirebaseEmulatorConfiguration(host = "10.0.2.2"),
+    ): AndroidFirebaseSpikeClient = current ?: AndroidFirebaseSpikeClient(
         context.applicationContext,
-        FirebaseEmulatorConfiguration(host = "10.0.2.2"),
+        configuration,
         AccountCallbackFence(),
         productMemoryCache = true,
     ).also { current = it }

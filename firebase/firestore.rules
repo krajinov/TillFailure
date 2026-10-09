@@ -7,7 +7,8 @@ service cloud.firestore {
 
     function activeAccount(uid) {
       let account = get(/databases/$(database)/documents/users/$(uid));
-      return account.data.schemaVersion == 1 && account.data.accountStatus == "active";
+      return request.auth.token.email_verified == true
+        && account.data.schemaVersion == 1 && account.data.accountStatus == "active";
     }
 
     function catalogEntitled(uid) {
@@ -56,6 +57,24 @@ service cloud.firestore {
     match /users/{uid} {
       allow get: if signedIn() && request.auth.uid == uid;
       allow list, write: if false;
+
+      // Trusted membership transitions maintain a minimal caller-owned discovery directory.
+      // Its documents contain no membership payload; every selected workspace and membership is
+      // subsequently point-read through the path-bound rules below.
+      match /membershipRefs/{wid} {
+        allow get: if signedIn()
+          && request.auth.uid == uid
+          && activeAccount(uid)
+          && resource.data.schemaVersion == 1
+          && resource.data.status == "active";
+        allow list: if signedIn()
+          && request.auth.uid == uid
+          && activeAccount(uid)
+          && request.query.limit <= 20
+          && resource.data.schemaVersion == 1
+          && resource.data.status == "active";
+        allow write: if false;
+      }
     }
 
     match /workspaces/{wid} {
@@ -78,19 +97,6 @@ service cloud.firestore {
           && resource.data.role in ["client", "trainer"];
         allow list, write: if false;
       }
-    }
-
-    // The only PR 1 collection-group discovery query is bounded and constrained by the caller's
-    // UID, active status, and supported schema. It does not itself grant workspace access: the
-    // client must point-read the selected workspace and membership from the server.
-    match /{path=**}/memberships/{memberUid} {
-      allow list: if signedIn()
-        && activeAccount(request.auth.uid)
-        && request.query.limit <= 20
-        && resource.data.schemaVersion == 1
-        && resource.data.userId == request.auth.uid
-        && resource.data.status == "active";
-      allow get, write: if false;
     }
 
     function assignmentReadable(uid, wid, aid) {

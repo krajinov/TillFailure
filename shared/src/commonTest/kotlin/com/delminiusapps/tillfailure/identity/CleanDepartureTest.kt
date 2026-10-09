@@ -89,20 +89,30 @@ class CleanDepartureTest {
         assertNull(ownership.currentUid())
         val ownerSeen = mutableListOf<DepartureOutcome>()
         val joinerSeen = mutableListOf<DepartureOutcome>()
+        val publicationOrder = mutableListOf<String>()
         assertTrue(ownership.lease("account_a") { ownerSeen += it })
         assertEquals(DepartureProgress.PreMarker, ownership.progress())
         assertEquals("account_a", ownership.currentUid())
         // A recreated graph joins the in-flight departure instead of starting a competing one.
-        assertEquals("account_a", ownership.observeInFlight { joinerSeen += it })
+        assertEquals("account_a", ownership.observeInFlight(
+            onJoined = { publicationOrder += "waiting" },
+            onSettled = { publicationOrder += "settled"; joinerSeen += it },
+        ))
         assertFalse(ownership.lease("account_a") { })
         ownership.markPostMarker("account_a")
         assertEquals(DepartureProgress.PostMarker, ownership.progress())
         ownership.settle("account_a", DepartureOutcome.Clean)
         assertEquals(listOf(DepartureOutcome.Clean), ownerSeen)
         assertEquals(listOf(DepartureOutcome.Clean), joinerSeen)
+        assertEquals(listOf("waiting", "settled"), publicationOrder)
         assertEquals(DepartureProgress.Idle, ownership.progress())
         assertNull(ownership.currentUid())
         assertTrue(ownership.isSettled())
+        assertNull(ownership.observeInFlight(
+            onJoined = { publicationOrder += "unexpected-waiting" },
+            onSettled = { publicationOrder += "unexpected-settlement" },
+        ))
+        assertEquals(listOf("waiting", "settled"), publicationOrder)
     }
 
     @Test fun coordinatorPublishesTheDurableMarkerBoundaryBeforeCleanup() {

@@ -19,6 +19,14 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class IdentityViewModelTest {
+    @Test fun idleStartupDoesNotPublishASwitchingOutState() {
+        val model = IdentityViewModel(FakeIdentityClient().apply {
+            departurePort = FakeDeparturePort(this)
+        })
+        assertEquals(GateStatus.Loading, model.state.value.status)
+        assertFalse(model.state.value.busy)
+    }
+
     @Test fun restoreRequiresServerAccountAndExactMembershipThenRevocationRemovesAccess() {
         val client = FakeIdentityClient()
         val model = IdentityViewModel(client)
@@ -286,11 +294,42 @@ class IdentityViewModelTest {
         assertNull(port.marker)
     }
 
+    @Test fun discoveryRejectsACollectionGroupMembershipPayloadBeforeReadingWorkspace() {
+        val client = FakeIdentityClient()
+        client.discoveryDocuments = listOf(doc("workspaces/w/memberships/bob", mapOf(
+            "schemaVersion" to "1", "workspaceId" to "w", "userId" to "alice",
+            "status" to "active", "role" to "trainer", "privatePayload" to "bob-only")))
+        val model = IdentityViewModel(client)
+        client.emitSession("alice")
+        assertEquals(GateStatus.AccessLost, model.state.value.status)
+        assertEquals(null, model.state.value.verifiedRole)
+        assertEquals(listOf("users/alice"), client.getPaths)
+    }
+
+    @Test fun recreatedRootAdoptsCleanupFailureWithoutLeavingSwitchingOut() {
+        val client = FakeIdentityClient()
+        val port = FakeDeparturePort(client).apply { drainStalled = true; failLocalCleanup = true }
+        client.departurePort = port
+        val (firstStore, first) = scoped(client)
+        client.emitSession("alice")
+        first.onEvent(IdentityEvent.SignOut)
+        firstStore.clear()
+        val (_, second) = scoped(client)
+        assertEquals(GateStatus.SwitchingOut, second.state.value.status)
+        port.completeDrain(null)
+        assertEquals(GateStatus.CleanupRequired, second.state.value.status)
+        assertFalse(second.state.value.busy)
+        assertFalse(second.state.value.canSignOut)
+        assertEquals("alice", port.marker?.departingUid)
+    }
+
     private class FakeIdentityClient : ProductIdentityClient {
         var departurePort: CleanDeparturePort? = null
         override val departure: CleanDeparturePort? get() = departurePort
         val documents = mutableMapOf(
             "users/alice" to doc("users/alice", mapOf("schemaVersion" to "1", "accountStatus" to "active")),
+            "users/alice/membershipRefs/w" to doc("users/alice/membershipRefs/w", mapOf(
+                "schemaVersion" to "1", "status" to "active")),
             "workspaces/w" to doc("workspaces/w", mapOf("schemaVersion" to "1", "status" to "active")),
             "workspaces/w/memberships/alice" to doc("workspaces/w/memberships/alice", mapOf(
                 "schemaVersion" to "1", "workspaceId" to "w", "userId" to "alice", "status" to "active", "role" to "client")),
@@ -303,6 +342,7 @@ class IdentityViewModelTest {
         var deferredAccount: ((FirebaseDocumentResult) -> Unit)? = null
         val getPaths = mutableListOf<String>()
         var discoveryCount = 0
+        var discoveryDocuments: List<FirebaseDocumentSnapshot>? = null
         var refreshCount = 0
         private var session: ((FirebaseAuthSession) -> Unit)? = null
         private var currentSession: FirebaseAuthSession? = null
@@ -360,7 +400,8 @@ class IdentityViewModelTest {
         }
         override fun discoverMemberships(uid: String, epoch: Long, callback: (MembershipDiscoveryResult) -> Unit): FirebaseCancellation {
             discoveryCount++
-            callback(MembershipDiscoveryResult(documents = listOf(documents.getValue("workspaces/w/memberships/alice"))))
+            callback(MembershipDiscoveryResult(documents = discoveryDocuments
+                ?: listOf(documents.getValue("users/alice/membershipRefs/w"))))
             return FirebaseCancellation {}
         }
         override fun listenDocument(path: String, epoch: Long, callback: (FirebaseDocumentResult) -> Unit): FirebaseCancellation {

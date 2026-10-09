@@ -182,10 +182,17 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
         generation = current
         let app = current.app
         auth = Auth.auth(app: app)
-        auth.useEmulator(withHost: host, port: 9099)
+        #if DEBUG
+        let authPort = Int(ProcessInfo.processInfo.environment["TF_AUTH_EMULATOR_PORT"] ?? "") ?? 9099
+        let firestorePort = Int(ProcessInfo.processInfo.environment["TF_FIRESTORE_EMULATOR_PORT"] ?? "") ?? 8080
+        #else
+        let authPort = 9099
+        let firestorePort = 8080
+        #endif
+        auth.useEmulator(withHost: host, port: authPort)
         firestore = Firestore.firestore(app: app)
         let settings = firestore.settings
-        settings.host = "\(host):8080"
+        settings.host = "\(host):\(firestorePort)"
         settings.isSSLEnabled = false
         if productMemoryCache { settings.cacheSettings = MemoryCacheSettings() }
         firestore.settings = settings
@@ -436,8 +443,7 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
         activate(epoch: accountEpoch)
         if let token = issueIfLive({
             let (token, gate) = beginOneShot()
-            firestore.collectionGroup("memberships")
-                .whereField("userId", isEqualTo: uid)
+            firestore.collection("users/\(uid)/membershipRefs")
                 .whereField("status", isEqualTo: "active")
                 .whereField("schemaVersion", isEqualTo: 1)
                 .limit(to: 20)

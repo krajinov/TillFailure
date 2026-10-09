@@ -6,8 +6,8 @@ const projectId = "demo-tillfailure-m3";
 const authHost = process.env.FIREBASE_AUTH_EMULATOR_HOST;
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
 const password = process.env.TF_PR1_TEST_PASSWORD;
-if (!["127.0.0.1:9099", "localhost:9099"].includes(authHost) ||
-    !["127.0.0.1:8080", "localhost:8080"].includes(firestoreHost)) {
+if (!/^(127\.0\.0\.1|localhost):[0-9]{2,5}$/.test(authHost ?? "") ||
+    !/^(127\.0\.0\.1|localhost):[0-9]{2,5}$/.test(firestoreHost ?? "")) {
   throw new Error("PR 1 seeding requires both local Auth and Firestore emulators");
 }
 if (!password || password.length < 8) throw new Error("Set TF_PR1_TEST_PASSWORD (at least 8 characters)");
@@ -39,6 +39,9 @@ for (const identity of identities) {
   }
   if (identity.account) {
     await db.doc(`users/${identity.uid}`).set({ schemaVersion: 1, accountStatus: identity.account, lifecycleRevision: 1 });
+    if (identity.membership === "active") {
+      await db.doc(`users/${identity.uid}/membershipRefs/pr1_workspace`).set({ schemaVersion: 1, status: "active" });
+    }
     await db.doc(`users/${identity.uid}/authorizations/systemCatalog`).set({
       schemaVersion: 1, status: identity.membership === "active" && identity.account === "active" ? "active" : "inactive",
       activeMembershipCount: identity.membership === "active" ? 1 : 0,
