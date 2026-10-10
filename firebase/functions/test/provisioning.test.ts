@@ -217,6 +217,30 @@ describe("operator-only first workspace", () => {
     assert.equal((await db.doc(`users/${trainer.uid}/authorizations/systemCatalog`).get()).exists, false);
   });
 
+  it("rejects a deleted workspace parent with another user's orphaned membership or profile", async () => {
+    for (const collection of ["memberships", "trainerProfiles", "clientProfiles"] as const) {
+      const workspaceId = `orphan_${collection}`;
+      const workspaceRef = db.doc(`workspaces/${workspaceId}`);
+      const orphanRef = workspaceRef.collection(collection).doc("former_member");
+      await orphanRef.set({
+        schemaVersion: 1, workspaceId, userId: "former_member", role: "client", status: "active"
+      });
+      const before = await orphanRef.get();
+      assert.equal((await workspaceRef.get()).exists, false);
+      const command = input(`orphan_${collection}`, workspaceId);
+      await assert.rejects(provisionTrainer(db, command, trainer, operator, caps), /workspace-orphaned-data/);
+      const after = await orphanRef.get();
+      assert.deepEqual(after.data(), before.data());
+      assert.equal(after.updateTime?.toMillis(), before.updateTime?.toMillis());
+      assert.equal((await workspaceRef.get()).exists, false);
+      assert.equal((await db.doc(`users/${trainer.uid}`).get()).exists, false);
+      assert.equal((await db.doc(`users/${trainer.uid}/authorizations/systemCatalog`).get()).exists, false);
+      assert.equal((await db.doc(`lifecycleCommands/${commandId(operator.uid, command.idempotencyKey)}`).get()).exists, false);
+      assert.equal((await db.doc(`operatorAudit/${commandId(operator.uid, command.idempotencyKey)}`).get()).exists, false);
+      assert.equal((await workspaceRef.collection("memberships").doc(trainer.uid).get()).exists, false);
+    }
+  });
+
   it("serializes concurrent first-workspace commands and uses the ordinary lifecycle bounds", async () => {
     const attempts = await Promise.allSettled([
       provisionTrainer(db, input("one", "workspace_one"), trainer, operator, caps),

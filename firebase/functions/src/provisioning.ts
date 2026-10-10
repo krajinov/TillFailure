@@ -135,6 +135,13 @@ export async function provisionTrainer(
       return { uid, workspaceId, membershipRevision: 1, replayed: true };
     }
     if (audit.exists || workspace.exists || membership.exists || profile.exists || discovery.exists) throw new Error("conflicting-ownership");
+    // A missing parent does not imply an unused workspace ID: Firestore retains subcollections
+    // when a document is deleted. Any old membership would become readable again under the new
+    // active parent, so check the whole authorization-bearing collection, not only this trainer.
+    for (const collection of ["memberships", "trainerProfiles", "clientProfiles"] as const) {
+      const orphan = await transaction.get(workspaceRef.collection(collection).limit(1));
+      if (!orphan.empty) throw new Error("workspace-orphaned-data");
+    }
     const existingRefs = await transaction.get(refsCollection.limit(1));
     if (!existingRefs.empty) throw new Error("trainer-already-member");
     if (account.exists) {
