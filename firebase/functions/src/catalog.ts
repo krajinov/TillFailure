@@ -31,6 +31,29 @@ export interface CatalogTransitionResult {
 export const RULES_ENTITLEMENT_COUNT_MAX = 20;
 export const WORKSPACE_ROSTER_COUNT_MAX = 99;
 
+/** The same bounded counter projection is used by ordinary membership transitions and first-workspace bootstrap. */
+export function projectMembershipCounters(input: {
+  readonly accountCount: unknown;
+  readonly rosterCount: unknown;
+  readonly contributionCount: unknown;
+  readonly wasActive: boolean;
+  readonly becomesActive: boolean;
+  readonly oldContributes: boolean;
+  readonly newContributes: boolean;
+  readonly maxMembershipsPerAccount: number;
+  readonly maxMembershipsPerWorkspace: number;
+}): { accountCount: number; rosterCount: number; contributionCount: number } {
+  strictConfiguredBound(input.maxMembershipsPerAccount, RULES_ENTITLEMENT_COUNT_MAX, "invalid-maximum-memberships");
+  strictConfiguredBound(input.maxMembershipsPerWorkspace, WORKSPACE_ROSTER_COUNT_MAX, "invalid-maximum-workspace-memberships");
+  const oldAccount = strictCounter(input.accountCount, { max: input.maxMembershipsPerAccount, malformed: "membership-bound-violated", outOfRange: "membership-bound-violated" });
+  const oldRoster = strictCounter(input.rosterCount, { max: input.maxMembershipsPerWorkspace, malformed: "workspace-roster-malformed", outOfRange: "workspace-roster-bound-violated" });
+  const oldContribution = strictCounter(input.contributionCount, { max: oldRoster, malformed: "workspace-contribution-malformed", outOfRange: "workspace-contribution-bound-violated" });
+  const accountCount = strictCounter(oldAccount + Number(input.newContributes) - Number(input.oldContributes), { max: input.maxMembershipsPerAccount, malformed: "membership-bound-violated", outOfRange: "membership-bound-violated" });
+  const rosterCount = strictCounter(oldRoster + Number(input.becomesActive) - Number(input.wasActive), { max: input.maxMembershipsPerWorkspace, malformed: "workspace-roster-malformed", outOfRange: "workspace-roster-bound-violated" });
+  const contributionCount = strictCounter(oldContribution + Number(input.newContributes) - Number(input.oldContributes), { max: rosterCount, malformed: "workspace-contribution-malformed", outOfRange: "workspace-contribution-bound-violated" });
+  return { accountCount, rosterCount, contributionCount };
+}
+
 interface CounterBounds {
   readonly max: number;
   readonly malformed: string;
@@ -261,17 +284,15 @@ export async function transitionMembership(db: Firestore, input: MembershipTrans
     const oldContributes = membership.exists && membership.get("catalogContributionActive") === true;
     const newContributes = becomesActive && workspace.get("status") === "active";
     // Account entitlement stays contribution-based.
-    const accountCountBounds: CounterBounds = { max: input.maxMembershipsPerAccount, malformed: "membership-bound-violated", outOfRange: "membership-bound-violated" };
-    const oldCount = strictCounter(entitlement.get("activeMembershipCount"), accountCountBounds);
-    const nextCount = strictCounter(oldCount + Number(newContributes) - Number(oldContributes), accountCountBounds);
-    // Workspace roster: every active relationship, in an active or suspended workspace.
-    const rosterBounds: CounterBounds = { max: input.maxMembershipsPerWorkspace, malformed: "workspace-roster-malformed", outOfRange: "workspace-roster-bound-violated" };
-    const rosterCount = strictCounter(workspace.get("activeRosterCount"), rosterBounds);
-    const nextRosterCount = strictCounter(rosterCount + Number(becomesActive) - Number(wasActive), rosterBounds);
-    // Workspace catalog contributions: a subset of the roster, zero while suspended.
-    const contributionBounds: CounterBounds = { max: rosterCount, malformed: "workspace-contribution-malformed", outOfRange: "workspace-contribution-bound-violated" };
-    const contributionCount = strictCounter(workspace.get("catalogContributionCount"), contributionBounds);
-    const nextContributionCount = strictCounter(contributionCount + Number(newContributes) - Number(oldContributes), { ...contributionBounds, max: nextRosterCount });
+    const projected = projectMembershipCounters({
+      accountCount: entitlement.get("activeMembershipCount"), rosterCount: workspace.get("activeRosterCount"),
+      contributionCount: workspace.get("catalogContributionCount"), wasActive, becomesActive,
+      oldContributes, newContributes, maxMembershipsPerAccount: input.maxMembershipsPerAccount,
+      maxMembershipsPerWorkspace: input.maxMembershipsPerWorkspace
+    });
+    const nextCount = projected.accountCount;
+    const nextRosterCount = projected.rosterCount;
+    const nextContributionCount = projected.contributionCount;
     const entitlementChange = contributionChange(account, entitlement, oldContributes, newContributes, nextCount);
     // Adding a contribution or publishing access the stored entitlement did not already have needs
     // the schema the Rules authorize; revoking one of several contributions must still succeed while

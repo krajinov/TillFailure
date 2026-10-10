@@ -151,7 +151,8 @@ fun IdentityScreen(
                 GateStatus.NoAccount -> "Your sign-in is valid, but your account is not ready."
                 GateStatus.UnverifiedEmail -> "Verify the email on this account, then recheck. Access stays locked until Auth reports it verified."
                 GateStatus.AccountDisabled -> "This account is disabled. Contact support."
-                GateStatus.WorkspaceGate -> "No active workspace membership was found. Ask your trainer or operator for access."
+                GateStatus.WorkspaceGate -> "Workspace access pending. Ask your trainer or operator for access, then recheck."
+                GateStatus.TrainerHome -> "Trainer workspace verified. Your home is ready; invitations and programming are not available yet."
                 GateStatus.MembershipVerifiedFeaturePending -> "Membership verified. This feature is coming soon."
                 GateStatus.UnsupportedSchema -> "Your account data needs an update. Contact support."
                 GateStatus.AccessLost -> "Access could not be verified. Contact support or retry."
@@ -188,7 +189,7 @@ fun IdentityScreen(
             Text("Development emulator sign-in only", color = TillFailureTheme.colors.secondaryText)
         } else if (state.status != GateStatus.Loading && state.status != GateStatus.IdentityUnsupported &&
             state.status != GateStatus.AnonymousSession &&
-            state.status != GateStatus.MembershipVerifiedFeaturePending && state.status != GateStatus.ConnectToVerify &&
+            state.status != GateStatus.TrainerHome && state.status != GateStatus.MembershipVerifiedFeaturePending && state.status != GateStatus.ConnectToVerify &&
             state.status != GateStatus.Unconfigured && state.status != GateStatus.SessionExpired &&
             state.status != GateStatus.CleanupRequired
         ) {

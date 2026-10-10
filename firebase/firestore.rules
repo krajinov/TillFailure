@@ -97,6 +97,20 @@ service cloud.firestore {
           && resource.data.role in ["client", "trainer"];
         allow list, write: if false;
       }
+
+      // PR 2 exposes only the provisioned trainer's own minimal profile. The operator CLI
+      // remains the sole writer; neither this read nor a forged profile can create a role.
+      match /trainerProfiles/{trainerUid} {
+        allow get: if signedIn()
+          && request.auth.uid == trainerUid
+          && activeAccount(trainerUid)
+          && activeWorkspace(wid)
+          && activeTrainerMembership(wid, trainerUid)
+          && resource.data.schemaVersion == 1
+          && resource.data.workspaceId == wid
+          && resource.data.userId == trainerUid;
+        allow list, write: if false;
+      }
     }
 
     function assignmentReadable(uid, wid, aid) {

@@ -14,6 +14,7 @@ struct iOSApp: App {
         recoveryBridge = RecoveryPersistenceBridge()
         FirebaseSpikeHarness.runIfRequested(bridge: bridge)
         ProductIdentityHarness.runIfRequested(bridge: bridge)
+        TrainerProvisioningHarness.runIfRequested()
         CleanDepartureHarness.runIfRequested(password: ProcessInfo.processInfo.environment["TF_PR1_TEST_PASSWORD"])
         CleanDepartureHarness.runUnsupportedIfRequested(password: ProcessInfo.processInfo.environment["TF_PR1_TEST_PASSWORD"])
         CleanDepartureHarness.runAnonymousIfRequested(password: ProcessInfo.processInfo.environment["TF_PR1_TEST_PASSWORD"])
