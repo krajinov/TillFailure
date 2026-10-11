@@ -15,7 +15,7 @@ import com.delminiusapps.tillfailure.persistence.RecoveryUidContract
 enum class GateStatus {
     Loading, SignedOut, InvalidCredentials, IdentityUnsupported, AnonymousSession, NoAccount, AccountDisabled,
     UnverifiedEmail,
-    WorkspaceGate, MembershipVerifiedFeaturePending, UnsupportedSchema, AccessLost,
+    WorkspaceGate, TrainerHome, MembershipVerifiedFeaturePending, UnsupportedSchema, AccessLost,
     ConnectToVerify, Retry, MultipleMemberships, Unconfigured, SessionExpired, CleanupRequired,
     SwitchingOut, DepartureBlocked,
 }
@@ -283,7 +283,8 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
                     when (val decision = checkMembership(uid, wid, workspaceResult.document, memberResult.document)) {
                         is IdentityDecision.Verified -> {
                             setState(mutableState.value.copy(
-                                status = GateStatus.MembershipVerifiedFeaturePending, busy = false,
+                                status = if (decision.role == "trainer") GateStatus.TrainerHome
+                                    else GateStatus.MembershipVerifiedFeaturePending, busy = false,
                                 verifiedWorkspaceId = decision.workspaceId, verifiedRole = decision.role,
                             ))
                             observeRevocation(uid, wid, request)

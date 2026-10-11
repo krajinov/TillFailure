@@ -8,6 +8,7 @@ import { publishAssignment } from "../src/assigned-program.js";
 import { transitionAccountLifecycle, transitionMembership, transitionWorkspace } from "../src/catalog.js";
 import { emulatorFirestore, SPIKE_PROJECT_ID } from "../src/environment.js";
 import { commandId } from "../src/hashing.js";
+import { provisionTrainer } from "../src/provisioning.js";
 
 let environment: RulesTestEnvironment;
 
@@ -53,6 +54,45 @@ async function seedEligibleAssignment(): Promise<void> {
 }
 
 describe("Firestore and Storage rules", () => {
+  it("denies self-provisioning and protected reads before operator commit, then admits only the verified owner", async () => {
+    const uid = "pr2_rules_trainer";
+    const wid = "pr2_rules_workspace";
+    const owner = verifiedContext(uid).firestore();
+    const other = verifiedContext("other").firestore();
+    await assertFails(getDoc(doc(owner, `workspaces/${wid}`)));
+    await assertFails(getDoc(doc(owner, `workspaces/${wid}/trainerProfiles/${uid}`)));
+    for (const path of [`users/${uid}`, `users/${uid}/authorizations/systemCatalog`,
+      `users/${uid}/membershipRefs/${wid}`, `workspaces/${wid}`,
+      `workspaces/${wid}/memberships/${uid}`, `workspaces/${wid}/trainerProfiles/${uid}`,
+      "operatorAudit/forged", "lifecycleCommands/forged"]) {
+      await assertFails(setDoc(doc(owner, path), { schemaVersion: 1, role: "trainer", status: "active" }));
+    }
+    await provisionTrainer(emulatorFirestore(), {
+      uid, workspaceId: wid, workspaceName: "Rules Workspace", idempotencyKey: "rules-bootstrap",
+      expectedAccountRevision: 0, expectedEntitlementRevision: 0, expectedWorkspaceRevision: 0
+    }, { uid, email: "rules-trainer@example.invalid", emailVerified: true, disabled: false },
+    { uid: "pr2_operator", allowedUid: "pr2_operator", emailVerified: true, disabled: false },
+    { maxMembershipsPerAccount: 2, maxMembershipsPerWorkspace: 5 });
+    await assertSucceeds(getDoc(doc(owner, `workspaces/${wid}`)));
+    await assertSucceeds(getDoc(doc(owner, `workspaces/${wid}/memberships/${uid}`)));
+    await assertSucceeds(getDoc(doc(owner, `workspaces/${wid}/trainerProfiles/${uid}`)));
+    await assertFails(getDoc(doc(other, `workspaces/${wid}`)));
+    await assertFails(getDoc(doc(other, `workspaces/${wid}/trainerProfiles/${uid}`)));
+    await assertFails(getDocs(collection(owner, `workspaces/${wid}/trainerProfiles`)));
+    await assertFails(getDoc(doc(owner, "operatorAudit/forged")));
+    const unverified = environment.authenticatedContext(uid, { email: "rules-trainer@example.invalid", email_verified: false }).firestore();
+    await assertFails(getDoc(doc(unverified, `workspaces/${wid}/trainerProfiles/${uid}`)));
+    await environment.withSecurityRulesDisabled(async context => {
+      await updateDoc(doc(context.firestore(), `workspaces/${wid}/trainerProfiles/${uid}`), { userId: "other" });
+    });
+    await assertFails(getDoc(doc(owner, `workspaces/${wid}/trainerProfiles/${uid}`)));
+    await environment.withSecurityRulesDisabled(async context => {
+      await updateDoc(doc(context.firestore(), `workspaces/${wid}/trainerProfiles/${uid}`), { userId: uid });
+      await updateDoc(doc(context.firestore(), `workspaces/${wid}/memberships/${uid}`), { status: "revoked" });
+    });
+    await assertFails(getDoc(doc(owner, `workspaces/${wid}/trainerProfiles/${uid}`)));
+  });
+
   it("allows only server-verifiable self account, workspace and bounded active membership discovery", async () => {
     await environment.withSecurityRulesDisabled(async (context) => {
       const db = context.firestore();

@@ -9,6 +9,19 @@ import { HttpsError } from "firebase-functions/v2/https";
 const MAX_IDENTIFIER_LENGTH = 128;
 const RESERVED_DOCUMENT_ID = /^__.*__$/;
 
+function validUtf16(value: string): boolean {
+  for (let index = 0; index < value.length; index++) {
+    const code = value.charCodeAt(index);
+    if (code >= 0xdc00 && code <= 0xdfff) return false;
+    if (code >= 0xd800 && code <= 0xdbff) {
+      if (++index >= value.length) return false;
+      const next = value.charCodeAt(index);
+      if (next < 0xdc00 || next > 0xdfff) return false;
+    }
+  }
+  return true;
+}
+
 function invalid(field: string, requirement: string): HttpsError {
   return new HttpsError("invalid-argument", `${field} ${requirement}`);
 }
@@ -16,7 +29,7 @@ function invalid(field: string, requirement: string): HttpsError {
 // Non-UID identifiers (workspace IDs, appointment IDs, idempotency keys) keep the existing
 // stricter documented validation: one path-safe segment without separators or dots.
 export function strictPathIdentifier(value: unknown, field: string): string {
-  if (typeof value !== "string" || value.length === 0 || value.length > MAX_IDENTIFIER_LENGTH || value.includes("/") || value.includes(".")) {
+  if (typeof value !== "string" || value.length === 0 || value.length > MAX_IDENTIFIER_LENGTH || value.trim().length === 0 || !validUtf16(value) || value.includes("/") || value.includes(".")) {
     throw invalid(field, "must be a non-empty path-safe string");
   }
   return value;
@@ -29,7 +42,7 @@ export function strictPathIdentifier(value: unknown, field: string): string {
 // contract (non-blank, at most 128 UTF-16 code units) wherever the path model permits it, and
 // never normalizes two distinct UIDs into one identity.
 export function participantUid(value: unknown, field: string): string {
-  if (typeof value !== "string" || value.length === 0 || value.length > MAX_IDENTIFIER_LENGTH || value.trim().length === 0) {
+  if (typeof value !== "string" || value.length === 0 || value.length > MAX_IDENTIFIER_LENGTH || value.trim().length === 0 || !validUtf16(value)) {
     throw invalid(field, "must be a non-empty Firebase UID of at most 128 characters");
   }
   if (value.includes("/")) throw invalid(field, "must not contain a Firestore path separator");

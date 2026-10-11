@@ -19,6 +19,30 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class IdentityViewModelTest {
+    @Test fun pendingTrainerRequiresFreshServerRecheckBeforeMinimalHomeAndRevocationClosesIt() {
+        val client = FakeIdentityClient()
+        client.discoveryDocuments = emptyList()
+        val model = IdentityViewModel(client)
+        client.emitSession("alice")
+        assertEquals(GateStatus.WorkspaceGate, model.state.value.status)
+        assertNull(model.state.value.verifiedRole)
+        client.documents["workspaces/w/memberships/alice"] = client.documents.getValue("workspaces/w/memberships/alice")
+            .copy(fields = client.documents.getValue("workspaces/w/memberships/alice").fields + ("role" to "trainer"))
+        client.discoveryDocuments = listOf(client.documents.getValue("users/alice/membershipRefs/w")
+            .copy(origin = FirebaseDataOrigin.CACHE))
+        model.onEvent(IdentityEvent.Retry)
+        assertEquals(GateStatus.AccessLost, model.state.value.status)
+        client.discoveryDocuments = listOf(client.documents.getValue("users/alice/membershipRefs/w"))
+        model.onEvent(IdentityEvent.Retry)
+        assertEquals(GateStatus.TrainerHome, model.state.value.status)
+        assertEquals("trainer", model.state.value.verifiedRole)
+        client.listeners["workspaces/w/memberships/alice"]?.invoke(FirebaseDocumentResult(
+            document = client.documents.getValue("workspaces/w/memberships/alice").copy(
+                fields = client.documents.getValue("workspaces/w/memberships/alice").fields + ("status" to "revoked"))))
+        assertEquals(GateStatus.AccessLost, model.state.value.status)
+        assertNull(model.state.value.verifiedRole)
+    }
+
     @Test fun idleStartupDoesNotPublishASwitchingOutState() {
         val model = IdentityViewModel(FakeIdentityClient().apply {
             departurePort = FakeDeparturePort(this)
