@@ -217,13 +217,17 @@ describe("operator-only first workspace", () => {
     assert.equal((await db.doc(`users/${trainer.uid}/authorizations/systemCatalog`).get()).exists, false);
   });
 
-  it("rejects a deleted workspace parent with another user's orphaned membership or profile", async () => {
-    for (const collection of ["memberships", "trainerProfiles", "clientProfiles"] as const) {
+  it("rejects a deleted workspace parent with retained membership, profile, assignment index or booking slot", async () => {
+    for (const collection of ["memberships", "trainerProfiles", "clientProfiles", "assignedPrograms", "bookingSlots"] as const) {
       const workspaceId = `orphan_${collection}`;
       const workspaceRef = db.doc(`workspaces/${workspaceId}`);
       const orphanRef = workspaceRef.collection(collection).doc("former_member");
       await orphanRef.set({
-        schemaVersion: 1, workspaceId, userId: "former_member", role: "client", status: "active"
+        schemaVersion: 1, workspaceId, userId: "former_member", role: "client", status: "active",
+        ...(collection === "assignedPrograms" ? {
+          assignmentId: "former_member", trainerId: trainer.uid
+        } : {}),
+        ...(collection === "bookingSlots" ? { appointmentId: "former_appointment" } : {})
       });
       const before = await orphanRef.get();
       assert.equal((await workspaceRef.get()).exists, false);

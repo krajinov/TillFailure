@@ -44,6 +44,14 @@ export interface TrainerProvisioningResult {
 
 export const PR2_EMULATOR_OPERATOR_UID = "pr2_operator";
 
+// Known direct workspace children in the schema and trusted writers. A deleted workspace
+// document leaves these collections behind, so its ID cannot be reused while any remain.
+const WORKSPACE_CHILD_COLLECTIONS = [
+  "memberships", "trainerProfiles", "clientProfiles", "assignedPrograms",
+  "appointments", "bookingSlots", "bookingCommands", "programTemplates",
+  "plannedWorkouts", "exercises", "invitationSummaries", "schedulingPolicies"
+] as const;
+
 const revision = (value: unknown, field: string): number => {
   if (typeof value !== "number" || !Number.isInteger(value) || value < 0) throw new Error(`${field}-invalid`);
   return value;
@@ -135,10 +143,11 @@ export async function provisionTrainer(
       return { uid, workspaceId, membershipRevision: 1, replayed: true };
     }
     if (audit.exists || workspace.exists || membership.exists || profile.exists || discovery.exists) throw new Error("conflicting-ownership");
-    // A missing parent does not imply an unused workspace ID: Firestore retains subcollections
-    // when a document is deleted. Any old membership would become readable again under the new
-    // active parent, so check the whole authorization-bearing collection, not only this trainer.
-    for (const collection of ["memberships", "trainerProfiles", "clientProfiles"] as const) {
+    // A missing parent does not imply an unused workspace ID. Old membership or assignment-index
+    // documents could become readable under the new active parent; other retained workspace data
+    // could collide with trusted writers. Check each known direct child collection, not only the
+    // new trainer's documents.
+    for (const collection of WORKSPACE_CHILD_COLLECTIONS) {
       const orphan = await transaction.get(workspaceRef.collection(collection).limit(1));
       if (!orphan.empty) throw new Error("workspace-orphaned-data");
     }
