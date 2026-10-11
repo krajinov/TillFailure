@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, it } from "node:test";
 import { getAuth } from "firebase-admin/auth";
+import { Timestamp } from "firebase-admin/firestore";
 import { projectMembershipCounters } from "../src/catalog.js";
 import { emulatorFirestore } from "../src/environment.js";
 import { commandId } from "../src/hashing.js";
@@ -243,6 +244,36 @@ describe("operator-only first workspace", () => {
       assert.equal((await db.doc(`operatorAudit/${commandId(operator.uid, command.idempotencyKey)}`).get()).exists, false);
       assert.equal((await workspaceRef.collection("memberships").doc(trainer.uid).get()).exists, false);
     }
+  });
+
+  it("rejects a retained account-owned assignment when its workspace index and parent are absent", async () => {
+    const workspaceId = "retained_assignment_workspace";
+    const command = input("retained_assignment_header", workspaceId);
+    const workspaceRef = db.doc(`workspaces/${workspaceId}`);
+    const headerRef = db.doc(`users/former_client/workspaces/${workspaceId}/assignedPrograms/old_assignment`);
+    const snapshotRef = headerRef.collection("snapshots").doc("content");
+    await headerRef.set({
+      schemaVersion: 1, clientId: "former_client", workspaceId, assignmentId: "old_assignment",
+      trainerId: trainer.uid, snapshotId: "content", lifecycleState: "ready",
+      accessStatus: "active", accessExpiresAt: Timestamp.fromMillis(Date.now() + 3600000)
+    });
+    await snapshotRef.set({ schemaVersion: 1, clientId: "former_client", workspaceId,
+      assignmentId: "old_assignment", snapshotId: "content" });
+    const before = await db.getAll(headerRef, snapshotRef);
+    assert.equal((await workspaceRef.get()).exists, false);
+    assert.equal((await workspaceRef.collection("assignedPrograms").limit(1).get()).empty, true);
+
+    await assert.rejects(provisionTrainer(db, command, trainer, operator, caps), /workspace-orphaned-data/);
+
+    const after = await db.getAll(headerRef, snapshotRef);
+    assert.deepEqual(after.map(doc => doc.data()), before.map(doc => doc.data()));
+    assert.deepEqual(after.map(doc => doc.updateTime?.toMillis()), before.map(doc => doc.updateTime?.toMillis()));
+    assert.equal((await workspaceRef.get()).exists, false);
+    assert.equal((await db.doc(`users/${trainer.uid}`).get()).exists, false);
+    assert.equal((await db.doc(`users/${trainer.uid}/authorizations/systemCatalog`).get()).exists, false);
+    assert.equal((await workspaceRef.collection("memberships").doc(trainer.uid).get()).exists, false);
+    assert.equal((await db.doc(`lifecycleCommands/${commandId(operator.uid, command.idempotencyKey)}`).get()).exists, false);
+    assert.equal((await db.doc(`operatorAudit/${commandId(operator.uid, command.idempotencyKey)}`).get()).exists, false);
   });
 
   it("serializes concurrent first-workspace commands and uses the ordinary lifecycle bounds", async () => {

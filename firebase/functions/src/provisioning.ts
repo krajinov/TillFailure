@@ -151,6 +151,12 @@ export async function provisionTrainer(
       const orphan = await transaction.get(workspaceRef.collection(collection).limit(1));
       if (!orphan.empty) throw new Error("workspace-orphaned-data");
     }
+    // Assignment headers live under users/{clientUid}/workspaces/{workspaceId}, outside the
+    // workspace tree. The trusted publisher stores workspaceId on every header and index.
+    // A retained header could become client-readable after a later membership activation.
+    const retainedAssignments = await transaction.get(db.collectionGroup("assignedPrograms")
+      .where("workspaceId", "==", workspaceId).limit(1));
+    if (!retainedAssignments.empty) throw new Error("workspace-orphaned-data");
     const existingRefs = await transaction.get(refsCollection.limit(1));
     if (!existingRefs.empty) throw new Error("trainer-already-member");
     if (account.exists) {
