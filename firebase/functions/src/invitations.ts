@@ -8,7 +8,7 @@ import { requireProvisioningEmulators } from "./provisioning.js";
 
 // Versioned LOCAL FIXTURE ONLY. No production policy or delivery provider is approved.
 export const INVITATION_FIXTURE_POLICY = Object.freeze({ version: 1, lifetimeMillis: 48 * 60 * 60 * 1000,
-  maxMembershipsPerAccount: 2, maxMembershipsPerWorkspace: 5, maxRequestsPerMinute: 30 });
+  maxMembershipsPerAccount: 2, maxMembershipsPerWorkspace: 5, maxRequestsPerMinute: 30, maxTransportRequestsPerMinute: 120 });
 export type InvitationAction = "create" | "list" | "preview" | "resend" | "revoke" | "accept";
 type Input = { action: InvitationAction; workspaceId?: string; invitationId?: string; email?: string;
   token?: string; expectedVersion?: number; idempotencyKey?: string };
@@ -59,8 +59,21 @@ function input(raw: unknown): Input {
   }
   return result;
 }
+function authLookupFailure(error: unknown, missing: string): never {
+  // Only the documented absence code proves identity absence. Infrastructure errors carry no
+  // authorization conclusion; redact them before they reach callable/native diagnostics.
+  if (error && typeof error === "object" && "code" in error && error.code === "auth/user-not-found") fail(missing);
+  fail("auth-lookup-unavailable");
+}
+async function quota(tx: Transaction, db: Firestore, uid: string, collection: string, maximum: number): Promise<() => void> {
+  const ref = db.doc(`${collection}/${stableHash(uid)}`);
+  const old = await tx.get(ref); const minute = Math.floor(Date.now() / 60000);
+  const count = old.get("minute") === minute ? old.get("count") : 0;
+  if (!Number.isSafeInteger(count) || count < 0 || count >= maximum) fail("rate-limited");
+  return () => tx.set(ref, { minute, count: count + 1 });
+}
 async function identity(uid: string, verified = true): Promise<UserRecord> {
-  const user = await getAuth().getUser(participantUid(uid, "uid")).catch(() => fail("unauthorized"));
+  const user = await getAuth().getUser(participantUid(uid, "uid")).catch(error => authLookupFailure(error, "unauthorized"));
   if (user.disabled) fail("unauthorized");
   if (verified && !user.emailVerified) fail("unverified-email");
   email(user.email);
@@ -157,20 +170,18 @@ export async function invitationOperation(db: Firestore, callerUid: string | und
   if (!callerUid) fail("unauthenticated");
   const request = input(raw);
   const user = await identity(callerUid!);
-  // Bounded per-UID throttle also protects token preview. No token or email enters this record.
+  // Separate bounded request budget covers abuse (including rejected well-formed commands and replays).
+  // The smaller new-command/read admission quota is charged atomically after receipt lookup.
   await db.runTransaction(async tx => {
-    const ref = db.doc(`invitationRateLimits/${stableHash(user.uid)}`);
-    const old = await tx.get(ref); const minute = Math.floor(Date.now() / 60000);
-    const count = old.get("minute") === minute ? old.get("count") : 0;
-    if (!Number.isSafeInteger(count) || count < 0 || count >= INVITATION_FIXTURE_POLICY.maxRequestsPerMinute) fail("rate-limited");
-    tx.set(ref, { minute, count: count + 1 });
+    const charge = await quota(tx, db, user.uid, "invitationRequestLimits", INVITATION_FIXTURE_POLICY.maxTransportRequestsPerMinute);
+    charge();
   });
   const iid = request.action === "create" ? commandId(user.uid, request.idempotencyKey!) : request.invitationId;
   // Resolve inviter from the immutable internal ID, then reload Auth before transaction authorization.
   const initial = iid && request.action !== "create" ? await db.doc(`invitations/${iid}`).get() : undefined;
   const original = initial ? invitation(initial) : undefined;
   const inviter = original ? await identity(original.invitedBy) : user;
-  const target = request.action === "create" ? await getAuth().getUserByEmail(request.email!).catch(() => fail("fixture-account-required")) : undefined;
+  const target = request.action === "create" ? await getAuth().getUserByEmail(request.email!).catch(error => authLookupFailure(error, "fixture-account-required")) : undefined;
   if (target?.disabled) fail("unauthorized");
   if (target) participantUid(target.uid, "invitedUid");
   const token = ["create", "resend"].includes(request.action) ? randomBytes(32).toString("base64url") : undefined;
@@ -187,7 +198,10 @@ export async function invitationOperation(db: Firestore, callerUid: string | und
     else if (!["preview", "accept"].includes(request.action)) fail("unauthorized");
     if (request.action === "list") {
       const docs = await tx.get(db.collection(`workspaces/${wid}/invitationSummaries`).orderBy("createdAt", "desc").limit(20));
-      return { summaries: docs.docs.map(summary) };
+      const summaries = docs.docs.map(summary);
+      const charge = await quota(tx, db, user.uid, "invitationRateLimits", INVITATION_FIXTURE_POLICY.maxRequestsPerMinute);
+      charge();
+      return { summaries };
     }
     const inviteRef = db.doc(`invitations/${iid}`);
     const summaryRef = db.doc(`workspaces/${wid}/invitationSummaries/${iid}`);
@@ -223,6 +237,9 @@ export async function invitationOperation(db: Firestore, callerUid: string | und
       }
       return { ...r, replayed: true }; // Tokens cannot be reconstructed from stored hashes.
     }
+    // A matching validated receipt returned above consumes no new-command quota. Absence here
+    // is not evidence that another invocation cannot commit later; clients retain errors.
+    const charge = await quota(tx, db, user.uid, "invitationRateLimits", INVITATION_FIXTURE_POLICY.maxRequestsPerMinute);
     if (request.action === "create" && d) fail("invitation-conflict");
     if (d) {
       if (d.tokenVersion !== request.expectedVersion) fail("rotated");
@@ -232,8 +249,11 @@ export async function invitationOperation(db: Firestore, callerUid: string | und
       // Expired pending invitations can be explicitly rotated or revoked; never accepted.
       if (accepting && d.expiresAt.toMillis() <= now.toMillis()) fail("expired");
     }
-    if (request.action === "preview") return { invitationId: iid, workspaceId: wid,
-      workspaceName: workspace.get("name"), status: "pending", tokenVersion: d!.tokenVersion, expiresAtMillis: d!.expiresAt.toMillis() };
+    if (request.action === "preview") {
+      charge();
+      return { invitationId: iid, workspaceId: wid, workspaceName: workspace.get("name"),
+        status: "pending", tokenVersion: d!.tokenVersion, expiresAtMillis: d!.expiresAt.toMillis() };
+    }
 
     const version = request.action === "resend" ? integer(d!.tokenVersion + 1) : d?.tokenVersion ?? 1;
     const expiry = token ? Timestamp.fromMillis(now.toMillis() + INVITATION_FIXTURE_POLICY.lifetimeMillis) : d!.expiresAt;
@@ -262,6 +282,7 @@ export async function invitationOperation(db: Firestore, callerUid: string | und
       const counters = projectMembershipCounters({ accountCount: contributions,
         rosterCount: workspace.get("activeRosterCount"), contributionCount: workspace.get("catalogContributionCount"),
         wasActive: false, becomesActive: true, oldContributes: false, newContributes: true, ...INVITATION_FIXTURE_POLICY });
+      charge();
       if (!callerAccount.exists) tx.create(callerAccount.ref, { schemaVersion: 1, accountStatus: "active",
         emailNormalized: email(user.email), lifecycleRevision: 1, displayName: "", createdAt: now, createdBy: user.uid });
       const entitlementData = { schemaVersion: 1, status: "active", activeMembershipCount: counters.accountCount,
@@ -275,6 +296,7 @@ export async function invitationOperation(db: Firestore, callerUid: string | und
       tx.update(workspace.ref, { membershipRevision: workspace.get("membershipRevision") + 1,
         activeRosterCount: counters.rosterCount, catalogContributionCount: counters.contributionCount });
     }
+    if (request.action !== "accept") charge();
     const internal: FirebaseFirestore.DocumentData = request.action === "create" ? { schemaVersion: 1, policyVersion: 1, invitationId: iid,
       workspaceId: wid, invitedBy: user.uid, invitedUid: target!.uid, invitedEmailNormalized: request.email!,
       role: "client", status, tokenHash: digest(token!), tokenVersion: version, expiresAt: expiry,

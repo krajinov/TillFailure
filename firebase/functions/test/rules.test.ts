@@ -82,6 +82,8 @@ describe("Firestore and Storage rules", () => {
       await assertFails(setDoc(doc(db, "invitations/secret"), { tokenHash: "forged" }));
       await assertFails(setDoc(doc(db, path), { token: "forged" }));
       await assertFails(getDoc(doc(db, "invitationRateLimits/private")));
+      await assertFails(getDoc(doc(db, "invitationRequestLimits/private")));
+      await assertFails(setDoc(doc(db, "invitationRequestLimits/private"), { minute: 0, count: 0 }));
       if (db !== trainer) await assertFails(getDoc(doc(db, path)));
     }
     await environment.withSecurityRulesDisabled(async context => {

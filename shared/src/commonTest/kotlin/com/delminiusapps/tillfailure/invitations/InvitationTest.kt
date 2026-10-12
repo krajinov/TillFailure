@@ -140,6 +140,46 @@ class InvitationTest {
         assertFalse(restored.prepare("A", request))
     }
 
+    @Test fun everyMutationRetainsPendingWorkAcrossRejectedRetriesUntilReceiptConfirmation() {
+        for (action in listOf("create", "resend", "revoke", "accept")) {
+            val store = MemoryStore().apply { record = AccountPersistenceEnvelope(uid = "A") }
+            val ledger = InvitationLedger(store)
+            val request = InvitationRequest(action, workspaceId = if (action == "accept") null else "w",
+                invitationId = if (action == "create") null else link.invitationId,
+                email = if (action == "create") "fixture@example.invalid" else null,
+                token = if (action == "accept") link.token else null,
+                expectedVersion = if (action == "create") null else 1, idempotencyKey = "original-$action")
+            assertTrue(ledger.prepare("A", request))
+            val original = store.record
+            // Lost response, quota exhaustion while another invocation is still in flight,
+            // transient infrastructure, genuine current authorization denial, conflicts.
+            val failures = listOf(InvitationOutcome(error = "unavailable", ambiguous = true),
+                InvitationJson.callable(request, 429, "{\"error\":{\"status\":\"RESOURCE_EXHAUSTED\",\"message\":\"rate-limited\"}}"),
+                InvitationJson.outcome(request, null, "invitation-unavailable", true),
+                InvitationJson.outcome(request, null, "unauthorized", false),
+                InvitationJson.outcome(request, null, "fixture-account-required", false),
+                InvitationJson.outcome(request, null, "idempotency-key-reused", false))
+            for (failure in failures) {
+                val settled = ledger.settle("A", request, failure)
+                assertTrue(settled.ambiguous, "$action retry cannot prove no earlier commit")
+                assertEquals(original, store.record)
+                assertNotNull(ledger.pending("A"))
+                // This is the persisted critical-work predicate consumed by both departure ports.
+                assertFalse(store.record!!.pendingInvitationCommands.isEmpty())
+                assertFalse(ledger.prepare("A", request.copy(idempotencyKey = "replacement")))
+                assertTrue(ledger.prepare("A", request))
+            }
+            val reply = InvitationReply(invitationId = link.invitationId, workspaceId = "w",
+                status = when(action) { "accept" -> "accepted"; "revoke" -> "revoked"; else -> "pending" },
+                tokenVersion = if (action == "resend") 2 else 1, expiresAtMillis = 9, replayed = true)
+            val verified = InvitationJson.outcome(request, InvitationJson.format.encodeToString(InvitationReply.serializer(), reply), null, false)
+            assertFalse(verified.ambiguous)
+            ledger.settle("A", request, verified)
+            assertNull(ledger.pending("A"))
+            assertTrue(store.record!!.pendingInvitationCommands.isEmpty())
+        }
+    }
+
     private class MemoryStore : AccountPersistencePrototype {
         var record: AccountPersistenceEnvelope? = null; var fails = false
         override fun write(envelope: AccountPersistenceEnvelope) { check(!fails); record = envelope }

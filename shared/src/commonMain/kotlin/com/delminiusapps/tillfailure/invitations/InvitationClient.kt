@@ -107,7 +107,11 @@ class InvitationLedger(private val store: AccountPersistencePrototype) {
     }.getOrDefault(false)
     fun settle(uid: String, request: InvitationRequest, outcome: InvitationOutcome): InvitationOutcome = runCatching {
         val command = request.pending(uid) ?: return@runCatching outcome
-        if (outcome.ambiguous) return@runCatching outcome
+        // A rejection describes this invocation, not every earlier invocation of this command.
+        // In particular, no receipt at throttle/Auth failure time rules out a later commit.
+        // Without a validated matching success/receipt, never erase the protected command.
+        if (outcome.ambiguous || outcome.error != null || outcome.reply == null)
+            return@runCatching outcome.copy(ambiguous = true)
         val record = store.read(uid) ?: return@runCatching InvitationOutcome(error = "unavailable", ambiguous = true)
         if (record.pendingInvitationCommands != listOf(command)) return@runCatching InvitationOutcome(error = "unavailable", ambiguous = true)
         store.write(record.copy(pendingInvitationCommands = emptyList()))

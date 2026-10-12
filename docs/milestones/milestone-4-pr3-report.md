@@ -10,7 +10,7 @@ The shared immutable MVI state/events/buffered effect flow is Koin-owned under t
 
 ## Fixture policy, delivery and authority
 
-Production policy remains unapproved. The exact fixture choices are in [the procedure](milestone-4-pr3-invitations.md): verified, non-disabled, pre-existing Auth Emulator identities; binding to Auth UID and lowercased email; 48-hour server expiry; versioned 256-bit random tokens; two account contributions/five workspace roster members; and a per-UID 30-request/server-minute throttle. `.invalid` manual entry is a test format, not an approved product domain. Creation/resend returns a token once in a dedicated local-delivery response. The UI offers an in-process local invitation continuation button and masks manual entry; it never renders the bearer as selectable delivery text. Matching replay confirms the command without recovering its token; an explicit fresh resend obtains another local token. Old versions, consumed and revoked links cannot be accepted. Terminal hashes/receipts remain in the disposable emulator dataset pending production retention policy.
+Production policy remains unapproved. The exact fixture choices are in [the procedure](milestone-4-pr3-invitations.md): verified, non-disabled, pre-existing Auth Emulator identities; binding to Auth UID and lowercased email; 48-hour server expiry; versioned 256-bit random tokens; two account contributions/five workspace roster members; and bounded per-UID admission/request budgets. The P1 follow-up below supersedes the original single 30-request quota. `.invalid` manual entry is a test format, not an approved product domain. Creation/resend returns a token once in a dedicated local-delivery response. The UI offers an in-process local invitation continuation button and masks manual entry; it never renders the bearer as selectable delivery text. Matching replay confirms the command without recovering its token; an explicit fresh resend obtains another local token. Old versions, consumed and revoked links cannot be accepted. Terminal hashes/receipts remain in the disposable emulator dataset pending production retention policy.
 
 All trusted operations repeat fresh Admin Auth and Firestore authority checks. Acceptance validates exact immutable identities and schemas, inviter/account/workspace status, profile/directory/entitlement and bounded roster/counter consistency, matching internal invitation/summary, binding, server expiry/version and receipt. It rejects existing target memberships/profiles/references rather than reactivating or repairing them. Account bootstrap, client membership/minimal onboarding-pending profile/reference, entitlement, workspace counters/revision, invitation consumption, summary and immutable receipt commit together. The existing lifecycle counter projection supplies cap arithmetic. Competing accept/revoke/resend transactions produce one valid transition; matching same-caller/key retries replay after fresh authorization, and conflicting retries fail. Auth checks precede the Firestore transaction because those services have no joint transaction.
 
@@ -34,7 +34,7 @@ Android uses the official Auth SDK plus Firebase's documented callable wire prot
 
 Earlier failed attempts are not passing evidence: fixture email reuse required delete-all-before-create setup; Auth email change required re-verifying the emulator user; strengthened roster consistency changed one expected denial reason; Swift bridge optionality/visual-controller build ordering were corrected; Android SDK Instance ID validation prevented transport until the protocol adapter was used. A later full suite on the already-used native emulator dataset passed 125/126, with the first legacy assigned-program setup failing in `recursiveDelete` (14 failed deletes / emulator UNKNOWN); a clean isolated rerun passed 126/126. Final review additionally tied receipt status/version/expiry to command semantics and server commit time, with four atomic corrupt-receipt rejections; the complete suite passed 126/126 after those checks. Earlier PR 1/2/3 historical evidence was read, not represented as fresh reruns.
 
-## Finalization review fixes and fresh verification (2026-10-12)
+## Retained pre-review finalization fixes and verification (2026-10-12, head `3d18b549a7`)
 
 Review covered the full original slice plus the fixes. Empty/mismatched success payloads previously could clear a protected command: reply validation now requires the request-specific IDs, version, status, timestamps, replay flag and token shape. Android also requires a single callable result/error envelope and matching HTTP/error status; malformed, unknown or transport responses remain ambiguous. Unexpected backend exceptions now return a redacted internal callable failure rather than a definitive rejection, so an uncertain commit cannot clear native work. Native generations now reject overlapping retry issuance, block direct sign-in while an identity is pinned, unregister retired Auth observers and notify recreated roots only of UID-bound protected-ledger settlement. The invitation frame is fenced by the current account UID before asynchronous identity effects run. Generation/request cancellation still fences presentation without discarding critical work.
 
@@ -56,9 +56,32 @@ Backend acceptance now compares directory entries with the bounded authoritative
 
 Sanitized counters, fingerprints, PASS labels and interaction qualifications are in [native-finalization.json](evidence/milestone-4-pr3/native-finalization.json). Raw logs remain temporary local evidence and are not committed. Earlier protected pins/partitions were preserved: the Android lifecycle probe uses a dedicated real app-private namespace, and iOS lifecycle probes use their own defaults/storage namespace; interactive iOS uses a separate simulator. Failed finalization attempts are not passing evidence: an initial Android test-context wrapper broke Firebase AppCheck's Application cast and was corrected so SDKs always receive the genuine Application; a stale-install race required awaiting install success; API 29's activity-manager boot interruption prevented the delayed-test launch, which subsequently passed on API 34. The Mac temporarily locked, and Android Studio computer use took about nine minutes before returning an unrelated project window, which was left untouched.
 
+## P1 review follow-up (2026-10-12)
+
+Both [receipt/throttle](https://github.com/krajinov/TillFailure/pull/6#discussion_r4243852700) and [Auth lookup](https://github.com/krajinov/TillFailure/pull/6#discussion_r4243852706) findings were fetched verbatim from review `5485662446`. The branch, clean working tree, local HEAD and remote branch all matched `3d18b549a770eedbeb42fc42db23ebf60fa579ff` before editing. No unrelated work or history was rewritten.
+
+Receipt validation and fresh caller/inviter/workspace authorization now precede the smaller admission-quota charge. The 30-per-UID/server-minute admission record commits with the new mutation/receipt in the same transaction; matching receipt replay leaves it unchanged. A separate 120-request budget covers replays and well-formed rejected attempts, so bypassing mutation admission does not remove bounded abuse control. It is also retryable when exhausted and never resolves local critical work. Instantaneous receipt absence cannot prove an earlier in-flight invocation cannot commit later.
+
+Both `getUser` and `getUserByEmail` recognize only `auth/user-not-found` as identity absence. Disabled/unverified identities reject from fresh Auth fields. Network, timeout, service/internal and unexpected errors become a redacted internal callable failure, without copying diagnostics into responses. Missing/disabled identities and conflicting requests still reject, with no authority/receipt mutations.
+
+The shared protected ledger, used by both native adapters, now clears only a validated matching successful reply/receipt. Every mutation error retains the original UID/key/request record and reports uncertainty about the original command. This includes genuine current permission rejection: denial proves no present access, not that an earlier invocation never committed. Read-only errors remain read-only. No persistence schema change, negative receipt, silent discard or role grant was added. Permanent authorization loss or an unrecoverable rejected command remains blocked pending a separately approved trusted reconciliation policy; this conservative limit is explicit rather than losing protected work.
+
+| Fresh follow-up verification | Result and attribution |
+|---|---|
+| Backend/Rules | Final clean named-emulator full suite **143/143**, zero failures/cancellations/skips. Four mutation families cover committed/lost response with exhausted quota, a paused earlier invocation when a retry is throttled, service recovery and one receipt with unchanged protected records. Transient `getUser` failures cover all four; `getUserByEmail` covers creation retry. Actual missing/disabled callers/targets, verification/authority rejection, conflicting payloads and independent request-budget exhaustion are covered. Rules deny both request-budget reads and writes. |
+| Regression sensitivity | All **14 new backend regressions failed as expected** using the reviewed pre-fix implementation. `pr3-review-sensitivity.mjs` changes only ignored transpiled output, restores it in `finally`, and never edits tracked source/Git history. Fixed full suites passed afterward. |
+| Shared Kotlin | **104/104 Android host and 104/104 iOS simulator**, zero failures/errors/skips. The new regression covers all four commands, lost reply/quota/internal/permission/conflict outcomes, unchanged protected envelopes, original-key reuse, conflicting-command denial and validated receipt settlement. |
+| Android native | **API 34, 1/1 JUnit passed** for `AndroidInvitationRecoveryTest`, real Auth/HTTP callable/Firestore, encrypted Android storage and identity gate. Each of create/resend/revoke/accept retains the complete original envelope through four errors, blocks sign-out/direct account change, then replays its exact receipt through admission quota 30, keeps authority/receipt fingerprints unchanged and permits ordered cleanup. |
+| iOS native | **iOS 26.2 signed simulator, 47 PASS, zero FAIL** from `InvitationRecoveryHarness`, actual Swift Auth/Functions/Firestore, protected Application Support storage/defaults and shared gate. Corresponding four-command/error/envelope/departure/receipt checks passed, followed by fresh server gate and clean departure. |
+| Native fault attribution | The host fixture commits each original command and intentionally withholds its reply; native callers persist/retry the original identity. Request-budget denial and recovered receipt replay go through the real callable. Internal/permission/conflict responses are explicit mapped wire faults testing adapter/ledger semantics; actual Admin infrastructure errors are injected in backend tests. These probes are not a fresh native process-death or interactive UI run. |
+| Builds | Android Debug/Release/device-test and final signed iOS Debug/unsigned iOS Release simulator builds passed. The fresh iOS Release build completed after slow Gradle configuration/class loading; Debug-only recovery harness calls remain excluded and Release hosts still inject no product client. |
+| Evidence/audit | [p1-review-recovery.json](evidence/milestone-4-pr3/p1-review-recovery.json) records sanitized PASS labels and per-trial before/after counters/fingerprints. Evidence freezes when each native trial verifies it, before later trials legitimately change shared workspace counters. No raw callable replies, tokens, credentials, generated output or machine paths are committed. |
+
+Intermediate limitations/failures retain their attribution: a rerun on a previously used emulator dataset passed 142/143 because the legacy provisioning CLI test attempted to recreate its retained ordinary-operator Auth fixture; the final empty-dataset run passed 143/143. Native fixture initialization initially reused one operator bootstrap key across platforms, was corrected to distinct keys, and restarted only its disposable emulator dataset before native execution. Initial native runs passed 1/1 and 47 PASS; collection afterward exposed legitimate counter changes from later trials, so the evidence endpoint was corrected to freeze each verified phase and both probes were rerun. Older app-private namespaces and pins were preserved throughout. Pre-review 129/103 suites, actual process-death/late-callback checks, touch interaction and stateless visuals above remain retained evidence, not follow-up reruns.
+
 ## Acceptance status and exact remaining limits
 
-**Qualified local emulator implementation; not full native interactive acceptance and not production acceptance.** Native restart and late-completion gaps A and B are closed with platform-native process/SDK/storage evidence. Interactive gap C is only partially closed.
+**Qualified local emulator implementation; not full native interactive acceptance and not production acceptance.** Native restart and late-completion gaps A and B have the retained platform-native process/SDK/storage evidence above; the P1 follow-up adds fresh native error/recovery ledger checks. Interactive gap C remains only partially closed and was not rerun during the follow-up.
 
 - Android's real trainer/client touch walkthrough, keyboard/focus/IME and Back were not completed. The API 29 activity-manager launch remained interrupted; API 34 passed the lifecycle probe, then its device connection closed during main-app launch. The available computer-use surface returned an unrelated Android Studio project, not a usable emulator interaction surface. Shared/native harness tests do not stand in for this UI evidence.
 - On iOS, normal-size stateful form/entry/preview/acceptance and the accepted-client Sign out action at 200% passed. Trainer/preview lower-action touch scrolling at 200% remains unproved: mouse-scroll and drag attempts left the viewport unchanged. Hardware focus traversal exposed lower sign-in controls at normal size, but this is not touch-scroll evidence. Native Back, software keyboard/IME behavior, OS Dynamic Type settings and VoiceOver/TalkBack traversal remain unverified. The explicit Compose scale and stateless fixtures are not OS accessibility acceptance.
@@ -67,13 +90,14 @@ Sanitized counters, fingerprints, PASS labels and interaction qualifications are
 
 ## Exact changed files
 
-The final intended diff contains 44 files (the original 37 plus scoped finalization fixes/probes/evidence):
+The complete PR contains 49 intended files: the original 37, scoped pre-review finalization fixes/probes/evidence, and the P1 recovery follow-up.
 
 - `README.md`
 - `androidApp/src/main/kotlin/com/delminiusapps/tillfailure/MainActivity.kt`
 - `docs/firestore-schema.md`
 - `docs/firestore-security.md`
 - `docs/milestones/evidence/milestone-4-pr3/native-finalization.json`
+- `docs/milestones/evidence/milestone-4-pr3/p1-review-recovery.json`
 - `docs/milestones/milestone-4-plan.md`
 - `docs/milestones/milestone-4-pr3-invitations.md`
 - `docs/milestones/milestone-4-pr3-report.md`
@@ -82,6 +106,8 @@ The final intended diff contains 44 files (the original 37 plus scoped finalizat
 - `firebase/firestore.rules`
 - `firebase/functions/package.json`
 - `firebase/functions/scripts/pr3-native-fixtures.mjs`
+- `firebase/functions/scripts/pr3-review-native.mjs`
+- `firebase/functions/scripts/pr3-review-sensitivity.mjs`
 - `firebase/functions/scripts/seed-pr3.mjs`
 - `firebase/functions/src/index.ts`
 - `firebase/functions/src/invitations.ts`
@@ -92,8 +118,10 @@ The final intended diff contains 44 files (the original 37 plus scoped finalizat
 - `iosApp/iosApp/FirebaseNativeBridge.swift`
 - `iosApp/iosApp/InvitationHarness.swift`
 - `iosApp/iosApp/InvitationLifecycleHarness.swift`
+- `iosApp/iosApp/InvitationRecoveryHarness.swift`
 - `iosApp/iosApp/iOSApp.swift`
 - `shared/src/androidDeviceTest/kotlin/com/delminiusapps/tillfailure/firebase/AndroidInvitationLifecycleTest.kt`
+- `shared/src/androidDeviceTest/kotlin/com/delminiusapps/tillfailure/firebase/AndroidInvitationRecoveryTest.kt`
 - `shared/src/androidDeviceTest/kotlin/com/delminiusapps/tillfailure/firebase/AndroidInvitationTest.kt`
 - `shared/src/androidMain/kotlin/com/delminiusapps/tillfailure/firebase/AndroidFirebaseSpikeClient.kt`
 - `shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/core/designsystem/TillFailureComponents.kt`

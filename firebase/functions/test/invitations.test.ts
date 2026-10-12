@@ -41,7 +41,7 @@ it("keeps unexpected backend failures ambiguous and redacts their diagnostics", 
 });
 describe("guarded local invitations", () => {
   beforeEach(async () => {
-    for (const name of ["users", "workspaces", "invitations", "invitationRateLimits", "lifecycleCommands", "operatorAudit"]) await db.recursiveDelete(db.collection(name));
+    for (const name of ["users", "workspaces", "invitations", "invitationRateLimits", "invitationRequestLimits", "lifecycleCommands", "operatorAudit"]) await db.recursiveDelete(db.collection(name));
     for (const uid of ["invite_trainer", "invite_client", "invite_other"]) await auth.deleteUser(uid).catch(() => {});
     for (const [uid, address] of [["invite_trainer", "invite-trainer@example.invalid"], ["invite_client", "invite-client@example.invalid"], ["invite_other", "invite-other@example.invalid"]]) {
       await auth.createUser({ uid: uid!, email: address!, emailVerified: true, password });
@@ -263,6 +263,108 @@ describe("guarded local invitations", () => {
     const before = await protectedState();
     assert.equal((await invoke(body, token)).data.result?.replayed, true);
     assert.equal(stableHash(await protectedState()), stableHash(before));
+  });
+
+  async function unknownCommand(action: string) {
+    const request = action === "create"
+      ? { action, workspaceId: "invite_ws", email: "invite-client@example.invalid", idempotencyKey: "unknown" }
+      : action === "accept" ? clientCommand(await create(), action, "unknown")
+      : trainerCommand(await create(), action, "unknown");
+    return { uid: action === "accept" ? "invite_client" : "invite_trainer", request };
+  }
+  async function exhaust(uid: string) {
+    await db.doc(`invitationRateLimits/${stableHash(uid)}`).set({ minute: Math.floor(Date.now() / 60000), count: 30 });
+  }
+  for (const action of ["create", "resend", "revoke", "accept"]) {
+    it(`P1 ${action}: lost response replays through exhausted admission quota with one protected commit`, async () => {
+      const { uid, request } = await unknownCommand(action);
+      await call(uid, request); // Commit happened; the caller loses this reply.
+      const protectedBefore = stableHash(await protectedState());
+      await exhaust(uid);
+      const quotaBefore = (await db.doc(`invitationRateLimits/${stableHash(uid)}`).get()).data();
+      const replay = await call(uid, request);
+      assert.equal(replay.replayed, true);
+      assert.equal(stableHash(await protectedState()), protectedBefore);
+      assert.deepEqual((await db.doc(`invitationRateLimits/${stableHash(uid)}`).get()).data(), quotaBefore);
+      const receipts = await db.collection("lifecycleCommands").where("callerUid", "==", uid)
+        .where("commandKind", "==", `invitation-${action}`).get();
+      assert.equal(receipts.size, 1);
+      // Conflicting payloads and fresh authority revocation still reject under exhausted quota.
+      const changed = action === "create" ? { ...request, email: "invite-other@example.invalid" }
+        : { ...request, expectedVersion: 9 };
+      await rejection(uid, changed, /idempotency-key-reused/);
+      await auth.updateUser(uid, { disabled: true });
+      await rejection(uid, request, /unauthorized/);
+      await auth.updateUser(uid, { disabled: false });
+      await auth.deleteUser(uid);
+      await rejection(uid, request, /unauthorized/);
+      await auth.createUser({ uid, email: uid === "invite_client" ? "invite-client@example.invalid" : "invite-trainer@example.invalid",
+        emailVerified: true, password });
+      assert.equal((await call(uid, request)).replayed, true);
+    });
+    it(`P1 ${action}: a throttled retry cannot rule out the earlier in-flight invocation`, async t => {
+      const { uid, request } = await unknownCommand(action);
+      const original = auth.getUser.bind(auth);
+      let release!: () => void; let entered!: () => void;
+      const held = new Promise<void>(resolve => { release = resolve; });
+      const started = new Promise<void>(resolve => { entered = resolve; });
+      let first = true;
+      const lookup = t.mock.method(auth, "getUser", async (value: string) => {
+        if (first) { first = false; entered(); await held; }
+        return original(value);
+      });
+      const earlier = call(uid, request); await started;
+      try {
+        await exhaust(uid);
+        await rejection(uid, request, /rate-limited/);
+        assert.equal((await db.doc(`lifecycleCommands/${commandId(uid, "unknown")}`).get()).exists, false);
+        // Service/quota recovery permits the still-running original invocation to commit later.
+        await db.doc(`invitationRateLimits/${stableHash(uid)}`).delete();
+      } finally { release(); lookup.mock.restore(); }
+      await earlier;
+      const committed = stableHash(await protectedState());
+      await exhaust(uid);
+      assert.equal((await call(uid, request)).replayed, true);
+      assert.equal(stableHash(await protectedState()), committed);
+    });
+    it(`P1 ${action}: transient getUser failures stay redacted and recover the same receipt`, async t => {
+      const { uid, request } = await unknownCommand(action);
+      await call(uid, request); const committed = stableHash(await protectedState());
+      for (const code of ["auth/network-request-failed", "auth/internal-error", "ETIMEDOUT", "unexpected-outage"]) {
+        const lookup = t.mock.method(auth, "getUser", async () => { throw Object.assign(new Error("private-infrastructure-diagnostic"), { code }); });
+        try {
+          await rejection(uid, request, /auth-lookup-unavailable/);
+          try { await call(uid, request); assert.fail("Expected outage"); }
+          catch (error) { assert.deepEqual(invitationFailure(error), { code: "internal", reason: "invitation-unavailable" }); }
+        } finally { lookup.mock.restore(); }
+      }
+      assert.equal((await call(uid, request)).replayed, true);
+      assert.equal(stableHash(await protectedState()), committed);
+    });
+  }
+  it("P1 create: getUserByEmail outages are ambiguous while real missing/disabled targets reject", async t => {
+    const { uid, request } = await unknownCommand("create");
+    await call(uid, request); const committed = stableHash(await protectedState());
+    for (const code of ["auth/network-request-failed", "auth/internal-error", "ETIMEDOUT", "unexpected-outage"]) {
+      const lookup = t.mock.method(auth, "getUserByEmail", async () => { throw Object.assign(new Error("private-email-lookup-diagnostic"), { code }); });
+      try {
+        await rejection(uid, request, /auth-lookup-unavailable/);
+      } finally { lookup.mock.restore(); }
+    }
+    await auth.deleteUser("invite_client");
+    await rejection(uid, request, /fixture-account-required/);
+    await auth.createUser({ uid: "invite_client", email: "invite-client@example.invalid", emailVerified: true, password, disabled: true });
+    await rejection(uid, request, /unauthorized/);
+    await auth.updateUser("invite_client", { disabled: false });
+    assert.equal((await call(uid, request)).replayed, true);
+    assert.equal(stableHash(await protectedState()), committed);
+  });
+  it("P1 request abuse remains bounded independently of admission-free receipt replay", async () => {
+    const { uid, request } = await unknownCommand("create"); await call(uid, request);
+    await db.doc(`invitationRequestLimits/${stableHash(uid)}`).set({ minute: Math.floor(Date.now() / 60000), count: 120 });
+    await rejection(uid, request, /rate-limited/);
+    await db.doc(`invitationRequestLimits/${stableHash(uid)}`).delete();
+    await exhaust(uid); assert.equal((await call(uid, request)).replayed, true);
   });
 
   it("throttles preview attempts without storing token material or modifying invitation authority", async () => {
