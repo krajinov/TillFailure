@@ -7,6 +7,9 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import com.delminiusapps.tillfailure.firebase.AndroidProductIdentitySession
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -17,12 +20,22 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            App(
-                identityClientProvider = {
-                    if (BuildConfig.DEBUG) AndroidProductIdentitySession.get(applicationContext) else null
-                },
-                showDevelopmentCatalog = BuildConfig.DEBUG,
-            )
+            if (BuildConfig.DEBUG && intent.hasExtra("tfPr3Visual")) {
+                com.delminiusapps.tillfailure.designcatalog.InvitationVisualFixture(
+                    intent.getStringExtra("tfPr3Visual") ?: "client", intent.getFloatExtra("tfPr3FontScale", 1f),
+                )
+                return@setContent
+            }
+            val density = LocalDensity.current
+            val scale = if (BuildConfig.DEBUG) intent.getFloatExtra("tfPr3FontScale", 0f) else 0f
+            CompositionLocalProvider(LocalDensity provides if (scale in 1f..2f) Density(density.density, scale) else density) {
+                App(
+                    identityClientProvider = {
+                        if (BuildConfig.DEBUG) AndroidProductIdentitySession.get(applicationContext) else null
+                    },
+                    showDevelopmentCatalog = BuildConfig.DEBUG,
+                )
+            }
         }
     }
 }

@@ -3,6 +3,7 @@ import CryptoKit
 import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
+import FirebaseFunctions
 import Foundation
 import Shared
 
@@ -116,6 +117,15 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
     private var currentEpoch: Int64 = 0
     private var terminated = false
     private var accountFrozen = false
+    private var invitationAuthEpoch: Int64 = 0
+    private var invitationUid: String?
+    private var invitationAuthHandle: AuthStateDidChangeListenerHandle?
+    private var invitationInFlight = false
+    let invitationChanges = InvitationChanges()
+    #if DEBUG
+    var debugBeforeInvitationTransport: ((@escaping () -> Void) -> Void)?
+    var debugBeforeInvitationCompletion: ((@escaping () -> Void) -> Void)?
+    #endif
     private var successor: FirebaseNativeBridge?
     private let identityPinKey = "tillfailure.identityPin.v1.sha256"
     private let switchUidKey = "tillfailure.departure.v1.uid"
@@ -197,6 +207,16 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
         if productMemoryCache { settings.cacheSettings = MemoryCacheSettings() }
         firestore.settings = settings
         super.init()
+        invitationUid = auth.currentUser?.uid
+        invitationAuthHandle = auth.addStateDidChangeListener { [weak self] _, user in
+            guard let self else { return }
+            self.lock.lock()
+            defer { self.lock.unlock() }
+            if self.invitationUid != user?.uid {
+                self.invitationUid = user?.uid
+                self.invitationAuthEpoch += 1
+            }
+        }
     }
 
     /// Fail-closed guard for every operation: once this bridge's teardown has run it must never touch
@@ -255,6 +275,12 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
         return terminated
     }
 
+    func hasInvitationInFlight() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return invitationInFlight
+    }
+
     func activeBridge() -> NativeIdentityBridge {
         lock.lock()
         let next = successor
@@ -285,6 +311,8 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
     func fenceDepartureCallbacks() {
         lock.lock()
         currentEpoch += 1
+        if let handle = invitationAuthHandle { auth.removeStateDidChangeListener(handle) }
+        invitationAuthHandle = nil
         let outstanding = Array(cancellations.values)
         cancellations.removeAll()
         lock.unlock()
@@ -385,6 +413,11 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
 
     func signIn(email: String, password: String, accountEpoch: Int64, callback: @escaping (NativeFirebaseUnitResult) -> Void) -> String {
         activate(epoch: accountEpoch)
+        guard !hasPinnedIdentity() else {
+            return deliverTerminatedFailure(accountEpoch: accountEpoch) {
+                callback(NativeFirebaseUnitResult(failure: NativeFirebaseFailure(code: "FAILED_PRECONDITION", retryable: false)))
+            }
+        }
         if let token = issueIfWritable({
             let (token, gate) = beginOneShot()
             auth.signIn(withEmail: email, password: password) { [weak self] _, error in
@@ -437,6 +470,66 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
             callback(NativeFirebaseSessionRefresh(uid: nil, isAnonymous: false, email: nil, emailVerified: false,
                 failure: self.terminatedFailure ?? NativeFirebaseFailure(code: "FAILED_PRECONDITION", retryable: false)))
         }
+    }
+
+    func callInvitation(uid: String, json: String, prepare: @escaping () -> KotlinBoolean,
+                        callback: @escaping (NativeInvitationOutcome) -> Void) -> String {
+        let token = UUID().uuidString
+        lock.lock()
+        defer { lock.unlock() }
+        guard !terminated, !accountFrozen, !invitationInFlight, auth.currentUser?.uid == uid, generation.projectID == "demo-tillfailure-m3",
+              let data = json.data(using: .utf8), let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              prepare().boolValue else {
+            callback(NativeInvitationOutcome(json: nil, error: "unavailable", ambiguous: true))
+            return token
+        }
+        let functions = Functions.functions(app: generation.app, region: "europe-west1")
+        #if DEBUG
+        let port = Int(ProcessInfo.processInfo.environment["TF_FUNCTIONS_EMULATOR_PORT"] ?? "") ?? 5001
+        #else
+        let port = 5001
+        #endif
+        functions.useEmulator(withHost: emulatorHost, port: port)
+        let issuedEpoch = invitationAuthEpoch
+        let callbackEpoch = currentEpoch
+        invitationInFlight = true
+        let transport = {
+          functions.httpsCallable("invitationEmulator").call(payload) { [weak self] result, error in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                let deliver = {
+                self.lock.lock()
+                defer { self.lock.unlock() }
+                self.invitationInFlight = false
+                guard !self.terminated, self.auth.currentUser?.uid == uid,
+                      self.invitationAuthEpoch == issuedEpoch, self.currentEpoch == callbackEpoch else { return }
+                // Resolve the protected command even when its initiating view has gone away.
+                if let error = error as NSError? {
+                    let definitive = error.domain == FunctionsErrorDomain && [FunctionsErrorCode.invalidArgument.rawValue,
+                        FunctionsErrorCode.unauthenticated.rawValue, FunctionsErrorCode.permissionDenied.rawValue,
+                        FunctionsErrorCode.failedPrecondition.rawValue, FunctionsErrorCode.resourceExhausted.rawValue].contains(error.code)
+                    callback(NativeInvitationOutcome(json: nil, error: error.localizedDescription, ambiguous: !definitive))
+                } else if let payload = result?.data, let bytes = try? JSONSerialization.data(withJSONObject: payload),
+                          let json = String(data: bytes, encoding: .utf8) {
+                    callback(NativeInvitationOutcome(json: json, error: nil, ambiguous: false))
+                } else {
+                    callback(NativeInvitationOutcome(json: nil, error: "unavailable", ambiguous: true))
+                }
+                }
+                #if DEBUG
+                if let hold = self.debugBeforeInvitationCompletion { hold(deliver) } else { deliver() }
+                #else
+                deliver()
+                #endif
+            }
+          }
+        }
+        #if DEBUG
+        if let hold = debugBeforeInvitationTransport { hold(transport) } else { transport() }
+        #else
+        transport()
+        #endif
+        return token
     }
 
     func discoverMemberships(uid: String, accountEpoch: Int64, callback: @escaping (NativeMembershipDiscoveryResult) -> Void) -> String {

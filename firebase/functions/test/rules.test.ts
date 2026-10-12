@@ -54,6 +54,42 @@ async function seedEligibleAssignment(): Promise<void> {
 }
 
 describe("Firestore and Storage rules", () => {
+  it("keeps internal invitations Admin-only and authorizes bounded safe summaries only for active workspace trainers", async () => {
+    await environment.withSecurityRulesDisabled(async context => {
+      const db = context.firestore();
+      await setDoc(doc(db, "users/trainer"), { schemaVersion: 1, accountStatus: "active" });
+      await setDoc(doc(db, "users/client"), { schemaVersion: 1, accountStatus: "active" });
+      await setDoc(doc(db, "workspaces/invites"), { schemaVersion: 1, status: "active" });
+      for (const uid of ["trainer", "client"]) await setDoc(doc(db, `workspaces/invites/memberships/${uid}`), {
+        schemaVersion: 1, workspaceId: "invites", userId: uid, role: uid, status: "active"
+      });
+      await setDoc(doc(db, "invitations/secret"), { tokenHash: "hash", invitedEmailNormalized: "private@example.invalid" });
+      await setDoc(doc(db, "workspaces/invites/invitationSummaries/secret"), { schemaVersion: 1, invitationId: "secret",
+        emailMasked: "p***@example.invalid", role: "client", status: "pending", tokenVersion: 1,
+        expiresAt: new Date(), createdAt: new Date(), lastSentAt: new Date() });
+    });
+    const trainer = verifiedContext("trainer").firestore();
+    const client = verifiedContext("client").firestore();
+    const other = verifiedContext("other").firestore();
+    const anon = environment.unauthenticatedContext().firestore();
+    const path = "workspaces/invites/invitationSummaries/secret";
+    await assertSucceeds(getDoc(doc(trainer, path)));
+    await assertSucceeds(getDocs(query(collection(trainer, "workspaces/invites/invitationSummaries"), limit(20))));
+    await assertFails(getDocs(collection(trainer, "workspaces/invites/invitationSummaries")));
+    for (const db of [trainer, client, other, anon]) {
+      await assertFails(getDoc(doc(db, "invitations/secret")));
+      await assertFails(getDocs(collection(db, "invitations")));
+      await assertFails(setDoc(doc(db, "invitations/secret"), { tokenHash: "forged" }));
+      await assertFails(setDoc(doc(db, path), { token: "forged" }));
+      await assertFails(getDoc(doc(db, "invitationRateLimits/private")));
+      if (db !== trainer) await assertFails(getDoc(doc(db, path)));
+    }
+    await environment.withSecurityRulesDisabled(async context => {
+      await updateDoc(doc(context.firestore(), "workspaces/invites/memberships/trainer"), { userId: "other" });
+    });
+    await assertFails(getDoc(doc(trainer, path)));
+    await assertFails(getDocs(query(collection(trainer, "workspaces/invites/invitationSummaries"), limit(20))));
+  });
   it("denies self-provisioning and protected reads before operator commit, then admits only the verified owner", async () => {
     const uid = "pr2_rules_trainer";
     const wid = "pr2_rules_workspace";

@@ -2,6 +2,7 @@ package com.delminiusapps.tillfailure.persistence
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import com.delminiusapps.tillfailure.invitations.PendingInvitationCommand
 
 const val RECOVERY_ENCRYPTION_VERSION = 1
 const val RECOVERY_KEY_IDENTIFIER = "tillfailure.recovery.v1"
@@ -77,6 +78,7 @@ data class AccountPersistenceEnvelope(
     val mutationJournal: List<MutationJournalEntry> = emptyList(),
     val pendingUploads: List<PendingUpload> = emptyList(),
     val switchMarker: AccountSwitchMarker? = null,
+    val pendingInvitationCommands: List<PendingInvitationCommand> = emptyList(),
 ) {
     init {
         RecoveryUidContract.requireValid(uid)
@@ -86,6 +88,7 @@ data class AccountPersistenceEnvelope(
         require(mutationJournal.all { it.uid == uid })
         require(pendingUploads.all { it.uid == uid })
         require(switchMarker?.departingUid == null || switchMarker.departingUid == uid)
+        require(pendingInvitationCommands.size <= 1 && pendingInvitationCommands.all { it.uid == uid })
     }
 }
 

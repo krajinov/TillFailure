@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		A10000000000000000000005 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000002 /* FirebaseAuth */; };
 		A10000000000000000000006 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000003 /* FirebaseFirestore */; };
+		A10000000000000000000007 /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000004 /* FirebaseFunctions */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -48,6 +49,7 @@
 			files = (
 				A10000000000000000000005 /* FirebaseAuth in Frameworks */,
 				A10000000000000000000006 /* FirebaseFirestore in Frameworks */,
+				A10000000000000000000007 /* FirebaseFunctions in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -94,6 +96,7 @@
 			packageProductDependencies = (
 				A10000000000000000000002 /* FirebaseAuth */,
 				A10000000000000000000003 /* FirebaseFirestore */,
+				A10000000000000000000004 /* FirebaseFunctions */,
 			);
 			productName = iosApp;
 			productReference = CA677D25B1640892B2A176CA /* TillFailure.app */;
@@ -393,6 +396,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		A10000000000000000000004 /* FirebaseFunctions */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000000000000000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFunctions;
+		};
 		A10000000000000000000002 /* FirebaseAuth */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = A10000000000000000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;

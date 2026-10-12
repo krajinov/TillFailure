@@ -28,6 +28,7 @@ data class IdentityState(
     val canSignOut: Boolean = false,
     val verifiedWorkspaceId: String? = null,
     val verifiedRole: String? = null,
+    val accountUid: String? = null,
 )
 
 sealed interface IdentityEvent {
@@ -61,6 +62,7 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
 
     /** Current immutable gate state; a small non-flow accessor for native hosts and diagnostics. */
     fun currentState(): IdentityState = mutableState.value
+    fun activeClient(): ProductIdentityClient = client
 
     private fun recoverOnStartup() {
         val port = client.departure
@@ -373,7 +375,7 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
                 marker.readable && marker.marker == null && port.hasProvenEmptyCriticalWork(uid)
             }.getOrDefault(false)
         } else true
-        mutableState.value = next.copy(canSignOut = canAttemptSignOut && restrictedCleanupReady)
+        mutableState.value = next.copy(canSignOut = canAttemptSignOut && restrictedCleanupReady, accountUid = uid)
         if (next.status != previousStatus) effectChannel.trySend(IdentityEffect.ReplaceRoot(next.status))
     }
 

@@ -6,6 +6,7 @@ data class FirebaseEmulatorConfiguration(
     val authPort: Int = 9099,
     val firestorePort: Int = 8080,
     val storagePort: Int = 9199,
+    val functionsPort: Int = 5001,
 ) {
     init {
         require(projectId.startsWith("demo-")) { "Firebase spike project ID must use the emulator-only demo- prefix" }

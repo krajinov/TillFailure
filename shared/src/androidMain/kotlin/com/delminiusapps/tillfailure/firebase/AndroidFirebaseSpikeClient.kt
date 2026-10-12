@@ -7,6 +7,9 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
+import com.delminiusapps.tillfailure.invitations.*
+import java.net.HttpURLConnection
+import java.net.URL
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
@@ -34,15 +37,105 @@ class AndroidFirebaseSpikeClient(
     private val fence: AccountCallbackFence,
     private val productMemoryCache: Boolean = false,
     private val overrideProductAppName: String? = null,
+    private val protectedContextForTest: Context? = null,
 ) : FirebaseSpikeClient, ProductIdentityClient, CleanDeparturePort {
     private val applicationContext = context.applicationContext
-    private val recoveryStore = AndroidAtomicFilePersistence(applicationContext)
+    private val identityDataContext = protectedContextForTest ?: applicationContext
+    private val recoveryStore = AndroidAtomicFilePersistence(identityDataContext)
     private val generation: AndroidFirebaseAppRegistry.Generation
     private val app: FirebaseApp
     private val auth: FirebaseAuth
     private val firestore: FirebaseFirestore
+    private val invitationLedger = InvitationLedger(recoveryStore)
+    private var invitationAuthEpoch = 0L
+    private var invitationUid: String? = null
+    private var invitationAuthListener: FirebaseAuth.AuthStateListener? = null
+    private var invitationInFlight = false
+    private val invitationChanges = InvitationChanges()
+    internal var beforeInvitationTransportForTest: ((() -> Unit) -> Unit)? = null
+    internal var beforeInvitationCompletionForTest: ((() -> Unit) -> Unit)? = null
+    override val invitations: InvitationClient = object : InvitationClient {
+        override val memory get() = PendingInvitationLinks.memory
+        override fun newCommandKey(): String = UUID.randomUUID().toString()
+        override fun pending(uid: String): PendingInvitationCommand? = synchronized(callbackLock) { invitationLedger.pending(uid) }
+        override fun observePending(uid: String, callback: () -> Unit) = invitationChanges.observe(uid, callback)
+        override fun execute(uid: String, request: InvitationRequest, callback: (InvitationOutcome) -> Unit): FirebaseCancellation {
+            val cancelled = AtomicBoolean(false)
+            var issuedEpoch = -1L
+            val task = synchronized(callbackLock) {
+                if (terminated.get() || accountFrozen || invitationInFlight || auth.currentUser?.uid != uid || configuration.projectId != "demo-tillfailure-m3" ||
+                    !invitationLedger.prepare(uid, request)) null
+                else {
+                    issuedEpoch = invitationAuthEpoch
+                    invitationInFlight = true
+                    invitationChanges.notify(uid)
+                    auth.currentUser!!.getIdToken(true)
+                }
+            }
+            if (task == null) {
+                callback(InvitationOutcome(error = "unavailable", ambiguous = request.idempotencyKey != null))
+                return FirebaseCancellation {}
+            }
+            // Cancellation fences presentation only; the command may already have committed.
+            // Settle the durable ledger even if the initiating ViewModel has been disposed.
+            fun settle(outcome: InvitationOutcome) = synchronized(callbackLock) {
+                invitationInFlight = false
+                if (!terminated.get() && auth.currentUser?.uid == uid && issuedEpoch == invitationAuthEpoch && fence.accepts(0L)) {
+                    val settled = invitationLedger.settle(uid, request, outcome)
+                    memory.consume(settled.reply)
+                    invitationChanges.notify(uid)
+                    if (!cancelled.get()) callback(settled)
+                }
+            }
+            task.addOnSuccessListener { identity ->
+                // The Android Functions SDK also requests Firebase Instance ID with these demo
+                // options, which fails before transport and is unrelated to this feature. Use the
+                // published callable protocol, attaching only the official Auth SDK's fresh token.
+                val transport = { Thread {
+                    val outcome = runCatching {
+                        val valid = synchronized(callbackLock) { !terminated.get() && auth.currentUser?.uid == uid && issuedEpoch == invitationAuthEpoch }
+                        check(valid && identity.token != null)
+                        val endpoint = URL("http://${configuration.host}:${configuration.functionsPort}/demo-tillfailure-m3/europe-west1/invitationEmulator")
+                        val connection = endpoint.openConnection() as HttpURLConnection
+                        try {
+                            connection.requestMethod = "POST"
+                            connection.instanceFollowRedirects = false
+                            connection.connectTimeout = 15_000; connection.readTimeout = 30_000
+                            connection.doOutput = true
+                            connection.setRequestProperty("Content-Type", "application/json")
+                            connection.setRequestProperty("Authorization", "Bearer ${identity.token}")
+                            val body = "{\"data\":${InvitationJson.request(request)}}"
+                            connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+                            val status = connection.responseCode
+                            val success = status in 200..299
+                            val stream = if (success) connection.inputStream else connection.errorStream
+                            val bytes = stream?.use { input ->
+                                val output = java.io.ByteArrayOutputStream()
+                                val buffer = ByteArray(8192)
+                                while (true) {
+                                    val count = input.read(buffer)
+                                    if (count < 0) break
+                                    check(output.size() + count <= 64 * 1024)
+                                    output.write(buffer, 0, count)
+                                }
+                                output.toByteArray()
+                            } ?: error("response-invalid")
+                            check(bytes.size <= 64 * 1024)
+                            InvitationJson.callable(request, status, bytes.toString(Charsets.UTF_8))
+                        } finally { connection.disconnect() }
+                    }.getOrDefault(InvitationOutcome(error = "unavailable", ambiguous = true))
+                    Handler(Looper.getMainLooper()).post {
+                        val complete = { settle(outcome); Unit }
+                        beforeInvitationCompletionForTest?.invoke(complete) ?: complete()
+                    }
+                }.start(); Unit }
+                beforeInvitationTransportForTest?.invoke(transport) ?: transport()
+            }.addOnFailureListener { settle(InvitationOutcome(error = "unavailable", ambiguous = true)) }
+            return FirebaseCancellation { cancelled.set(true) }
+        }
+    }
     private val terminated = AtomicBoolean(false)
-    private val identityPin = context.applicationContext.getSharedPreferences("tillfailure_identity_pin_v1", Context.MODE_PRIVATE)
+    private val identityPin = identityDataContext.getSharedPreferences("tillfailure_identity_pin_v1", Context.MODE_PRIVATE)
     private var accountFrozen = false
     override val departure: CleanDeparturePort get() = this
     /**
@@ -76,6 +169,14 @@ class AndroidFirebaseSpikeClient(
         auth = FirebaseAuth.getInstance(app)
         firestore = FirebaseFirestore.getInstance(app)
         auth.useEmulator(configuration.host, configuration.authPort)
+        invitationUid = auth.currentUser?.uid
+        invitationAuthListener = FirebaseAuth.AuthStateListener { changed -> synchronized(callbackLock) {
+            if (invitationUid != changed.currentUser?.uid) {
+                invitationUid = changed.currentUser?.uid
+                invitationAuthEpoch++
+            }
+        } }
+        auth.addAuthStateListener(invitationAuthListener!!)
         if (productMemoryCache) firestore.firestoreSettings = FirebaseFirestoreSettings.Builder()
             .setLocalCacheSettings(MemoryCacheSettings.newBuilder().build()).build()
         firestore.useEmulator(configuration.host, configuration.firestorePort)
@@ -167,7 +268,7 @@ class AndroidFirebaseSpikeClient(
 
     override fun signIn(email: String, password: String, epoch: Long, callback: (StableFirebaseFailure?) -> Unit): FirebaseCancellation {
         val cancelled = AtomicBoolean(false)
-        val task = issueIfLive { if (accountFrozen) null else auth.signInWithEmailAndPassword(email, password) } ?: run {
+        val task = issueIfLive { if (accountFrozen || hasPinnedIdentity()) null else auth.signInWithEmailAndPassword(email, password) } ?: run {
             callback(StableFirebaseFailure(StableFirebaseErrorCode.FAILED_PRECONDITION, false))
             return FirebaseCancellation {}
         }
@@ -387,12 +488,14 @@ class AndroidFirebaseSpikeClient(
 
     override fun unfreeze(uid: String) { synchronized(callbackLock) { accountFrozen = false } }
 
-    override fun hasProvenEmptyCriticalWork(uid: String): Boolean = runCatching {
+    override fun hasProvenEmptyCriticalWork(uid: String): Boolean = synchronized(callbackLock) { runCatching {
+        if (invitationInFlight) return@runCatching false
         val envelope = recoveryStore.read(uid) ?: return@runCatching false
         envelope.schemaVersion == 1 && envelope.uid == uid && envelope.offlineAccessGrant == null &&
             envelope.downloadManifests.isEmpty() && envelope.workoutRecoverySnapshot == null &&
-            envelope.mutationJournal.isEmpty() && envelope.pendingUploads.isEmpty() && envelope.switchMarker == null
-    }.getOrDefault(false)
+            envelope.mutationJournal.isEmpty() && envelope.pendingUploads.isEmpty() && envelope.switchMarker == null &&
+            envelope.pendingInvitationCommands.isEmpty()
+    }.getOrDefault(false) }
 
     override fun drain(timeoutMillis: Long, callback: (StableFirebaseFailure?) -> Unit): FirebaseCancellation =
         waitForPendingWrites(0L, timeoutMillis) { callback(it.failure) }
@@ -407,7 +510,11 @@ class AndroidFirebaseSpikeClient(
         }.getOrDefault(false)
     }
 
-    override fun fenceCallbacks() { fence.advance() }
+    override fun fenceCallbacks() = synchronized(callbackLock) {
+        fence.advance()
+        invitationAuthListener?.let(auth::removeAuthStateListener)
+        invitationAuthListener = null
+    }
 
     override fun signOut(callback: (StableFirebaseFailure?) -> Unit) {
         val failure = runCatching { auth.signOut() }.exceptionOrNull()
@@ -444,7 +551,7 @@ class AndroidFirebaseSpikeClient(
         val transient = if (productMemoryCache && readMarker().marker != null)
             "${generation.appName}-retry-${UUID.randomUUID()}" else null
         val fresh = AndroidFirebaseSpikeClient(
-            applicationContext, configuration, AccountCallbackFence(), productMemoryCache, transient,
+            applicationContext, configuration, AccountCallbackFence(), productMemoryCache, transient, protectedContextForTest,
         )
         AndroidProductIdentitySession.replaceIfCurrent(this, fresh)
         return fresh

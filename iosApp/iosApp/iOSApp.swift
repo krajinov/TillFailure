@@ -15,6 +15,8 @@ struct iOSApp: App {
         FirebaseSpikeHarness.runIfRequested(bridge: bridge)
         ProductIdentityHarness.runIfRequested(bridge: bridge)
         TrainerProvisioningHarness.runIfRequested()
+        InvitationHarness.runIfRequested()
+        InvitationLifecycleHarness.runIfRequested()
         CleanDepartureHarness.runIfRequested(password: ProcessInfo.processInfo.environment["TF_PR1_TEST_PASSWORD"])
         CleanDepartureHarness.runUnsupportedIfRequested(password: ProcessInfo.processInfo.environment["TF_PR1_TEST_PASSWORD"])
         CleanDepartureHarness.runAnonymousIfRequested(password: ProcessInfo.processInfo.environment["TF_PR1_TEST_PASSWORD"])

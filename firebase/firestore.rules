@@ -111,6 +111,19 @@ service cloud.firestore {
           && resource.data.userId == trainerUid;
         allow list, write: if false;
       }
+
+      // Only this safe projection is readable. Its sole writer is the guarded trusted operation.
+      match /invitationSummaries/{iid} {
+        allow get: if signedIn() && activeAccount(request.auth.uid) && activeWorkspace(wid)
+          && activeTrainerMembership(wid, request.auth.uid)
+          && resource.data.schemaVersion == 1 && resource.data.invitationId == iid
+          && resource.data.keys().hasOnly(["schemaVersion", "invitationId", "emailMasked", "role", "status",
+            "expiresAt", "createdAt", "lastSentAt", "tokenVersion"]);
+        // Lists use path-bound authority and bounded reads; Admin-only writer maintains allowlist.
+        allow list: if signedIn() && activeAccount(request.auth.uid) && activeWorkspace(wid)
+          && activeTrainerMembership(wid, request.auth.uid) && request.query.limit <= 20;
+        allow write: if false;
+      }
     }
 
     function assignmentReadable(uid, wid, aid) {
