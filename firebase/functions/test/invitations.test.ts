@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 import { getAuth } from "firebase-admin/auth";
-import { Timestamp } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { emulatorFirestore } from "../src/environment.js";
 import { invitationOperation, invitationFailure, InvitationResult } from "../src/invitations.js";
 import { provisionTrainer } from "../src/provisioning.js";
@@ -373,5 +373,89 @@ describe("guarded local invitations", () => {
     await rejection("invite_client", clientCommand(r, "preview"), /rate-limited/);
     const throttle = await db.collection("invitationRateLimits").get();
     assert.ok(throttle.docs.every(d => !JSON.stringify(d.data()).includes(r.deliveryToken!)));
+  });
+
+  it("P2 invitation summary read boundary: bounded ordered application query enforces strict safe projection and fails safely on corrupt/leaky summaries", async () => {
+    const r1 = await create("create-p2-test", "invite_ws", "invite-client@example.invalid");
+    // The actual application query returns valid safe summaries conforming to projection
+    const listResult = await call("invite_trainer", { action: "list", workspaceId: "invite_ws" });
+    assert.equal(listResult.summaries?.length, 1);
+    const item = listResult.summaries![0]!;
+    assert.equal(item.invitationId, r1.invitationId);
+    assert.equal(item.emailMasked, "i***@example.invalid");
+    assert.equal(item.role, "client");
+    assert.equal(item.status, "pending");
+    assert.equal(item.tokenVersion, 1);
+    assert.ok(typeof item.createdAtMillis === "number");
+    assert.ok(typeof item.expiresAtMillis === "number");
+    assert.ok(typeof item.lastSentAtMillis === "number");
+    // Ensure no unexpected fields exist in the returned projection
+    assert.deepEqual(Object.keys(item).sort(), [
+      "createdAtMillis", "emailMasked", "expiresAtMillis", "invitationId",
+      "lastSentAtMillis", "role", "status", "tokenVersion"
+    ]);
+
+    // A summary containing tokenHash cannot expose that data through list
+    await db.doc(`workspaces/invite_ws/invitationSummaries/${r1.invitationId}`).update({ tokenHash: "leaked-token-hash" });
+    await rejection("invite_trainer", { action: "list", workspaceId: "invite_ws" }, /record-invalid/);
+    await db.doc(`workspaces/invite_ws/invitationSummaries/${r1.invitationId}`).update({ tokenHash: FieldValue.delete() });
+
+    // A summary containing invitedEmailNormalized cannot expose that data through list
+    await db.doc(`workspaces/invite_ws/invitationSummaries/${r1.invitationId}`).update({ invitedEmailNormalized: "secret@example.invalid" });
+    await rejection("invite_trainer", { action: "list", workspaceId: "invite_ws" }, /record-invalid/);
+    await db.doc(`workspaces/invite_ws/invitationSummaries/${r1.invitationId}`).update({ invitedEmailNormalized: FieldValue.delete() });
+
+    // A summary containing another unexpected field cannot expose data through list
+    await db.doc(`workspaces/invite_ws/invitationSummaries/${r1.invitationId}`).update({ unexpectedSecret: "forged" });
+    await rejection("invite_trainer", { action: "list", workspaceId: "invite_ws" }, /record-invalid/);
+    await db.doc(`workspaces/invite_ws/invitationSummaries/${r1.invitationId}`).update({ unexpectedSecret: FieldValue.delete() });
+
+    // Missing/unsupported schema fails safely: schemaVersion 2
+    await db.doc(`workspaces/invite_ws/invitationSummaries/${r1.invitationId}`).update({ schemaVersion: 2 });
+    await rejection("invite_trainer", { action: "list", workspaceId: "invite_ws" }, /record-invalid/);
+    await db.doc(`workspaces/invite_ws/invitationSummaries/${r1.invitationId}`).update({ schemaVersion: 1 });
+
+    // Missing required field fails safely
+    await db.doc(`workspaces/invite_ws/invitationSummaries/${r1.invitationId}`).update({ status: FieldValue.delete() });
+    await rejection("invite_trainer", { action: "list", workspaceId: "invite_ws" }, /record-invalid/);
+    await db.doc(`workspaces/invite_ws/invitationSummaries/${r1.invitationId}`).update({ status: "pending" });
+
+    // Malformed projection field (e.g. non-timestamp expiresAt) fails safely
+    await db.doc(`workspaces/invite_ws/invitationSummaries/${r1.invitationId}`).update({ expiresAt: "not-a-timestamp" });
+    await rejection("invite_trainer", { action: "list", workspaceId: "invite_ws" }, /record-invalid/);
+    await db.doc(`workspaces/invite_ws/invitationSummaries/${r1.invitationId}`).update({ expiresAt: Timestamp.now() });
+
+    // Sibling malformed document: if ONE document in the collection contains unexpected fields or malformed schema,
+    // the entire query fails safely (endpoint does not redact or leak partial safe items)
+    const secondSummaryRef = db.doc("workspaces/invite_ws/invitationSummaries/second-summary");
+    await secondSummaryRef.set({
+      schemaVersion: 1, invitationId: "second-summary", emailMasked: "s***@example.invalid",
+      role: "client", status: "pending", tokenVersion: 1,
+      createdAt: Timestamp.now(), expiresAt: Timestamp.now(), lastSentAt: Timestamp.now(),
+      tokenHash: "corrupt-sibling"
+    });
+    await rejection("invite_trainer", { action: "list", workspaceId: "invite_ws" }, /record-invalid/);
+    await secondSummaryRef.delete();
+
+    // Cross-tenant, revoked, disabled, unverified and unauthorized readers remain denied
+    await rejection("invite_other", { action: "list", workspaceId: "invite_ws" }, /unauthorized/);
+    await rejection(undefined, { action: "list", workspaceId: "invite_ws" }, /unauthenticated/);
+
+    await db.doc("workspaces/invite_ws/memberships/invite_trainer").update({ status: "revoked" });
+    await rejection("invite_trainer", { action: "list", workspaceId: "invite_ws" }, /unauthorized/);
+    await db.doc("workspaces/invite_ws/memberships/invite_trainer").update({ status: "active" });
+
+    await auth.updateUser("invite_trainer", { disabled: true });
+    await rejection("invite_trainer", { action: "list", workspaceId: "invite_ws" }, /unauthorized/);
+    await auth.updateUser("invite_trainer", { disabled: false });
+
+    await auth.updateUser("invite_trainer", { emailVerified: false });
+    await rejection("invite_trainer", { action: "list", workspaceId: "invite_ws" }, /unverified-email/);
+    await auth.updateUser("invite_trainer", { emailVerified: true });
+
+    // After cleanup, the application query returns valid safe summaries again
+    const restored = await call("invite_trainer", { action: "list", workspaceId: "invite_ws" });
+    assert.equal(restored.summaries?.length, 1);
+    assert.equal(restored.summaries![0]!.invitationId, r1.invitationId);
   });
 });
