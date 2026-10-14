@@ -117,9 +117,23 @@ Open and local-delivery continuation now parse candidates before mutation and co
 
 Sanitized evidence is in [pending-entry-recovery.json](evidence/milestone-4-pr3/pending-entry-recovery.json). Raw replies/logs/build outputs and bearer material are excluded. The final diff audit covered intended scope, whitespace, secret/token exposure, machine paths and generated files. Production policies, delivery and operations remain disabled; PR 4 remains outside scope.
 
+## P2 metadata-only restoration follow-up — 2026-10-14
+
+Review [5511915716](https://github.com/krajinov/TillFailure/pull/6#pullrequestreview-5511915716), discussion [4265743144](https://github.com/krajinov/TillFailure/pull/6#discussion_r4265743144), identified that a matching ID/version entry opened before sign-in could be mistaken for the original bearer when pending metadata was restored. Branch, local HEAD and remote matched reviewed commit `595948b3b02ab702bdca410b43b9286042bc74e7`; the working tree was clean.
+
+First protection from metadata alone now clears any preexisting unverified link, including the matching real or forged entry. Safe metadata cannot verify a bearer. Explicit reopening after restoration supplies the original entry for same-command recovery. Repeated restoration of the same protected command preserves an already retained link, and native issuance still captures its request bearer before transport. The central locked guard covers root/continuation callers without changing persistence, UID/callback fences, departure blocking, production policies or backend behavior.
+
+- **Fresh shared tests:** 111/111 Android host and 111/111 iOS simulator, no failures/errors/skips. Two added regressions cover forged matching entry before sign-in, no transport until explicit original reopening, original-key success, all unverified preentries, repeated metadata refresh, actual issuance preservation and another UID rejection. The fake now mirrors native pre-transport acceptance protection.
+- **Regression sensitivity:** with only `InvitationClient.kt` replaced by the reviewed version in a disposable source copy, the primary regression fails at `Restored metadata must not bless a pre-sign-in bearer`; the fixed code passes. No history/checkout reset was used.
+- **Fresh native:** Android API 34 **1/1 JUnit**; iOS 26.2 **58 PASS / 0 FAIL**. Real SDK/protected-storage roots start without an invitation UID, open a forged matching entry, receive the authenticated gate/restored command, clear the unverified bearer, retain blocked critical work, explicitly reopen the real entry and resolve through the original command. Subsequent same-process recreation, B/version/invalid rejection, UID isolation, all four mutation error/replay trials and clean departure pass. Both acceptance fingerprints are unchanged with one receipt, membership revision 1, account contribution 1 and workspace roster/contributions 2; admission quota remains 30.
+- **Fresh builds:** Android Debug/Release/device-test and iOS Simulator signed Debug/unsigned Release pass. Debug-only native diagnostics/reconciliation controls remain excluded from Release.
+- **Retained checks/limits:** backend/Rules 144/144 (preceding projection follow-up), shared 109/109 and native 1/54 (preceding entry follow-up), actual process-death and touch evidence retain their original attribution. No backend/Rules source changed or full backend suite reran here. The native restoration probe models entry-before-UID routing in a real root/storage path, not a fresh process-death/Auth cold-start or touch/accessibility run. Interactive limits below remain open.
+
+An initial iOS run failed its earlier create/quota assertion before reaching this restoration case. Its cause was not established. An explicit native reconciliation run proved the original UID restored, the ledger already settled with proven empty critical work, fresh gate verification and ordered sign-out; no pending record was discarded. Only then were the owned disposable demo services restarted. Both final native reruns passed. Boolean-only failure diagnostics and an opt-in original-create receipt reconciliation path are confined to the Debug harness; this does not add a product discard/reconciliation policy. Sanitized final evidence and failed-attempt attribution are in [metadata-restoration-recovery.json](evidence/milestone-4-pr3/metadata-restoration-recovery.json). Raw responses, bearers, machine paths and generated output are excluded.
+
 ## Acceptance status and exact remaining limits
 
-**Qualified local emulator implementation; not full native interactive acceptance and not production acceptance.** Native restart and late-completion gaps A and B have the retained platform-native process/SDK/storage evidence above; the P1 follow-ups add fresh native error/recovery ledger and retained-entry/root checks. Interactive gap C remains only partially closed and was not rerun during either follow-up.
+**Qualified local emulator implementation; not full native interactive acceptance and not production acceptance.** Native restart and late-completion gaps A and B have the retained platform-native process/SDK/storage evidence above; the P1 follow-ups add fresh native error/recovery ledger and retained-entry/root checks; the metadata-restoration follow-up adds entry-before-UID recovery checks. Interactive gap C remains only partially closed and was not rerun during these follow-ups.
 
 - Android's real trainer/client touch walkthrough, keyboard/focus/IME and Back were not completed. The API 29 activity-manager launch remained interrupted; API 34 passed the lifecycle probe, then its device connection closed during main-app launch. The available computer-use surface returned an unrelated Android Studio project, not a usable emulator interaction surface. Shared/native harness tests do not stand in for this UI evidence.
 - On iOS, normal-size stateful form/entry/preview/acceptance and the accepted-client Sign out action at 200% passed. Trainer/preview lower-action touch scrolling at 200% remains unproved: mouse-scroll and drag attempts left the viewport unchanged. Hardware focus traversal exposed lower sign-in controls at normal size, but this is not touch-scroll evidence. Native Back, software keyboard/IME behavior, OS Dynamic Type settings and VoiceOver/TalkBack traversal remain unverified. The explicit Compose scale and stateless fixtures are not OS accessibility acceptance.
@@ -128,12 +142,13 @@ Sanitized evidence is in [pending-entry-recovery.json](evidence/milestone-4-pr3/
 
 ## Exact changed files
 
-The complete PR contains 50 intended files: the original 37, scoped pre-review finalization fixes/probes/evidence, P1 recovery follow-ups and the P2 projection boundary fix.
+The complete PR contains 51 intended files: the original 37, scoped pre-review finalization fixes/probes/evidence, P1 recovery follow-ups and the P2 projection boundary fix.
 
 - `README.md`
 - `androidApp/src/main/kotlin/com/delminiusapps/tillfailure/MainActivity.kt`
 - `docs/firestore-schema.md`
 - `docs/firestore-security.md`
+- `docs/milestones/evidence/milestone-4-pr3/metadata-restoration-recovery.json`
 - `docs/milestones/evidence/milestone-4-pr3/native-finalization.json`
 - `docs/milestones/evidence/milestone-4-pr3/p1-review-recovery.json`
 - `docs/milestones/evidence/milestone-4-pr3/pending-entry-recovery.json`

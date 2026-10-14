@@ -80,10 +80,13 @@ class InvitationMemory {
         if (command.action != "accept" || command.invitationId == null || command.expectedVersion == null) return@locked false
         if (acceptance != null && acceptance != command) return@locked false
         // First issuance captures the request's bearer, even if a confirmation's draft entry
-        // changed beforehand. Restored safe metadata alone must never manufacture a bearer.
+        // changed beforehand. On metadata-only restoration, any earlier entry is unverified:
+        // matching ID/version cannot prove that its bearer belongs to the original command.
         val issued = issuedToken?.let { InvitationLink.parse(InvitationLink(command.invitationId, command.expectedVersion, it).entry()) }
         if (issuedToken != null && issued == null) return@locked false
-        if (acceptance == null && issued != null) { retained = issued; linkRevision++ }
+        if (acceptance == null) {
+            if (retained != null || issued != null) { retained = issued; linkRevision++ }
+        }
         acceptance = command
         true
     }

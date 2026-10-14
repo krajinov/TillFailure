@@ -1,0 +1,99 @@
+{
+  "date": "2026-10-14",
+  "reviewedHead": "595948b3b02ab702bdca410b43b9286042bc74e7",
+  "review": 5511915716,
+  "environment": "demo-tillfailure-m3; loopback emulators only",
+  "shared": {
+    "androidHost": 111,
+    "iosSimulator": 111,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "sensitivity": {
+    "reviewedMemoryInDisposableCopy": "primary regression failed: Restored metadata must not bless a pre-sign-in bearer",
+    "fixedRegressionPassed": true
+  },
+  "native": {
+    "android": {
+      "api": 34,
+      "junit": "OK (1 test)",
+      "allFourMutationTrialsUnchanged": true,
+      "accept": {
+        "before": {
+          "fingerprint": "d1f76a2df7f292de97c2afda2aba14b9d83d6683de0b3422f442295819ae9705",
+          "receiptExists": true,
+          "membershipRevision": 1,
+          "rosterCount": 2,
+          "contributionCount": 2,
+          "accountCount": 1
+        },
+        "after": {
+          "fingerprint": "d1f76a2df7f292de97c2afda2aba14b9d83d6683de0b3422f442295819ae9705",
+          "receiptExists": true,
+          "membershipRevision": 1,
+          "rosterCount": 2,
+          "contributionCount": 2,
+          "accountCount": 1
+        },
+        "unchanged": true,
+        "admissionQuota": 30
+      }
+    },
+    "ios": {
+      "runtime": "iOS 26.2",
+      "passed": 58,
+      "failed": 0,
+      "restorationChecks": [
+        {
+          "check": "restore-unverified-entry-before-uid",
+          "result": "PASS"
+        },
+        {
+          "check": "restore-metadata-clears-unverified-entry",
+          "result": "PASS"
+        },
+        {
+          "check": "restore-retry-needs-original-entry",
+          "result": "PASS"
+        },
+        {
+          "check": "restore-real-entry-reopens",
+          "result": "PASS"
+        }
+      ],
+      "allFourMutationTrialsUnchanged": true,
+      "accept": {
+        "before": {
+          "fingerprint": "63952dec0a4434f585976b09aadc0a4dbc5d12d342f8250b9c4be5ac55f1d59f",
+          "receiptExists": true,
+          "membershipRevision": 1,
+          "rosterCount": 2,
+          "contributionCount": 2,
+          "accountCount": 1
+        },
+        "after": {
+          "fingerprint": "63952dec0a4434f585976b09aadc0a4dbc5d12d342f8250b9c4be5ac55f1d59f",
+          "receiptExists": true,
+          "membershipRevision": 1,
+          "rosterCount": 2,
+          "contributionCount": 2,
+          "accountCount": 1
+        },
+        "unchanged": true,
+        "admissionQuota": 30
+      }
+    }
+  },
+  "initialIosAttempt": {
+    "excludedFromPassingEvidence": true,
+    "failedCheck": "create-quota-pending-preserved",
+    "reconciliation": [
+      "owner-restored",
+      "already-settled-with-proven-empty-critical-work",
+      "fresh-gate-and-clean-departure"
+    ],
+    "cause": "Not established; stopped before the new acceptance restoration case. No pending command was discarded."
+  },
+  "qualification": "Native checks use real SDKs and protected storage, restoring safe metadata into an initially SignedOut invitation root before providing the authenticated gate. This models entry-before-UID routing, not a new native process-death or Auth cold-start run. Original-command receipt replay leaves authority/receipt fingerprints unchanged. Earlier process-death and interactive evidence remains separately attributed; UI/accessibility gaps remain open."
+}

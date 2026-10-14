@@ -286,6 +286,62 @@ class InvitationTest {
         newOwner.clear()
     }
 
+    @Test fun metadataRestorationDoesNotBlessAnEntryOpenedBeforeSignIn() {
+        val original = InvitationRequest("accept", invitationId = link.invitationId, token = link.token,
+            expectedVersion = link.version, idempotencyKey = "original-command")
+        val pending = original.pending("A")!!
+        val client = FakeClient().apply { this.pending["A"] = pending }
+        val (owner, root) = ownedModel(client)
+        val forged = InvitationLink(link.invitationId, link.version, "d".repeat(43))
+        root.onEvent(InvitationEvent.Entry(forged.entry())); root.onEvent(InvitationEvent.Open)
+        assertTrue(client.memory.link?.token == forged.token)
+        assertTrue(client.calls.isEmpty())
+        root.updateIdentity(gate())
+        assertNull(client.memory.link, "Restored metadata must not bless a pre-sign-in bearer")
+        assertFalse(root.currentState().hasLink)
+        assertEquals(pending, root.currentState().pending)
+        root.onEvent(InvitationEvent.RetryCommand)
+        assertTrue(client.calls.isEmpty(), "The unverified pre-sign-in entry must never reach transport")
+        assertEquals(pending, client.pending("A"))
+        root.onEvent(InvitationEvent.Entry(link.entry())); root.onEvent(InvitationEvent.Open)
+        root.onEvent(InvitationEvent.RetryCommand)
+        assertEquals(original, client.calls.single())
+        client.callbacks.last()(InvitationOutcome(reply = InvitationReply(status = "accepted")))
+        assertNull(client.pending("A")); assertNull(client.memory.link)
+        owner.clear()
+    }
+
+    @Test fun metadataOnlyProtectionClearsAllUnverifiedEntriesButPreservesKnownIssuance() {
+        val command = PendingInvitationCommand("A", "accept", "original", invitationId = link.invitationId, expectedVersion = link.version)
+        val candidates = listOf(link, InvitationLink(link.invitationId, link.version, "d".repeat(43)),
+            InvitationLink("c".repeat(64), link.version, "d".repeat(43)))
+        for (candidate in candidates) {
+            val memory = InvitationMemory()
+            assertTrue(memory.open(candidate.entry()))
+            val revision = memory.revision
+            assertTrue(memory.protectAcceptance(command))
+            assertNull(memory.link)
+            assertEquals(revision + 1, memory.revision)
+            assertFalse(memory.open(link.entry(), "B"))
+            assertTrue(memory.open(link.entry(), "A"))
+            val original = memory.link
+            val protectedRevision = memory.revision
+            assertTrue(memory.protectAcceptance(command))
+            assertTrue(memory.link === original)
+            assertEquals(protectedRevision, memory.revision)
+        }
+        val issued = InvitationMemory()
+        assertTrue(issued.open(candidates[1].entry()))
+        assertTrue(issued.protectAcceptance(command, link.token))
+        val original = issued.link
+        assertTrue(original?.token == link.token)
+        assertTrue(issued.protectAcceptance(command))
+        assertTrue(issued.link === original)
+        assertFalse(issued.open(candidates[1].entry(), "A"))
+        assertFalse(issued.protectAcceptance(command.copy(uid = "B")))
+        assertTrue(issued.link === original)
+    }
+
     @Test fun staleLocalDeliveryCannotDisplaceAnotherRootsPendingAcceptance() {
         val client = FakeClient(); val (deliveryOwner, delivery) = ownedModel(client)
         delivery.updateIdentity(gate(status = GateStatus.TrainerHome).copy(verifiedRole = "trainer", verifiedWorkspaceId = "w"))
@@ -346,7 +402,10 @@ class InvitationTest {
         override fun newCommandKey() = "key-${calls.size}"
         override fun execute(uid: String, request: InvitationRequest, callback: (InvitationOutcome) -> Unit): FirebaseCancellation {
             calls += request
-            request.pending(uid)?.let { pending[uid] = it }
+            request.pending(uid)?.let {
+                pending[uid] = it
+                if (request.action == "accept") check(memory.protectAcceptance(it, request.token))
+            }
             callbacks += { result -> if (!result.ambiguous) pending.remove(uid); callback(result) }
             return FirebaseCancellation {} // Deliberately still delivers to test the ViewModel's fence.
         }

@@ -35,6 +35,8 @@ Before native mutation issuance, one safe command record is atomically saved in 
 
 Parse and validate entry candidates before changing retained invitation memory. Once acceptance is durably prepared, process memory protects the original UID, command identity, invitation ID/version and transient bearer under the platform ownership lock. A different invitation, changed version, invalid entry or different bearer for a known original is rejected without replacing the retained link or protected command. Both manual Open and local-delivery continuation use the same guard and read current protected work; an unreadable ledger fails closed. Native preparation captures the issued bearer before transport, covering issuance outside the UI thread.
 
+On first metadata-only restoration, clear any link opened before the owning UID/ledger was known, even if its ID/version matches: safe metadata cannot verify its bearer. The caller must explicitly reopen the original entry after restoration. Later metadata refreshes for the same protected command preserve its existing process link.
+
 Same-process root recreation reuses the protected transient link. Disposed roots ignore further events; pending links are readable/consumable only by their owning UID, and existing native UID/generation fences remain in force. A process restart restores only safe command metadata, so retry requires explicitly reopening the original ID/version entry. No bearer enters the encrypted envelope, navigation, state diagnostics, logs or evidence. Matching reentry preserves the original command key; only verified settlement permits clean departure. The original entry must be retained by the caller outside the application if process death occurs.
 
 ## Atomic authority boundary

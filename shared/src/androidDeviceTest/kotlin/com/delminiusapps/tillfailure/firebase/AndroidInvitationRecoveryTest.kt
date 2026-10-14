@@ -87,6 +87,30 @@ class AndroidInvitationRecoveryTest {
         assertFalse(encoded.contains(retained.token))
         return root
     }
+    private fun restoredEntry(client: AndroidFirebaseSpikeClient, actor: IdentityViewModel, uid: String,
+                              request: InvitationRequest) {
+        main {
+            val root = NativeInvitationModels(client)
+            // Entry presentation starts before the authenticated gate supplies the restored UID.
+            val forged = InvitationLink(request.invitationId!!, request.expectedVersion!!, "z".repeat(43))
+            root.invitation.onEvent(InvitationEvent.Entry(forged.entry())); root.invitation.onEvent(InvitationEvent.Open)
+            assertTrue(client.invitations.memory.link?.token == forged.token)
+            val original = client.invitations.pending(uid)
+            root.invitation.updateIdentity(actor.currentState())
+            assertNull(client.invitations.memory.link, "Safe metadata cannot verify a pre-auth bearer")
+            assertFalse(root.invitation.currentState().hasLink)
+            assertEquals(original, root.invitation.currentState().pending)
+            root.invitation.onEvent(InvitationEvent.RetryCommand)
+            assertFalse(root.invitation.currentState().busy)
+            assertEquals(original, client.invitations.pending(uid))
+            assertFalse(client.hasProvenEmptyCriticalWork(uid))
+            val entry = InvitationLink(request.invitationId, request.expectedVersion, request.token!!)
+            root.invitation.onEvent(InvitationEvent.Entry(entry.entry())); root.invitation.onEvent(InvitationEvent.Open)
+            assertTrue(client.invitations.memory.linkFor(uid)?.token == request.token)
+            assertEquals(original, client.invitations.pending(uid))
+            root.clear()
+        }
+    }
     @Test fun allMutationErrorsPreserveProtectedWorkUntilAuthorizedReceiptRecovery() {
         val password = InstrumentationRegistry.getArguments().getString("pr3Password")!!
         var client = AndroidFirebaseSpikeClient(instrumentation.targetContext,
@@ -109,6 +133,7 @@ class AndroidInvitationRecoveryTest {
             assertTrue(ledger.prepare(uid, request))
             val original = ledger.pending(uid)!!
             val protectedBefore = AndroidAtomicFilePersistence(context).read(uid)
+            if (action == "accept") restoredEntry(client, model, uid, request)
             // Original invocation was committed by the host, but no reply reached this caller.
             for (fault in listOf("quota", "internal", "unauthorized", "conflict")) {
                 if (fault != "quota") fixture(client, action, "mode", fault)

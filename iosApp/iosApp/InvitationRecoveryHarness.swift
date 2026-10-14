@@ -65,10 +65,40 @@ enum InvitationRecoveryHarness {
         client = IosProductIdentityClient(bridge: bridge, recoveryBridge: recovery)
         store = IosAtomicFilePersistence(bridge: recovery)
         ledger = InvitationLedger(store: store)
+        if ProcessInfo.processInfo.environment["TF_PR3_P1_RECONCILE"] == "1" {
+            reconcileInterruptedCreate(); return
+        }
         _ = client.signIn(email: "p1-ios-trainer@example.invalid", password: password, epoch: 0) { failure in
             check(failure == nil, "trainer-sign-in")
             gate = IdentityViewModel(initialClient: client)
             poll(.trainerhome) { trial(0) }
+        }
+    }
+    /// Explicitly recover an interrupted create trial through its original receipt, never discard it.
+    private static func reconcileInterruptedCreate() {
+        let uid = "p1_ios_trainer"
+        check(bridge.debugCurrentUid == uid, "reconcile-owner-restored")
+        func depart() {
+            gate = IdentityViewModel(initialClient: client)
+            poll(.trainerhome) {
+                gate.onEvent(event: IdentityEventSignOut.shared)
+                poll(.signedout) { check(true, "reconcile-clean-departure"); exit(0) }
+            }
+        }
+        guard let pending = ledger.pending(uid: uid) else {
+            check(client.hasProvenEmptyCriticalWork(uid: uid), "reconcile-already-settled")
+            depart(); return
+        }
+        check(pending.action == "create" && pending.uid == uid, "reconcile-original-command")
+        let request = InvitationRequest(action: pending.action, workspaceId: pending.workspaceId,
+            invitationId: pending.invitationId, email: pending.email, token: nil,
+            expectedVersion: pending.expectedVersion, idempotencyKey: pending.idempotencyKey)
+        fixture("create", "mode", mode: "forward") { _ in
+            _ = client.invitations.execute(uid: uid, request: request) { outcome in
+                check(outcome.error == nil && !outcome.ambiguous && outcome.reply?.replayed?.boolValue == true &&
+                      ledger.pending(uid: uid) == nil && client.hasProvenEmptyCriticalWork(uid: uid), "reconcile-receipt-resolved")
+                depart()
+            }
         }
     }
     private static func trial(_ index: Int) {
@@ -100,6 +130,7 @@ enum InvitationRecoveryHarness {
             check(ledger.prepare(uid: uid, request: request), "\(action)-protected-before-transport")
             let original = ledger.pending(uid: uid)!
             protectedBefore = store.read(uid: uid)
+            if action == "accept" { restoredEntry(request, uid) }
             failures(index, request, uid, original, 0)
         }
     }
@@ -113,9 +144,15 @@ enum InvitationRecoveryHarness {
             _ = client.invitations.execute(uid: uid, request: request) { outcome in
                 let expected = ["quota": ["rate-limited"], "internal": ["unavailable", "invitation-unavailable"],
                                 "unauthorized": ["unauthorized"], "conflict": ["idempotency-key-reused"]]
-                check(expected[fault]!.contains(outcome.error ?? "") && store.read(uid: uid) == protectedBefore &&
-                      outcome.ambiguous && outcome.reply == nil && ledger.pending(uid: uid) == original &&
-                      !client.hasProvenEmptyCriticalWork(uid: uid), "\(action)-\(fault)-pending-preserved")
+                let expectedError = expected[fault]!.contains(outcome.error ?? "")
+                let sameEnvelope = store.read(uid: uid) == protectedBefore
+                let sameCommand = ledger.pending(uid: uid) == original
+                let critical = !client.hasProvenEmptyCriticalWork(uid: uid)
+                let preserved = expectedError && sameEnvelope && outcome.ambiguous && outcome.reply == nil && sameCommand && critical
+                if !preserved {
+                    print("PR3_P1_IOS fault-diagnostic expectedError=\(expectedError) sameEnvelope=\(sameEnvelope) ambiguous=\(outcome.ambiguous) replyAbsent=\(outcome.reply == nil) sameCommand=\(sameCommand) critical=\(critical)")
+                }
+                check(preserved, "\(action)-\(fault)-pending-preserved")
                 gate.onEvent(event: IdentityEventSignOut.shared)
                 poll(.departureblocked) {
                     _ = client.signIn(email: "p1-ios-client@example.invalid", password: password, epoch: 0) { failure in
@@ -127,6 +164,26 @@ enum InvitationRecoveryHarness {
             }
         }
         if fault == "quota" { issue() } else { fixture(action, "mode", mode: fault) { _ in issue() } }
+    }
+    private static func restoredEntry(_ request: InvitationRequest, _ uid: String) {
+        let root = NativeInvitationModels(client: client)
+        // Entry presentation starts before the authenticated gate supplies the restored UID.
+        let forged = InvitationLink(invitationId: request.invitationId!, version: request.expectedVersion!.int32Value,
+                                    token: String(repeating: "z", count: 43))
+        root.invitation.onEvent(event: InvitationEventEntry(value: forged.entry())); root.invitation.onEvent(event: InvitationEventOpen.shared)
+        check(client.invitations.memory.link?.token == forged.token, "restore-unverified-entry-before-uid")
+        let original = ledger.pending(uid: uid)
+        root.invitation.updateIdentity(next: gate.currentState())
+        check(client.invitations.memory.link == nil && !root.invitation.currentState().hasLink &&
+              root.invitation.currentState().pending == original, "restore-metadata-clears-unverified-entry")
+        root.invitation.onEvent(event: InvitationEventRetryCommand.shared)
+        check(!root.invitation.currentState().busy && ledger.pending(uid: uid) == original &&
+              !client.hasProvenEmptyCriticalWork(uid: uid), "restore-retry-needs-original-entry")
+        let entry = InvitationLink(invitationId: request.invitationId!, version: request.expectedVersion!.int32Value, token: request.token!)
+        root.invitation.onEvent(event: InvitationEventEntry(value: entry.entry())); root.invitation.onEvent(event: InvitationEventOpen.shared)
+        check(client.invitations.memory.linkFor(uid: uid)?.token == request.token && ledger.pending(uid: uid) == original,
+              "restore-real-entry-reopens")
+        root.clear()
     }
     private static func guardedRoot(_ request: InvitationRequest, _ uid: String) {
         let retained = client.invitations.memory.linkFor(uid: uid)!
