@@ -14,6 +14,7 @@ enum InvitationRecoveryHarness {
     private static var ledger: InvitationLedger!
     private static var store: IosAtomicFilePersistence!
     private static var protectedBefore: AccountPersistenceEnvelope!
+    private static var entryRoot: NativeInvitationModels?
     private static var password = ""
     private static let actions = ["create", "resend", "revoke", "accept"]
     private static func check(_ value: Bool, _ label: String) {
@@ -127,20 +128,69 @@ enum InvitationRecoveryHarness {
         }
         if fault == "quota" { issue() } else { fixture(action, "mode", mode: fault) { _ in issue() } }
     }
+    private static func guardedRoot(_ request: InvitationRequest, _ uid: String) {
+        let retained = client.invitations.memory.linkFor(uid: uid)!
+        let original = ledger.pending(uid: uid)!
+        let old = NativeInvitationModels(client: client)
+        old.invitation.updateIdentity(next: gate.currentState()); old.clear()
+        let root = NativeInvitationModels(client: client)
+        root.invitation.updateIdentity(next: gate.currentState())
+        let otherId = (retained.invitationId.first == "f" ? "e" : "f") + String(retained.invitationId.dropFirst())
+        let candidates = [InvitationLink(invitationId: otherId, version: retained.version, token: String(repeating: "z", count: 43)).entry(),
+                          InvitationLink(invitationId: retained.invitationId, version: retained.version + 1, token: retained.token).entry(), "invalid-entry"]
+        for (index, candidate) in candidates.enumerated() {
+            old.invitation.onEvent(event: InvitationEventEntry(value: candidate)); old.invitation.onEvent(event: InvitationEventOpen.shared)
+            root.invitation.onEvent(event: InvitationEventEntry(value: candidate)); root.invitation.onEvent(event: InvitationEventOpen.shared)
+            check(client.invitations.memory.link === retained && ledger.pending(uid: uid) == original &&
+                  root.invitation.currentState().pending == original, "entry-candidate-\(index)-preserves-original")
+        }
+        check(client.invitations.memory.linkFor(uid: "another-account") == nil &&
+              !client.invitations.memory.clear(uid: "another-account"), "entry-owner-fence")
+        root.invitation.onEvent(event: InvitationEventPopulateEntry.shared); root.invitation.onEvent(event: InvitationEventOpen.shared)
+        check(client.invitations.memory.linkFor(uid: uid)?.token == request.token && !client.hasProvenEmptyCriticalWork(uid: uid),
+              "matching-entry-and-critical-work-preserved")
+        check(!root.invitation.currentState().description.contains(retained.token), "entry-state-diagnostics-redacted")
+        entryRoot = root
+    }
     private static func recover(_ index: Int, _ request: InvitationRequest, _ uid: String) {
         let action = actions[index]
+        if action == "accept" { guardedRoot(request, uid) }
         fixture(action, "mode", mode: "forward") { _ in
+            if let root = entryRoot {
+                (bridge.activeBridge() as! FirebaseNativeBridge).debugBeforeInvitationTransport = { issue in
+                    check(ledger.pending(uid: uid) == request.pending(uid: uid), "entry-original-command-before-retry")
+                    issue()
+                }
+                root.invitation.onEvent(event: InvitationEventRetryCommand.shared)
+                let deadline = Date().addingTimeInterval(35)
+                func settled() {
+                    if root.invitation.currentState().busy {
+                        if Date() >= deadline { check(false, "entry-retry-timeout"); return }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03, execute: settled); return
+                    }
+                    check(root.invitation.currentState().message.hasPrefix("Invitation accepted") && ledger.pending(uid: uid) == nil &&
+                          client.invitations.memory.link == nil && client.hasProvenEmptyCriticalWork(uid: uid), "entry-retry-resolved")
+                    root.clear(); entryRoot = nil
+                    finish(index, uid)
+                }
+                settled(); return
+            }
             _ = client.invitations.execute(uid: uid, request: request) { outcome in
                 check(outcome.error == nil && !outcome.ambiguous && outcome.reply?.replayed?.boolValue == true &&
                       ledger.pending(uid: uid) == nil && client.hasProvenEmptyCriticalWork(uid: uid), "\(action)-receipt-resolved")
-                fixture(action, "evidence") { evidence in
-                    check(evidence["unchanged"] as? Bool == true && (evidence["admissionQuota"] as? NSNumber)?.intValue == 30,
-                          "\(action)-unchanged-state-and-quota")
-                    gate.onEvent(event: IdentityEventRetry.shared)
-                    poll(action == "accept" ? .membershipverifiedfeaturepending : .trainerhome) { trial(index + 1) }
-                }
+                finish(index, uid)
             }
         }
     }
+    private static func finish(_ index: Int, _ uid: String) {
+        let action = actions[index]
+        fixture(action, "evidence") { evidence in
+            check(evidence["unchanged"] as? Bool == true && (evidence["admissionQuota"] as? NSNumber)?.intValue == 30,
+                  "\(action)-unchanged-state-and-quota")
+            gate.onEvent(event: IdentityEventRetry.shared)
+            poll(action == "accept" ? .membershipverifiedfeaturepending : .trainerhome) { trial(index + 1) }
+        }
+    }
+
 }
 #endif

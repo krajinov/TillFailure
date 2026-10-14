@@ -1,5 +1,9 @@
 package com.delminiusapps.tillfailure.invitations
 
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import com.delminiusapps.tillfailure.firebase.FirebaseCancellation
 import com.delminiusapps.tillfailure.identity.GateStatus
 import com.delminiusapps.tillfailure.identity.IdentityState
@@ -180,6 +184,152 @@ class InvitationTest {
         }
     }
 
+    private fun ownedModel(client: FakeClient): Pair<ViewModelStore, InvitationViewModel> {
+        val store = ViewModelStore()
+        val provider = ViewModelProvider.create(store, viewModelFactory { initializer { InvitationViewModel(client) } })
+        return store to provider[InvitationViewModel::class]
+    }
+    private fun unknownAcceptance(client: FakeClient, model: InvitationViewModel): InvitationRequest {
+        model.updateIdentity(gate())
+        model.onEvent(InvitationEvent.Entry(link.entry())); model.onEvent(InvitationEvent.Open)
+        client.callbacks.last()(InvitationOutcome(reply = InvitationReply(workspaceName = "Workspace")))
+        model.onEvent(InvitationEvent.Accept); model.onEvent(InvitationEvent.Confirm)
+        val original = client.calls.last()
+        client.callbacks.last()(InvitationOutcome(error = "unavailable", ambiguous = true))
+        assertNotNull(model.currentState().pending)
+        return original
+    }
+
+    @Test fun pendingAcceptanceRetainsOriginalAcrossEntryAttemptsAndSameCommandRecovery() {
+        val client = FakeClient(); val (owner, model) = ownedModel(client)
+        val original = unknownAcceptance(client, model)
+        val retained = client.memory.link!!
+        val pending = model.currentState().pending
+        val revision = client.memory.revision
+        val candidates = listOf(InvitationLink("c".repeat(64), 1, "d".repeat(43)).entry(),
+            InvitationLink(link.invitationId, 2, "d".repeat(43)).entry(), "invalid-entry",
+            InvitationLink(link.invitationId, 1, "d".repeat(43)).entry())
+        for (candidate in candidates) {
+            model.onEvent(InvitationEvent.Entry(candidate)); model.onEvent(InvitationEvent.Open)
+            assertTrue(client.memory.link === retained, "A rejected candidate must preserve the original bearer")
+            assertEquals(revision, client.memory.revision)
+            assertEquals(pending, model.currentState().pending)
+            assertEquals(original.pending("A"), client.pending("A"))
+            assertEquals(2, client.calls.size, "Rejected entries must not issue transport")
+            assertTrue(model.currentState().hasLink)
+            assertNull(model.currentState().workspaceName)
+            assertEquals("", model.currentState().entry)
+        }
+        model.onEvent(InvitationEvent.PopulateEntry)
+        assertTrue(model.currentState().entry == retained.entry())
+        model.onEvent(InvitationEvent.Open)
+        model.onEvent(InvitationEvent.RetryCommand)
+        assertEquals(original, client.calls.last())
+        client.callbacks.last()(InvitationOutcome(reply = InvitationReply(status = "accepted")))
+        assertNull(client.pending("A")); assertNull(client.memory.link)
+        assertNull(model.currentState().pending)
+        owner.clear()
+    }
+
+    @Test fun rootRecreationRetainsOriginalAndDisposedAccountCallbacksCannotReplaceIt() {
+        val client = FakeClient(); val (oldOwner, old) = ownedModel(client)
+        val original = unknownAcceptance(client, old)
+        val retained = client.memory.link!!
+        oldOwner.clear()
+        val (owner, recreated) = ownedModel(client)
+        recreated.updateIdentity(gate())
+        assertTrue(client.memory.link === retained)
+        val b = InvitationLink("c".repeat(64), 1, "d".repeat(43)).entry()
+        old.onEvent(InvitationEvent.Entry(b)); old.onEvent(InvitationEvent.Open)
+        old.updateIdentity(gate("B"))
+        recreated.updateIdentity(gate("B"))
+        assertFalse(recreated.currentState().hasLink)
+        recreated.onEvent(InvitationEvent.PopulateEntry)
+        assertEquals("", recreated.currentState().entry)
+        recreated.onEvent(InvitationEvent.Entry(b)); recreated.onEvent(InvitationEvent.Open)
+        assertTrue(client.memory.link === retained)
+        assertNull(client.memory.linkFor("B"))
+        assertFalse(client.memory.clear("B"))
+        recreated.updateIdentity(gate())
+        recreated.onEvent(InvitationEvent.RetryCommand)
+        assertEquals(original, client.calls.last())
+        client.callbacks.last()(InvitationOutcome(reply = InvitationReply(status = "accepted")))
+        assertNull(recreated.currentState().pending)
+        owner.clear()
+    }
+
+    @Test fun processRestartHasOnlySafeMetadataAndRequiresExplicitOriginalEntry() {
+        val client = FakeClient(); val (owner, model) = ownedModel(client)
+        val original = unknownAcceptance(client, model)
+        val safe = client.pending("A")!!
+        val serialized = InvitationJson.format.encodeToString(AccountPersistenceEnvelope.serializer(),
+            AccountPersistenceEnvelope(uid = "A", pendingInvitationCommands = listOf(safe)))
+        assertFalse(serialized.contains(link.token))
+        assertFalse(serialized.contains("https://invite"))
+        assertFalse(model.currentState().toString().contains(link.token))
+        assertFalse(InvitationEvent.Entry(link.entry()).toString().contains(link.token))
+        owner.clear()
+        val restored = FakeClient().apply { pending["A"] = safe }
+        val (newOwner, root) = ownedModel(restored)
+        root.updateIdentity(gate())
+        assertNull(restored.memory.link)
+        root.onEvent(InvitationEvent.RetryCommand)
+        assertTrue(restored.calls.isEmpty())
+        root.onEvent(InvitationEvent.Entry(InvitationLink("c".repeat(64), 1, "d".repeat(43)).entry()))
+        root.onEvent(InvitationEvent.Open)
+        assertNull(restored.memory.link); assertEquals(safe, root.currentState().pending)
+        root.onEvent(InvitationEvent.Entry(link.entry())); root.onEvent(InvitationEvent.Open)
+        root.onEvent(InvitationEvent.RetryCommand)
+        assertEquals(original, restored.calls.single())
+        restored.callbacks.last()(InvitationOutcome(reply = InvitationReply(status = "accepted")))
+        assertNull(root.currentState().pending); assertNull(restored.memory.link)
+        newOwner.clear()
+    }
+
+    @Test fun staleLocalDeliveryCannotDisplaceAnotherRootsPendingAcceptance() {
+        val client = FakeClient(); val (deliveryOwner, delivery) = ownedModel(client)
+        delivery.updateIdentity(gate(status = GateStatus.TrainerHome).copy(verifiedRole = "trainer", verifiedWorkspaceId = "w"))
+        delivery.onEvent(InvitationEvent.Email("fixture@example.invalid")); delivery.onEvent(InvitationEvent.Create)
+        client.callbacks.last()(InvitationOutcome(reply = InvitationReply(invitationId = "c".repeat(64), tokenVersion = 1, deliveryToken = "d".repeat(43))))
+        assertNotNull(delivery.currentState().deliveryLink)
+        val (owner, model) = ownedModel(client)
+        val original = unknownAcceptance(client, model)
+        val retained = client.memory.link
+        val revision = client.memory.revision
+        delivery.onEvent(InvitationEvent.UseDelivery)
+        assertTrue(client.memory.link === retained)
+        assertEquals(revision, client.memory.revision)
+        assertEquals(original.pending("A"), client.pending("A"))
+        assertTrue(delivery.currentState().message.contains("pending acceptance"))
+        assertNotNull(delivery.currentState().deliveryLink)
+        model.onEvent(InvitationEvent.RetryCommand)
+        client.callbacks.last()(InvitationOutcome(reply = InvitationReply(status = "accepted")))
+        deliveryOwner.clear(); owner.clear()
+    }
+
+    @Test fun allMemoryContinuationPathsRespectPendingOwnerAndUnreadableLedger() {
+        val memory = InvitationMemory()
+        assertTrue(memory.open(link.entry()))
+        val request = InvitationRequest("accept", invitationId = link.invitationId, token = link.token,
+            expectedVersion = 1, idempotencyKey = "original")
+        assertTrue(memory.protectAcceptance(request.pending("A")!!, request.token))
+        val retained = memory.link
+        assertFalse(memory.open(InvitationLink("c".repeat(64), 1, "d".repeat(43)).entry(), "A"))
+        assertFalse(memory.open(link.entry(), "B"))
+        assertFalse(memory.protectAcceptance(request.pending("B")!!, request.token))
+        memory.consume("B", InvitationReply(invitationId = link.invitationId, status = "accepted", tokenVersion = 1))
+        assertTrue(memory.link === retained)
+        val client = FakeClient(); val (owner, model) = ownedModel(client)
+        unknownAcceptance(client, model)
+        client.unreadable = true
+        val known = client.memory.link
+        model.onEvent(InvitationEvent.Entry(link.entry())); model.onEvent(InvitationEvent.Open)
+        assertTrue(client.memory.link === known)
+        assertNotNull(model.currentState().pending)
+        assertTrue(model.currentState().message.contains("unavailable"))
+        owner.clear()
+    }
+
     private class MemoryStore : AccountPersistencePrototype {
         var record: AccountPersistenceEnvelope? = null; var fails = false
         override fun write(envelope: AccountPersistenceEnvelope) { check(!fails); record = envelope }
@@ -191,7 +341,8 @@ class InvitationTest {
         val calls = mutableListOf<InvitationRequest>()
         val callbacks = mutableListOf<(InvitationOutcome) -> Unit>()
         val pending = mutableMapOf<String, PendingInvitationCommand>()
-        override fun pending(uid: String): PendingInvitationCommand? = pending[uid]
+        var unreadable = false
+        override fun pending(uid: String): PendingInvitationCommand? { check(!unreadable); return pending[uid] }
         override fun newCommandKey() = "key-${calls.size}"
         override fun execute(uid: String, request: InvitationRequest, callback: (InvitationOutcome) -> Unit): FirebaseCancellation {
             calls += request

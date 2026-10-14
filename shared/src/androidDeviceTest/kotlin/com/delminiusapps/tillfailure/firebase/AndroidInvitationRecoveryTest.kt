@@ -3,6 +3,7 @@ package com.delminiusapps.tillfailure.firebase
 import android.content.Context
 import android.content.ContextWrapper
 import androidx.test.platform.app.InstrumentationRegistry
+import com.delminiusapps.tillfailure.designcatalog.NativeInvitationModels
 import com.delminiusapps.tillfailure.identity.*
 import com.delminiusapps.tillfailure.invitations.*
 import com.delminiusapps.tillfailure.persistence.AndroidAtomicFilePersistence
@@ -55,6 +56,37 @@ class AndroidInvitationRecoveryTest {
             connection.inputStream.bufferedReader().use { it.readText().also { value -> check(value.length <= 8192) } }
         } finally { connection.disconnect() }
     }
+    private fun guardedRoot(client: AndroidFirebaseSpikeClient, actor: IdentityViewModel, uid: String,
+                            request: InvitationRequest): NativeInvitationModels {
+        val retained = client.invitations.memory.linkFor(uid)!!
+        val original = client.invitations.pending(uid)!!
+        lateinit var old: NativeInvitationModels
+        lateinit var root: NativeInvitationModels
+        main {
+            old = NativeInvitationModels(client); old.invitation.updateIdentity(actor.currentState()); old.clear()
+            root = NativeInvitationModels(client); root.invitation.updateIdentity(actor.currentState())
+            val otherId = retained.invitationId.replaceRange(0, 1, if (retained.invitationId[0] == 'f') "e" else "f")
+            val candidates = listOf(InvitationLink(otherId, retained.version, "z".repeat(43)).entry(),
+                InvitationLink(retained.invitationId, retained.version + 1, retained.token).entry(), "invalid-entry")
+            for (candidate in candidates) {
+                old.invitation.onEvent(InvitationEvent.Entry(candidate)); old.invitation.onEvent(InvitationEvent.Open)
+                root.invitation.onEvent(InvitationEvent.Entry(candidate)); root.invitation.onEvent(InvitationEvent.Open)
+                assertTrue(client.invitations.memory.link === retained, "Rejected entry must preserve the original bearer")
+                assertEquals(original, client.invitations.pending(uid))
+                assertEquals(original, root.invitation.currentState().pending)
+            }
+            assertNull(client.invitations.memory.linkFor("another-account"))
+            assertFalse(client.invitations.memory.clear("another-account"))
+            root.invitation.onEvent(InvitationEvent.PopulateEntry); root.invitation.onEvent(InvitationEvent.Open)
+            assertTrue(client.invitations.memory.linkFor(uid)?.token == request.token)
+            assertFalse(root.invitation.currentState().toString().contains(retained.token))
+        }
+        assertFalse(client.hasProvenEmptyCriticalWork(uid))
+        val encoded = InvitationJson.format.encodeToString(com.delminiusapps.tillfailure.persistence.AccountPersistenceEnvelope.serializer(),
+            AndroidAtomicFilePersistence(context).read(uid)!!)
+        assertFalse(encoded.contains(retained.token))
+        return root
+    }
     @Test fun allMutationErrorsPreserveProtectedWorkUntilAuthorizedReceiptRecovery() {
         val password = InstrumentationRegistry.getArguments().getString("pr3Password")!!
         var client = AndroidFirebaseSpikeClient(instrumentation.targetContext,
@@ -97,9 +129,20 @@ class AndroidInvitationRecoveryTest {
                     await<StableFirebaseFailure?> { client.signIn("p1-android-client@example.invalid", password, 0, it) }?.code)
                 assertEquals(uid, FirebaseAuth.getInstance(client.firebaseApp).currentUser?.uid)
             }
+            val root = if (action == "accept") guardedRoot(client, model, uid, request) else null
             fixture(client, action, "mode", "forward")
-            val recovered = await<InvitationOutcome> { client.invitations.execute(uid, request, it) }
-            assertNull(recovered.error); assertFalse(recovered.ambiguous); assertTrue(recovered.reply!!.replayed!!)
+            if (root != null) {
+                client.beforeInvitationTransportForTest = { issue -> assertEquals(original, client.invitations.pending(uid)); issue() }
+                main { root.invitation.onEvent(InvitationEvent.RetryCommand) }
+                val end = System.nanoTime() + TimeUnit.SECONDS.toNanos(35)
+                while (root.invitation.currentState().busy && System.nanoTime() < end) Thread.sleep(30)
+                assertTrue(root.invitation.currentState().message.startsWith("Invitation accepted"))
+                assertNull(client.invitations.memory.link)
+                main { root.clear() }
+            } else {
+                val recovered = await<InvitationOutcome> { client.invitations.execute(uid, request, it) }
+                assertNull(recovered.error); assertFalse(recovered.ambiguous); assertTrue(recovered.reply!!.replayed!!)
+            }
             assertNull(ledger.pending(uid)); assertTrue(client.hasProvenEmptyCriticalWork(uid))
             val evidence = InvitationJson.format.parseToJsonElement(fixture(client, action, "evidence")).jsonObject
             assertEquals("true", evidence.getValue("unchanged").jsonPrimitive.content)

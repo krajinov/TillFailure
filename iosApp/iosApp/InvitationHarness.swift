@@ -57,7 +57,7 @@ enum InvitationHarness {
                                 command("pr3_ios_trainer", "list") { list in
                                     check(list.reply?.summaries?.count == 2, "safe-list")
                                     let link = InvitationLink(invitationId: live!.invitationId!, version: live!.tokenVersion!.int32Value, token: live!.deliveryToken!)
-                                    check(client!.invitations.memory.open(value: link.entry()), "entry")
+                                    check(client!.invitations.memory.open(value: link.entry(), uid: "pr3_ios_trainer"), "entry")
                                     gate!.onEvent(event: IdentityEventSignOut.shared)
                                     poll(.signedout) {
                                         client = gate!.activeClient() as? IosProductIdentityClient

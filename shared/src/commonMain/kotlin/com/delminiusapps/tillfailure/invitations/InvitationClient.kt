@@ -1,6 +1,7 @@
 package com.delminiusapps.tillfailure.invitations
 
 import com.delminiusapps.tillfailure.firebase.FirebaseCancellation
+import com.delminiusapps.tillfailure.identity.DepartureOwnershipLock
 import com.delminiusapps.tillfailure.persistence.AccountPersistencePrototype
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -65,17 +66,51 @@ interface InvitationClient {
 
 /** Process-only link context, also retained across a controlled wrong-account departure. */
 class InvitationMemory {
-    var link: InvitationLink? = null
-    var revision: Long = 0
-        private set
-    fun open(value: String): Boolean {
-        val parsed = InvitationLink.parse(value) ?: return false
-        link = parsed; revision++
-        return true
+    private val lock = DepartureOwnershipLock()
+    private var retained: InvitationLink? = null
+    private var linkRevision = 0L
+    val link: InvitationLink? get() = lock.locked { retained }
+    val revision: Long get() = lock.locked { linkRevision }
+    // Safe metadata only. The original bearer remains exclusively in this process's link.
+    private var acceptance: PendingInvitationCommand? = null
+    fun linkFor(uid: String?): InvitationLink? = lock.locked {
+        retained?.takeIf { acceptance == null || acceptance?.uid == uid }
     }
-    fun clear() { link = null; revision++ }
-    fun consume(reply: InvitationReply?) {
-        if (reply?.status == "accepted" && reply.invitationId == link?.invitationId) clear()
+    fun protectAcceptance(command: PendingInvitationCommand, issuedToken: String? = null): Boolean = lock.locked {
+        if (command.action != "accept" || command.invitationId == null || command.expectedVersion == null) return@locked false
+        if (acceptance != null && acceptance != command) return@locked false
+        // First issuance captures the request's bearer, even if a confirmation's draft entry
+        // changed beforehand. Restored safe metadata alone must never manufacture a bearer.
+        val issued = issuedToken?.let { InvitationLink.parse(InvitationLink(command.invitationId, command.expectedVersion, it).entry()) }
+        if (issuedToken != null && issued == null) return@locked false
+        if (acceptance == null && issued != null) { retained = issued; linkRevision++ }
+        acceptance = command
+        true
+    }
+    fun open(value: String, uid: String? = null): Boolean = lock.locked {
+        val parsed = InvitationLink.parse(value) ?: return@locked false
+        acceptance?.let { pending ->
+            if (pending.uid != uid || parsed.invitationId != pending.invitationId || parsed.version != pending.expectedVersion) return@locked false
+            // Matching ID/version must not replace a known original bearer with a forged token.
+            retained?.takeIf { it.invitationId == pending.invitationId && it.version == pending.expectedVersion }?.let {
+                if (it.token != parsed.token) return@locked false
+            }
+        }
+        retained = parsed; linkRevision++
+        true
+    }
+    fun clear(uid: String? = null): Boolean = lock.locked {
+        if (acceptance != null && acceptance?.uid != uid) return@locked false
+        retained = null; acceptance = null; linkRevision++
+        true
+    }
+    fun consume(uid: String, reply: InvitationReply?) {
+        lock.locked {
+            if (reply?.status != "accepted") return@locked
+            val pending = acceptance
+            if (pending != null && (pending.uid != uid || reply.invitationId != pending.invitationId || reply.tokenVersion != pending.expectedVersion)) return@locked
+            if (reply.invitationId == retained?.invitationId || pending != null) clear(uid)
+        }
     }
 }
 

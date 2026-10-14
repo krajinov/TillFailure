@@ -92,7 +92,7 @@ fun IdentityRoot(client: ProductIdentityClient?, onOpenDevelopmentCatalog: (() -
                     // Identity effects run after composition. Never render an old UID's state in
                     // that intervening frame, including its transient local-delivery token.
                     val visibleInvitationState = if (invitationState.accountUid == state.accountUid)
-                        invitationState else InvitationState(hasLink = invitationClient.memory.link != null)
+                        invitationState else InvitationState(hasLink = invitationClient.memory.linkFor(state.accountUid) != null)
                     LaunchedEffect(state, invitationClient, invitationClient.memory.revision) {
                         invitations.updateClient(invitationClient)
                         invitations.updateIdentity(state)

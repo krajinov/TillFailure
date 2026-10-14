@@ -110,10 +110,11 @@ class IosProductIdentityClient(
         override fun execute(uid: String, request: InvitationRequest, callback: (InvitationOutcome) -> Unit): FirebaseCancellation {
             var cancelled = false
             bridge.callInvitation(uid, InvitationJson.request(request), {
-                invitationLedger.prepare(uid, request).also { if (it) bridge.invitationChanges.notify(uid) }
+                (invitationLedger.prepare(uid, request) && (request.action != "accept" ||
+                    memory.protectAcceptance(request.pending(uid)!!, request.token))).also { if (it) bridge.invitationChanges.notify(uid) }
             }) { result ->
                 val settled = invitationLedger.settle(uid, request, InvitationJson.outcome(request, result.json, result.error, result.ambiguous))
-                memory.consume(settled.reply)
+                memory.consume(uid, settled.reply)
                 bridge.invitationChanges.notify(uid)
                 if (!cancelled) callback(settled)
             }

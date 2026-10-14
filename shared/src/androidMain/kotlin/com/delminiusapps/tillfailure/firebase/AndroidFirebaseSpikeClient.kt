@@ -64,7 +64,8 @@ class AndroidFirebaseSpikeClient(
             var issuedEpoch = -1L
             val task = synchronized(callbackLock) {
                 if (terminated.get() || accountFrozen || invitationInFlight || auth.currentUser?.uid != uid || configuration.projectId != "demo-tillfailure-m3" ||
-                    !invitationLedger.prepare(uid, request)) null
+                    !invitationLedger.prepare(uid, request) ||
+                    request.action == "accept" && !memory.protectAcceptance(request.pending(uid)!!, request.token)) null
                 else {
                     issuedEpoch = invitationAuthEpoch
                     invitationInFlight = true
@@ -82,7 +83,7 @@ class AndroidFirebaseSpikeClient(
                 invitationInFlight = false
                 if (!terminated.get() && auth.currentUser?.uid == uid && issuedEpoch == invitationAuthEpoch && fence.accepts(0L)) {
                     val settled = invitationLedger.settle(uid, request, outcome)
-                    memory.consume(settled.reply)
+                    memory.consume(uid, settled.reply)
                     invitationChanges.notify(uid)
                     if (!cancelled.get()) callback(settled)
                 }

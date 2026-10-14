@@ -98,9 +98,28 @@ The single P2 finding from review [5498233103](https://github.com/krajinov/TillF
 | Rules coverage | Direct `get` allowlist enforcement, direct `list` denial, and write denial verified. |
 | Application query | Bounded ordered list query (`createdAt desc, limit 20`) via trusted endpoint verified for valid summaries and fail-safe rejection on corrupt/leaky documents. |
 
+## P1 pending-entry follow-up — 2026-10-14
+
+Review [5499017291](https://github.com/krajinov/TillFailure/pull/6#pullrequestreview-5499017291), discussion [4254902175](https://github.com/krajinov/TillFailure/pull/6#discussion_r4254902175), identified replacement of an unknown acceptance's original transient link before checking protected work. Local branch, HEAD and remote matched `feature/milestone-4-pr3-invitations` / `3c4be888c3878f477b39057fbf47881ed478dac8`; the working tree was clean before this follow-up. No history was rewritten or unrelated work changed.
+
+Open and local-delivery continuation now parse candidates before mutation and consult fresh pending metadata. A pending acceptance rejects another ID/version, invalid entries, another UID and a substituted bearer for an already known original. The original link, command key and recovery state survive rejection. Native durable preparation protects the issued bearer in process memory before transport; memory protection/replacement is serialized with the existing platform lock. Root recreation retains the process-only link; disposed roots ignore events and owner-scoped presentation/consumption prevents account leaks. A restart restores only safe metadata and requires explicit original-entry reopening. Existing departure blocking and callback fences remain intact.
+
+| Fresh follow-up check | Result and scope |
+| --- | --- |
+| Shared suites | **109/109 Android host and 109/109 iOS simulator**, no failures/errors/skips. Five added tests cover B/version/invalid/forged-token rejection, same-command success, actual ViewModelStore recreation/disposal, UID isolation, stale local delivery, unreadable ledger, safe serialization and simulated process restart with explicit original-entry reopening. |
+| Regression sensitivity | In a disposable source copy, replacing only the ViewModel with its reviewed-HEAD implementation made the primary new regression fail with `A rejected candidate must preserve the original bearer`. The fixed implementation passes. The checkout/history were not modified for this comparison. |
+| Android native | **API 34, 1/1 JUnit passed** after the final lock change. Real SDK/encrypted storage and actual disposed/recreated ViewModelStore roots rejected B/version/invalid entries, retained the original bearer/metadata, hid it from another UID, retried through the root with the original command, verified server evidence and completed clean departure. All four existing mutation error/replay trials also passed. |
+| iOS native | **iOS 26.2, 54 PASS / 0 FAIL** after the final lock change. Equivalent real SDK/protected storage/root checks, original-command retry, unchanged receipt/authority snapshots, fresh membership gate and ordered clean departure passed. |
+| Exactly-once acceptance | On each platform, before/after fingerprints including document data/update timestamps are identical: receipt exists, membership revision 1, account contribution 1, workspace roster/contributions 2. Original command identity is checked before retry transport; native critical work stays nonempty until authorized receipt resolution. New-command quota remains 30. |
+| Builds | Final Android Debug/Release and device-test assembly, signed iOS Simulator Debug and unsigned iOS Simulator Release passed. Release retains disabled product Firebase/invitation operations and excludes debug recovery controls. |
+| Retained evidence | **144/144 backend/Rules** belongs to the preceding P2 follow-up and was not rerun here: no backend/Rules source changed. Previous 143/104, 129/103, 126/100 results, native process-death/late-callback checks and interaction evidence retain their original attribution. |
+| Qualification | These native checks use host-committed/withheld replies, actual quota rejection and deterministic mapped wire failures with real receipt recovery. They are not new native process-death or touch/keyboard/scroll runs. The new shared restart test creates new process memory from safe metadata; earlier actual native restart evidence remains retained. Interactive acceptance gaps below remain open. |
+
+Sanitized evidence is in [pending-entry-recovery.json](evidence/milestone-4-pr3/pending-entry-recovery.json). Raw replies/logs/build outputs and bearer material are excluded. The final diff audit covered intended scope, whitespace, secret/token exposure, machine paths and generated files. Production policies, delivery and operations remain disabled; PR 4 remains outside scope.
+
 ## Acceptance status and exact remaining limits
 
-**Qualified local emulator implementation; not full native interactive acceptance and not production acceptance.** Native restart and late-completion gaps A and B have the retained platform-native process/SDK/storage evidence above; the P1 follow-up adds fresh native error/recovery ledger checks. Interactive gap C remains only partially closed and was not rerun during the follow-up.
+**Qualified local emulator implementation; not full native interactive acceptance and not production acceptance.** Native restart and late-completion gaps A and B have the retained platform-native process/SDK/storage evidence above; the P1 follow-ups add fresh native error/recovery ledger and retained-entry/root checks. Interactive gap C remains only partially closed and was not rerun during either follow-up.
 
 - Android's real trainer/client touch walkthrough, keyboard/focus/IME and Back were not completed. The API 29 activity-manager launch remained interrupted; API 34 passed the lifecycle probe, then its device connection closed during main-app launch. The available computer-use surface returned an unrelated Android Studio project, not a usable emulator interaction surface. Shared/native harness tests do not stand in for this UI evidence.
 - On iOS, normal-size stateful form/entry/preview/acceptance and the accepted-client Sign out action at 200% passed. Trainer/preview lower-action touch scrolling at 200% remains unproved: mouse-scroll and drag attempts left the viewport unchanged. Hardware focus traversal exposed lower sign-in controls at normal size, but this is not touch-scroll evidence. Native Back, software keyboard/IME behavior, OS Dynamic Type settings and VoiceOver/TalkBack traversal remain unverified. The explicit Compose scale and stateless fixtures are not OS accessibility acceptance.
@@ -109,7 +128,7 @@ The single P2 finding from review [5498233103](https://github.com/krajinov/TillF
 
 ## Exact changed files
 
-The complete PR contains 49 intended files: the original 37, scoped pre-review finalization fixes/probes/evidence, and the P1 recovery follow-up.
+The complete PR contains 50 intended files: the original 37, scoped pre-review finalization fixes/probes/evidence, P1 recovery follow-ups and the P2 projection boundary fix.
 
 - `README.md`
 - `androidApp/src/main/kotlin/com/delminiusapps/tillfailure/MainActivity.kt`
@@ -117,6 +136,7 @@ The complete PR contains 49 intended files: the original 37, scoped pre-review f
 - `docs/firestore-security.md`
 - `docs/milestones/evidence/milestone-4-pr3/native-finalization.json`
 - `docs/milestones/evidence/milestone-4-pr3/p1-review-recovery.json`
+- `docs/milestones/evidence/milestone-4-pr3/pending-entry-recovery.json`
 - `docs/milestones/milestone-4-plan.md`
 - `docs/milestones/milestone-4-pr3-invitations.md`
 - `docs/milestones/milestone-4-pr3-report.md`

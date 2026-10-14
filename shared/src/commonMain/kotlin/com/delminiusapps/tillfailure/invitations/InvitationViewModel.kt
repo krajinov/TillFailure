@@ -51,14 +51,16 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
     fun currentState(): InvitationState = mutable.value
 
     fun updateClient(next: InvitationClient) {
+        if (disposed) return
         if (next === client) return
         generation++; operation?.cancel(); operation = null
         pendingObserver?.cancel(); pendingObserver = null
         client = next; memoryRevision = -1L
-        mutable.value = InvitationState(hasLink = client.memory.link != null)
+        mutable.value = InvitationState(hasLink = client.memory.linkFor(identity.accountUid) != null)
     }
 
     fun updateIdentity(next: IdentityState) {
+        if (disposed) return
         val changedAccount = next.accountUid != identity.accountUid
         val lostTrainer = identity.status == GateStatus.TrainerHome && next.status != GateStatus.TrainerHome
         val locked = next.status in setOf(GateStatus.AccessLost, GateStatus.AccountDisabled, GateStatus.CleanupRequired,
@@ -66,7 +68,7 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
         identity = next
         if (changedAccount || lostTrainer || locked) {
             generation++; operation?.cancel(); operation = null
-            mutable.value = InvitationState(accountUid = next.accountUid, hasLink = client.memory.link != null)
+            mutable.value = InvitationState(accountUid = next.accountUid, hasLink = client.memory.linkFor(identity.accountUid) != null)
         }
         if (changedAccount || pendingObserver == null) {
             pendingObserver?.cancel()
@@ -78,13 +80,14 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
         mutable.value = mutable.value.copy(accountUid = next.accountUid)
         if (client.memory.revision != memoryRevision) {
             memoryRevision = client.memory.revision
-            mutable.value = mutable.value.copy(hasLink = client.memory.link != null, workspaceName = null, entry = "")
+            mutable.value = mutable.value.copy(hasLink = client.memory.linkFor(identity.accountUid) != null, workspaceName = null, entry = "")
         }
     }
 
     private fun refreshPending() {
         val uid = identity.accountUid
         val read = runCatching { uid?.let(client::pending) }
+        read.getOrNull()?.takeIf { it.action == "accept" && it.uid == uid }?.let { client.memory.protectAcceptance(it) }
         val previous = mutable.value.pending
         mutable.value = mutable.value.copy(pending = read.getOrNull(), message = if (read.isFailure)
             "Protected command recovery is unavailable. Sign-out stays blocked." else mutable.value.message)
@@ -95,17 +98,16 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
     }
 
     fun onEvent(event: InvitationEvent) {
+        if (disposed) return
         val s = mutable.value
         if (s.busy && event !is InvitationEvent.Entry && event !is InvitationEvent.Email) return
         when (event) {
             is InvitationEvent.Email -> if (s.pending == null) mutable.value = s.copy(email = event.value.take(254))
             is InvitationEvent.Entry -> mutable.value = s.copy(entry = event.value.take(512))
             InvitationEvent.Open -> {
-                if (!client.memory.open(s.entry.trim())) {
-                    mutable.value = s.copy(message = "This invitation entry is invalid."); return
-                }
+                if (!retainEntry(s.entry.trim())) return
                 memoryRevision = client.memory.revision
-                mutable.value = s.copy(entry = "", hasLink = true, workspaceName = null, deliveryLink = null,
+                mutable.value = s.copy(entry = "", hasLink = true, workspaceName = null, expiresAtMillis = null, confirmation = null, deliveryLink = null,
                     message = "Sign in with the invited account and verify its email, then preview the invitation.")
                 if (canUseInvitation() && s.pending == null) preview()
             }
@@ -121,7 +123,7 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
                     email = email, idempotencyKey = client.newCommandKey()))
             }
             InvitationEvent.Accept -> if (canUseInvitation() && s.workspaceName != null && s.pending == null) {
-                client.memory.link?.let { link -> mutable.value = s.copy(confirmation = InvitationRequest("accept",
+                client.memory.linkFor(identity.accountUid)?.let { link -> mutable.value = s.copy(confirmation = InvitationRequest("accept",
                     invitationId = link.invitationId, token = link.token, expectedVersion = link.version,
                     idempotencyKey = client.newCommandKey())) }
             }
@@ -134,17 +136,17 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
             InvitationEvent.Cancel -> mutable.value = s.copy(confirmation = null)
             InvitationEvent.DismissDelivery -> mutable.value = s.copy(deliveryLink = null)
             InvitationEvent.UseDelivery -> s.deliveryLink?.let { value ->
-                if (client.memory.open(value)) {
+                if (retainEntry(value)) {
                     memoryRevision = client.memory.revision
-                    mutable.value = s.copy(deliveryLink = null, hasLink = true, entry = "",
+                    mutable.value = s.copy(deliveryLink = null, hasLink = true, entry = "", workspaceName = null, expiresAtMillis = null, confirmation = null,
                         message = "Local test invitation opened. Safely sign out and use the invited account.")
                 }
             }
-            InvitationEvent.PopulateEntry -> client.memory.link?.let { mutable.value = s.copy(entry = it.entry()) }
+            InvitationEvent.PopulateEntry -> client.memory.linkFor(identity.accountUid)?.let { mutable.value = s.copy(entry = it.entry()) }
             InvitationEvent.RetryCommand -> {
                 val pending = s.pending ?: return
                 if (pending.uid != identity.accountUid) return
-                val link = client.memory.link
+                val link = client.memory.linkFor(identity.accountUid)
                 if (pending.action == "accept" && (link == null || link.invitationId != pending.invitationId || link.version != pending.expectedVersion)) {
                     mutable.value = s.copy(message = "Reopen the original invitation to resolve the pending acceptance."); return
                 }
@@ -154,12 +156,32 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
         }
     }
 
+    private fun retainEntry(value: String): Boolean {
+        val candidate = InvitationLink.parse(value)
+        if (candidate == null) {
+            mutable.value = mutable.value.copy(entry = "", message = "This invitation entry is invalid."); return false
+        }
+        // Read current protected work, rather than trusting a possibly stale presentation snapshot.
+        val read = runCatching { identity.accountUid?.let(client::pending) }
+        val pending = read.getOrNull()
+        if (read.isFailure || pending != null && pending.uid != identity.accountUid ||
+            pending?.action == "accept" && !client.memory.protectAcceptance(pending)) {
+            mutable.value = mutable.value.copy(entry = "", message = "Protected command recovery is unavailable. Sign-out stays blocked.")
+            return false
+        }
+        if (!client.memory.open(candidate.entry(), identity.accountUid)) {
+            mutable.value = mutable.value.copy(entry = "", message = "Resolve the pending acceptance with its original invitation before opening another link.")
+            return false
+        }
+        return true
+    }
+
     private fun canTrain(): Boolean = identity.status == GateStatus.TrainerHome && identity.verifiedRole == "trainer" && !identity.busy
     private fun canUseInvitation(): Boolean = identity.accountUid != null && !identity.busy && identity.status in
         setOf(GateStatus.NoAccount, GateStatus.WorkspaceGate, GateStatus.MembershipVerifiedFeaturePending, GateStatus.MultipleMemberships, GateStatus.DepartureBlocked)
     private fun preview() {
         if (!canUseInvitation()) return
-        client.memory.link?.let { execute(InvitationRequest("preview", invitationId = it.invitationId, token = it.token, expectedVersion = it.version)) }
+        client.memory.linkFor(identity.accountUid)?.let { execute(InvitationRequest("preview", invitationId = it.invitationId, token = it.token, expectedVersion = it.version)) }
     }
     private fun confirmation(summary: InvitationSummary, action: String) {
         if (!canTrain() || mutable.value.pending != null || summary.status != "pending") return
@@ -198,7 +220,7 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
                             else "Command confirmed. The delivery token is unavailable; resend to rotate a new local link."
                     })
                 if (request.action == "accept") {
-                    client.memory.clear()
+                    client.memory.clear(uid)
                     mutable.value = mutable.value.copy(hasLink = false)
                     effects.trySend(InvitationEffect.RecheckMembership(uid))
                 }
