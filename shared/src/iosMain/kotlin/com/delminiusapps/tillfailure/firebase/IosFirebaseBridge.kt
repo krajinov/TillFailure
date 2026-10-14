@@ -10,6 +10,8 @@ import com.delminiusapps.tillfailure.persistence.AccountSwitchMarker
 import com.delminiusapps.tillfailure.persistence.IosAtomicFilePersistence
 import com.delminiusapps.tillfailure.persistence.NativeRecoveryPersistenceBridge
 import com.delminiusapps.tillfailure.persistence.RecoveryUidContract
+import com.delminiusapps.tillfailure.invitations.*
+import platform.Foundation.NSUUID
 
 class NativeFirebaseAuthState(
     val uid: String?,
@@ -66,7 +68,13 @@ class NativeMembershipDiscoveryResult(
 
 class NativeDepartureMarkerRead(val uid: String?, val epoch: Long, val readable: Boolean)
 
+class NativeInvitationOutcome(val json: String?, val error: String?, val ambiguous: Boolean)
+
 interface NativeIdentityBridge : NativeFirebaseBridge {
+    val invitationChanges: InvitationChanges
+    fun hasInvitationInFlight(): Boolean
+    /** prepare executes under the native issuance lock before the SDK call, after writable/UID checks. */
+    fun callInvitation(uid: String, json: String, prepare: () -> Boolean, callback: (NativeInvitationOutcome) -> Unit): String
     fun activeBridge(): NativeIdentityBridge
     /** Process-level departure owner, held by the hosted bridge that survives host recreation. */
     val ownership: CleanDepartureOwnership
@@ -93,6 +101,27 @@ class IosProductIdentityClient(
     private val bridge = bridge.activeBridge()
     private val spike = IosFirebaseSpikeClient(bridge)
     private val recoveryStore = IosAtomicFilePersistence(recoveryBridge)
+    private val invitationLedger = InvitationLedger(recoveryStore)
+    override val invitations: InvitationClient = object : InvitationClient {
+        override val memory get() = PendingInvitationLinks.memory
+        override fun newCommandKey(): String = NSUUID().UUIDString
+        override fun pending(uid: String): PendingInvitationCommand? = invitationLedger.pending(uid)
+        override fun observePending(uid: String, callback: () -> Unit) = bridge.invitationChanges.observe(uid, callback)
+        override fun execute(uid: String, request: InvitationRequest, callback: (InvitationOutcome) -> Unit): FirebaseCancellation {
+            var cancelled = false
+            bridge.callInvitation(uid, InvitationJson.request(request), {
+                (invitationLedger.prepare(uid, request) && (request.action != "accept" ||
+                    memory.protectAcceptance(request.pending(uid)!!, request.token))).also { if (it) bridge.invitationChanges.notify(uid) }
+            }) { result ->
+                val settled = invitationLedger.settle(uid, request, InvitationJson.outcome(request, result.json, result.error, result.ambiguous))
+                memory.consume(uid, settled.reply)
+                bridge.invitationChanges.notify(uid)
+                if (!cancelled) callback(settled)
+            }
+            // Keep native settlement alive to reconcile durable work; suppress only presentation.
+            return FirebaseCancellation { cancelled = true }
+        }
+    }
     override val departure: CleanDeparturePort get() = this
     /** Forwarded to the process-level bridge so it survives host/root recreation. */
     override val ownership: CleanDepartureOwnership get() = bridge.ownership
@@ -120,10 +149,12 @@ class IosProductIdentityClient(
     override fun freeze(uid: String): Boolean = RecoveryUidContract.isValid(uid) && bridge.freezeAccount(uid)
     override fun unfreeze(uid: String) = bridge.unfreezeAccount(uid)
     override fun hasProvenEmptyCriticalWork(uid: String): Boolean = runCatching {
+        if (bridge.hasInvitationInFlight()) return@runCatching false
         val record = recoveryStore.read(uid) ?: return@runCatching false
         record.schemaVersion == 1 && record.uid == uid && record.offlineAccessGrant == null &&
             record.downloadManifests.isEmpty() && record.workoutRecoverySnapshot == null &&
-            record.mutationJournal.isEmpty() && record.pendingUploads.isEmpty() && record.switchMarker == null
+            record.mutationJournal.isEmpty() && record.pendingUploads.isEmpty() && record.switchMarker == null &&
+            record.pendingInvitationCommands.isEmpty()
     }.getOrDefault(false)
     override fun drain(timeoutMillis: Long, callback: (StableFirebaseFailure?) -> Unit): FirebaseCancellation =
         spike.waitForPendingWrites(0L, timeoutMillis) { callback(it.failure) }

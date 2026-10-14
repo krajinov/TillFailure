@@ -111,6 +111,19 @@ service cloud.firestore {
           && resource.data.userId == trainerUid;
         allow list, write: if false;
       }
+
+      // Only this safe projection is readable. Its sole writer is the guarded trusted operation.
+      match /invitationSummaries/{iid} {
+        allow get: if signedIn() && activeAccount(request.auth.uid) && activeWorkspace(wid)
+          && activeTrainerMembership(wid, request.auth.uid)
+          && resource.data.schemaVersion == 1 && resource.data.invitationId == iid
+          && resource.data.keys().hasOnly(["schemaVersion", "invitationId", "emailMasked", "role", "status",
+            "expiresAt", "createdAt", "lastSentAt", "tokenVersion"]);
+        // Direct collection enumeration is denied: Firestore Rules cannot redact unapproved
+        // fields from query results. Listing is mediated exclusively through the trusted endpoint
+        // which validates every returned summary against the projection allowlist before returning.
+        allow list, write: if false;
+      }
     }
 
     function assignmentReadable(uid, wid, aid) {

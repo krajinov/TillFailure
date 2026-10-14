@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { after, before, beforeEach, describe, it } from "node:test";
 import { assertFails, assertSucceeds, initializeTestEnvironment, RulesTestEnvironment } from "@firebase/rules-unit-testing";
-import { collection, collectionGroup, doc, getDoc, getDocs, limit, query, setDoc, updateDoc, where } from "firebase/firestore";
+import { collection, collectionGroup, doc, getDoc, getDocs, limit, orderBy, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { deleteObject, ref, uploadString } from "firebase/storage";
 import { publishAssignment } from "../src/assigned-program.js";
 import { transitionAccountLifecycle, transitionMembership, transitionWorkspace } from "../src/catalog.js";
@@ -54,6 +54,87 @@ async function seedEligibleAssignment(): Promise<void> {
 }
 
 describe("Firestore and Storage rules", () => {
+  it("keeps internal invitations Admin-only and authorizes safe projection gets only for active workspace trainers while denying client list and writes", async () => {
+    await environment.withSecurityRulesDisabled(async context => {
+      const db = context.firestore();
+      await setDoc(doc(db, "users/trainer"), { schemaVersion: 1, accountStatus: "active" });
+      await setDoc(doc(db, "users/client"), { schemaVersion: 1, accountStatus: "active" });
+      await setDoc(doc(db, "workspaces/invites"), { schemaVersion: 1, status: "active" });
+      for (const uid of ["trainer", "client"]) await setDoc(doc(db, `workspaces/invites/memberships/${uid}`), {
+        schemaVersion: 1, workspaceId: "invites", userId: uid, role: uid, status: "active"
+      });
+      await setDoc(doc(db, "invitations/secret"), { tokenHash: "hash", invitedEmailNormalized: "private@example.invalid" });
+      await setDoc(doc(db, "workspaces/invites/invitationSummaries/secret"), { schemaVersion: 1, invitationId: "secret",
+        emailMasked: "p***@example.invalid", role: "client", status: "pending", tokenVersion: 1,
+        expiresAt: new Date(), createdAt: new Date(), lastSentAt: new Date() });
+      await setDoc(doc(db, "workspaces/invites/invitationSummaries/leakyToken"), { schemaVersion: 1, invitationId: "leakyToken",
+        emailMasked: "p***@example.invalid", role: "client", status: "pending", tokenVersion: 1,
+        expiresAt: new Date(), createdAt: new Date(), lastSentAt: new Date(),
+        tokenHash: "leaked-hash" });
+      await setDoc(doc(db, "workspaces/invites/invitationSummaries/leakyEmail"), { schemaVersion: 1, invitationId: "leakyEmail",
+        emailMasked: "p***@example.invalid", role: "client", status: "pending", tokenVersion: 1,
+        expiresAt: new Date(), createdAt: new Date(), lastSentAt: new Date(),
+        invitedEmailNormalized: "secret@example.invalid" });
+      await setDoc(doc(db, "workspaces/invites/invitationSummaries/extraField"), { schemaVersion: 1, invitationId: "extraField",
+        emailMasked: "p***@example.invalid", role: "client", status: "pending", tokenVersion: 1,
+        expiresAt: new Date(), createdAt: new Date(), lastSentAt: new Date(),
+        unexpected: "field" });
+      await setDoc(doc(db, "workspaces/invites/invitationSummaries/badSchema"), { schemaVersion: 2, invitationId: "badSchema",
+        emailMasked: "p***@example.invalid", role: "client", status: "pending", tokenVersion: 1,
+        expiresAt: new Date(), createdAt: new Date(), lastSentAt: new Date() });
+      await setDoc(doc(db, "workspaces/invites/invitationSummaries/mismatchedId"), { schemaVersion: 1, invitationId: "otherId",
+        emailMasked: "p***@example.invalid", role: "client", status: "pending", tokenVersion: 1,
+        expiresAt: new Date(), createdAt: new Date(), lastSentAt: new Date() });
+    });
+    const trainer = verifiedContext("trainer").firestore();
+    const client = verifiedContext("client").firestore();
+    const other = verifiedContext("other").firestore();
+    const anon = environment.unauthenticatedContext().firestore();
+    const path = "workspaces/invites/invitationSummaries/secret";
+
+    // Direct get succeeds for valid safe projection
+    await assertSucceeds(getDoc(doc(trainer, path)));
+
+    // Direct gets fail for leaky or malformed summaries (cannot expose unexpected fields)
+    await assertFails(getDoc(doc(trainer, "workspaces/invites/invitationSummaries/leakyToken")));
+    await assertFails(getDoc(doc(trainer, "workspaces/invites/invitationSummaries/leakyEmail")));
+    await assertFails(getDoc(doc(trainer, "workspaces/invites/invitationSummaries/extraField")));
+    await assertFails(getDoc(doc(trainer, "workspaces/invites/invitationSummaries/badSchema")));
+    await assertFails(getDoc(doc(trainer, "workspaces/invites/invitationSummaries/mismatchedId")));
+
+    // Direct client list is completely denied to prevent leaking unapproved projection fields through queries
+    await assertFails(getDocs(collection(trainer, "workspaces/invites/invitationSummaries")));
+    await assertFails(getDocs(query(collection(trainer, "workspaces/invites/invitationSummaries"), limit(20))));
+    await assertFails(getDocs(query(collection(trainer, "workspaces/invites/invitationSummaries"), orderBy("createdAt", "desc"), limit(20))));
+
+    // Internal invitations, rate limits, and writes are denied across all callers
+    for (const db of [trainer, client, other, anon]) {
+      await assertFails(getDoc(doc(db, "invitations/secret")));
+      await assertFails(getDocs(collection(db, "invitations")));
+      await assertFails(setDoc(doc(db, "invitations/secret"), { tokenHash: "forged" }));
+      await assertFails(setDoc(doc(db, path), { token: "forged" }));
+      await assertFails(updateDoc(doc(db, path), { status: "revoked" }));
+      await assertFails(getDocs(collection(db, "workspaces/invites/invitationSummaries")));
+      await assertFails(getDoc(doc(db, "invitationRateLimits/private")));
+      await assertFails(getDoc(doc(db, "invitationRequestLimits/private")));
+      await assertFails(setDoc(doc(db, "invitationRequestLimits/private"), { minute: 0, count: 0 }));
+      if (db !== trainer) await assertFails(getDoc(doc(db, path)));
+    }
+
+    // Revoked trainer membership loses get access
+    await environment.withSecurityRulesDisabled(async context => {
+      await updateDoc(doc(context.firestore(), "workspaces/invites/memberships/trainer"), { userId: "other" });
+    });
+    await assertFails(getDoc(doc(trainer, path)));
+
+    // Disabled account loses get access
+    await environment.withSecurityRulesDisabled(async context => {
+      const db = context.firestore();
+      await updateDoc(doc(db, "workspaces/invites/memberships/trainer"), { userId: "trainer" });
+      await updateDoc(doc(db, "users/trainer"), { accountStatus: "disabled" });
+    });
+    await assertFails(getDoc(doc(trainer, path)));
+  });
   it("denies self-provisioning and protected reads before operator commit, then admits only the verified owner", async () => {
     const uid = "pr2_rules_trainer";
     const wid = "pr2_rules_workspace";

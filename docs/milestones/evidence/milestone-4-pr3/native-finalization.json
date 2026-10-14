@@ -1,0 +1,209 @@
+{
+  "date": "2026-10-12",
+  "environment": "demo-tillfailure-m3, loopback emulators only",
+  "android": {
+    "restartApi": 29,
+    "lateCompletionApi": 34,
+    "restart": {
+      "beforeReplay": {
+        "membershipExists": true,
+        "membershipRevision": 1,
+        "accountCount": 1,
+        "rosterCount": 2,
+        "contributionCount": 2,
+        "receiptCount": 1,
+        "invitationStatus": "accepted",
+        "fingerprint": "842c1a66c99072d72c9939bca59a08c93b711bb344edaca27070413d8774c0c4"
+      },
+      "afterReplay": {
+        "membershipExists": true,
+        "membershipRevision": 1,
+        "accountCount": 1,
+        "rosterCount": 2,
+        "contributionCount": 2,
+        "receiptCount": 1,
+        "invitationStatus": "accepted",
+        "fingerprint": "842c1a66c99072d72c9939bca59a08c93b711bb344edaca27070413d8774c0c4"
+      },
+      "unchanged": true,
+      "processActuallyTerminated": true,
+      "offlineGateDeniedLocalRole": true,
+      "originalProtectedCommandRetried": true,
+      "criticalWorkBlockedSignOutAndAccountB": true,
+      "freshServerGateAndCleanDeparture": true
+    },
+    "lateCompletion": {
+      "result": "OK (1 test)",
+      "clearedRootUnchanged": true,
+      "accountBBlockedUntilResolution": true,
+      "orderedCleanupThenAccountB": true,
+      "retiredCallbackCannotReachAccountB": true,
+      "server": {
+        "membershipExists": true,
+        "membershipRevision": 1,
+        "accountCount": 1,
+        "rosterCount": 3,
+        "contributionCount": 3,
+        "receiptCount": 1,
+        "invitationStatus": "accepted",
+        "fingerprint": "0fdd589bac13523e954d29a06aeaeb2665a864092a984f3370cf5064e518349e"
+      }
+    },
+    "restartResumeJUnit": "OK (1 test); stage intentionally interrupted before JUnit completion"
+  },
+  "ios": {
+    "runtime": "iOS 26.2 simulator",
+    "restart": {
+      "beforeReplay": {
+        "membershipExists": true,
+        "membershipRevision": 1,
+        "accountCount": 1,
+        "rosterCount": 2,
+        "contributionCount": 2,
+        "receiptCount": 1,
+        "invitationStatus": "accepted",
+        "fingerprint": "0ebf39a5deea1b2283cb516e6fd3ed7a99f49e163e16f7d1c486dc5e64d83043"
+      },
+      "afterReplay": {
+        "membershipExists": true,
+        "membershipRevision": 1,
+        "accountCount": 1,
+        "rosterCount": 2,
+        "contributionCount": 2,
+        "receiptCount": 1,
+        "invitationStatus": "accepted",
+        "fingerprint": "0ebf39a5deea1b2283cb516e6fd3ed7a99f49e163e16f7d1c486dc5e64d83043"
+      },
+      "unchanged": true,
+      "processActuallyTerminated": true,
+      "offlineGateDeniedLocalRole": true,
+      "originalProtectedCommandRetried": true,
+      "criticalWorkBlockedSignOutAndAccountB": true,
+      "freshServerGateAndCleanDeparture": true
+    },
+    "stageMarkers": [
+      {
+        "check": "sign-in",
+        "result": "PASS"
+      },
+      {
+        "check": "protected-command-before-delivery",
+        "result": "PASS"
+      },
+      {
+        "check": "held-response-no-role",
+        "result": "PASS"
+      },
+      {
+        "check": "critical-work-blocks-account-B",
+        "result": "PASS"
+      },
+      {
+        "check": "RESTART_RESPONSE_HELD",
+        "result": "PASS"
+      }
+    ],
+    "resumeMarkers": [
+      {
+        "check": "restored-auth-uid",
+        "result": "PASS"
+      },
+      {
+        "check": "restart-has-no-local-token",
+        "result": "PASS"
+      },
+      {
+        "check": "restored-protected-command",
+        "result": "PASS"
+      },
+      {
+        "check": "offline-firestore",
+        "result": "PASS"
+      },
+      {
+        "check": "local-metadata-cannot-grant-role",
+        "result": "PASS"
+      },
+      {
+        "check": "critical-work-blocks-account-B",
+        "result": "PASS"
+      },
+      {
+        "check": "original-command-survives-reopen",
+        "result": "PASS"
+      },
+      {
+        "check": "online-firestore",
+        "result": "PASS"
+      },
+      {
+        "check": "same-caller-key-before-retry",
+        "result": "PASS"
+      },
+      {
+        "check": "receipt-retry-confirmed",
+        "result": "PASS"
+      },
+      {
+        "check": "resolved-token-cleared",
+        "result": "PASS"
+      },
+      {
+        "check": "fresh-server-role-after-resolution",
+        "result": "PASS"
+      },
+      {
+        "check": "RESTART_REPLAY_AND_FRESH_GATE",
+        "result": "PASS"
+      }
+    ],
+    "lateMarkers": [
+      {
+        "check": "sign-in",
+        "result": "PASS"
+      },
+      {
+        "check": "overlapping-retry-does-not-settle-command",
+        "result": "PASS"
+      },
+      {
+        "check": "critical-work-blocks-account-B",
+        "result": "PASS"
+      },
+      {
+        "check": "cleared-root-unchanged-before-delivery",
+        "result": "PASS"
+      },
+      {
+        "check": "cleared-root-unchanged-after-delivery",
+        "result": "PASS"
+      },
+      {
+        "check": "recreated-root-gets-only-safe-ledger-notification",
+        "result": "PASS"
+      },
+      {
+        "check": "B-sign-in-after-ordered-cleanup",
+        "result": "PASS"
+      },
+      {
+        "check": "retired-generation-callback-cannot-reach-B-or-cleared-root",
+        "result": "PASS"
+      },
+      {
+        "check": "no-A-presentation-in-B",
+        "result": "PASS"
+      },
+      {
+        "check": "LATE_COMPLETION_AND_A_B_FENCE",
+        "result": "PASS"
+      }
+    ]
+  },
+  "interactive": {
+    "iosNormalText": "Real form creation, controlled departure, original held-entry open, client sign-in, preview, confirm, acceptance, fresh feature-pending gate. Keyboard email preserved literal input; password masked; Tab/Return brought lower sign-in controls into view and sign-in was tapped.",
+    "iosLargeText": "Real app at 200% Compose font scale; accepted-client lower Sign out action tapped successfully. Trainer/preview lower-page touch scrolling remains unverified: scroll/drag automation left viewport unchanged.",
+    "android": "No completed real UI walkthrough. Emulator activity-manager boot interruption, then API 34 device connection closed during main-app launch. Android Studio computer-use call returned an unrelated project window after about nine minutes; no interaction with unrelated project.",
+    "remaining": "Android interactive flow, native Back, software keyboard/IME, trainer and preview lower-action touch scrolling at large text, OS accessibility text settings and screen-reader traversal remain qualified."
+  }
+}

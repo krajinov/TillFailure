@@ -3,8 +3,22 @@ import { setGlobalOptions } from "firebase-functions/v2";
 import { bookAppointment } from "./booking.js";
 import { emulatorFirestore, requireEmulatorEnvironment } from "./environment.js";
 import { participantUid, safeBufferMinutes, safeEpochMillis, strictPathIdentifier } from "./input-validation.js";
+import { invitationOperation, invitationFailure } from "./invitations.js";
+import { requireProvisioningEmulators } from "./provisioning.js";
 
 setGlobalOptions({ region: "europe-west1", maxInstances: 1 });
+
+// The primitive guards BOTH named loopback emulators before Auth/Firestore acquisition.
+// Deploying this export does not enable production invitation operations.
+export const invitationEmulator = onCall(async request => {
+  try {
+    requireProvisioningEmulators();
+    return await invitationOperation(emulatorFirestore(), request.auth?.uid, request.data);
+  } catch (error) {
+    const failure = invitationFailure(error);
+    throw new HttpsError(failure.code, failure.reason);
+  }
+});
 
 const AUTHORIZATION_FAILURES = new Set([
   "caller-account-inactive",

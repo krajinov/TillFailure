@@ -146,6 +146,8 @@ If access becomes known revoked, preserve the journal and local upload records i
 
 ## Safe sign-out and account-switch protocol
 
+PR 3 also tracks critical invitation mutation commands in the existing encrypted UID envelope as `pendingInvitationCommands` (at most one). Only safe command identity/version/creation-email metadata persists; bearer tokens remain transient. Issuance is serialized with the native account freeze, pending commands fail the clean-departure preflight, and ambiguous transport or settlement outcomes retain the record across restart. Reopen the original link and retry the same command to resolve acceptance. Native completion resolves the ledger even after the initiating ViewModel cancels presentation; UID/generation fencing prevents callbacks crossing accounts. Only matching validated success/receipt outcomes clear the record. All mutation errors retain it: a rejection of this retry, including throttling or an Auth failure, cannot prove that an earlier invocation never committed. Unknown/conflicting retries do not silently discard work, and permanent authorization loss requires a separately approved trusted reconciliation policy. This extends PR 1's clean-only policy; it does not implement PR 5 synchronization/discard or an offline grant.
+
 ### Verified Firebase SDK behavior
 
 - Android and Apple `clearPersistence` remove cached documents **and pending writes**. It must run before Firestore starts or after `terminate`; it is primarily a test/reset API and does not securely overwrite cached bytes.

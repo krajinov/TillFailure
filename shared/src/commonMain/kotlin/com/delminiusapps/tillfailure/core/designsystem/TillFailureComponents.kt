@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -44,6 +45,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -208,6 +210,7 @@ fun TillFailureTextField(
     enabled: Boolean = true,
     visualTransformation: VisualTransformation = VisualTransformation.None,
     trailingContent: (@Composable () -> Unit)? = null,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
 ) {
     OutlinedTextField(
         value = value,
@@ -222,6 +225,7 @@ fun TillFailureTextField(
         trailingIcon = trailingContent,
         visualTransformation = visualTransformation,
         singleLine = true,
+        keyboardOptions = keyboardOptions,
         shape = RoundedCornerShape(TillFailureRadii.sm),
         colors = OutlinedTextFieldDefaults.colors(
             focusedContainerColor = TillFailureTheme.colors.surface,
@@ -842,12 +846,15 @@ fun TillFailureConfirmationDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    // A native dialog creates its own window density. Preserve the caller's accessibility
+    // font scale for every slot, including previews/visual fixtures and platform overrides.
+    val callerDensity = LocalDensity.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = { Text(message) },
-        confirmButton = { TillFailurePrimaryButton(confirmLabel, onConfirm) },
-        dismissButton = { TillFailureTextButton("Cancel", onDismiss) },
+        title = { CompositionLocalProvider(LocalDensity provides callerDensity) { Text(title) } },
+        text = { CompositionLocalProvider(LocalDensity provides callerDensity) { Text(message) } },
+        confirmButton = { CompositionLocalProvider(LocalDensity provides callerDensity) { TillFailurePrimaryButton(confirmLabel, onConfirm) } },
+        dismissButton = { CompositionLocalProvider(LocalDensity provides callerDensity) { TillFailureTextButton("Cancel", onDismiss) } },
         containerColor = TillFailureTheme.colors.surface,
         titleContentColor = TillFailureTheme.colors.primaryText,
         textContentColor = TillFailureTheme.colors.secondaryText,

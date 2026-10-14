@@ -1,0 +1,410 @@
+{
+  "date": "2026-10-14",
+  "reviewedHead": "3c4be888c3878f477b39057fbf47881ed478dac8",
+  "environment": "demo-tillfailure-m3; loopback emulators only",
+  "shared": {
+    "androidHost": 109,
+    "iosSimulator": 109,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "sensitivity": {
+    "reviewedViewModelInDisposableCopy": "primary regression failed: A rejected candidate must preserve the original bearer",
+    "fixedRegressionPassed": true
+  },
+  "native": {
+    "android": {
+      "api": 34,
+      "junit": "OK (1 test)",
+      "trials": {
+        "create": {
+          "before": {
+            "fingerprint": "e522a318507885397ee298d7216bfa0c21b34093f564ad003208b60487f8f0b5",
+            "receiptExists": true,
+            "membershipRevision": 1,
+            "rosterCount": 1,
+            "contributionCount": 1,
+            "accountCount": 1
+          },
+          "after": {
+            "fingerprint": "e522a318507885397ee298d7216bfa0c21b34093f564ad003208b60487f8f0b5",
+            "receiptExists": true,
+            "membershipRevision": 1,
+            "rosterCount": 1,
+            "contributionCount": 1,
+            "accountCount": 1
+          },
+          "unchanged": true,
+          "admissionQuota": 30
+        },
+        "resend": {
+          "before": {
+            "fingerprint": "5a8199f69507d446a6d36fe0b02b60550d747354995335d59234ee171a10e73a",
+            "receiptExists": true,
+            "membershipRevision": 1,
+            "rosterCount": 1,
+            "contributionCount": 1,
+            "accountCount": 1
+          },
+          "after": {
+            "fingerprint": "5a8199f69507d446a6d36fe0b02b60550d747354995335d59234ee171a10e73a",
+            "receiptExists": true,
+            "membershipRevision": 1,
+            "rosterCount": 1,
+            "contributionCount": 1,
+            "accountCount": 1
+          },
+          "unchanged": true,
+          "admissionQuota": 30
+        },
+        "revoke": {
+          "before": {
+            "fingerprint": "204f4a1a25d3cea10d7347653e99ffd97c6504b2a82ab8194e55df2a76ae34eb",
+            "receiptExists": true,
+            "membershipRevision": 1,
+            "rosterCount": 1,
+            "contributionCount": 1,
+            "accountCount": 1
+          },
+          "after": {
+            "fingerprint": "204f4a1a25d3cea10d7347653e99ffd97c6504b2a82ab8194e55df2a76ae34eb",
+            "receiptExists": true,
+            "membershipRevision": 1,
+            "rosterCount": 1,
+            "contributionCount": 1,
+            "accountCount": 1
+          },
+          "unchanged": true,
+          "admissionQuota": 30
+        },
+        "accept": {
+          "before": {
+            "fingerprint": "147210d5f84f81a314e6fb27db88658ea2f9f410398d47fb90109d6224625ebd",
+            "receiptExists": true,
+            "membershipRevision": 1,
+            "rosterCount": 2,
+            "contributionCount": 2,
+            "accountCount": 1
+          },
+          "after": {
+            "fingerprint": "147210d5f84f81a314e6fb27db88658ea2f9f410398d47fb90109d6224625ebd",
+            "receiptExists": true,
+            "membershipRevision": 1,
+            "rosterCount": 2,
+            "contributionCount": 2,
+            "accountCount": 1
+          },
+          "unchanged": true,
+          "admissionQuota": 30
+        }
+      }
+    },
+    "ios": {
+      "runtime": "iOS 26.2",
+      "passed": 54,
+      "failed": 0,
+      "checks": [
+        {
+          "check": "trainer-sign-in",
+          "result": "PASS"
+        },
+        {
+          "check": "create-protected-before-transport",
+          "result": "PASS"
+        },
+        {
+          "check": "create-quota-pending-preserved",
+          "result": "PASS"
+        },
+        {
+          "check": "create-quota-signout-and-B-blocked",
+          "result": "PASS"
+        },
+        {
+          "check": "create-internal-pending-preserved",
+          "result": "PASS"
+        },
+        {
+          "check": "create-internal-signout-and-B-blocked",
+          "result": "PASS"
+        },
+        {
+          "check": "create-unauthorized-pending-preserved",
+          "result": "PASS"
+        },
+        {
+          "check": "create-unauthorized-signout-and-B-blocked",
+          "result": "PASS"
+        },
+        {
+          "check": "create-conflict-pending-preserved",
+          "result": "PASS"
+        },
+        {
+          "check": "create-conflict-signout-and-B-blocked",
+          "result": "PASS"
+        },
+        {
+          "check": "create-receipt-resolved",
+          "result": "PASS"
+        },
+        {
+          "check": "create-unchanged-state-and-quota",
+          "result": "PASS"
+        },
+        {
+          "check": "resend-protected-before-transport",
+          "result": "PASS"
+        },
+        {
+          "check": "resend-quota-pending-preserved",
+          "result": "PASS"
+        },
+        {
+          "check": "resend-quota-signout-and-B-blocked",
+          "result": "PASS"
+        },
+        {
+          "check": "resend-internal-pending-preserved",
+          "result": "PASS"
+        },
+        {
+          "check": "resend-internal-signout-and-B-blocked",
+          "result": "PASS"
+        },
+        {
+          "check": "resend-unauthorized-pending-preserved",
+          "result": "PASS"
+        },
+        {
+          "check": "resend-unauthorized-signout-and-B-blocked",
+          "result": "PASS"
+        },
+        {
+          "check": "resend-conflict-pending-preserved",
+          "result": "PASS"
+        },
+        {
+          "check": "resend-conflict-signout-and-B-blocked",
+          "result": "PASS"
+        },
+        {
+          "check": "resend-receipt-resolved",
+          "result": "PASS"
+        },
+        {
+          "check": "resend-unchanged-state-and-quota",
+          "result": "PASS"
+        },
+        {
+          "check": "revoke-protected-before-transport",
+          "result": "PASS"
+        },
+        {
+          "check": "revoke-quota-pending-preserved",
+          "result": "PASS"
+        },
+        {
+          "check": "revoke-quota-signout-and-B-blocked",
+          "result": "PASS"
+        },
+        {
+          "check": "revoke-internal-pending-preserved",
+          "result": "PASS"
+        },
+        {
+          "check": "revoke-internal-signout-and-B-blocked",
+          "result": "PASS"
+        },
+        {
+          "check": "revoke-unauthorized-pending-preserved",
+          "result": "PASS"
+        },
+        {
+          "check": "revoke-unauthorized-signout-and-B-blocked",
+          "result": "PASS"
+        },
+        {
+          "check": "revoke-conflict-pending-preserved",
+          "result": "PASS"
+        },
+        {
+          "check": "revoke-conflict-signout-and-B-blocked",
+          "result": "PASS"
+        },
+        {
+          "check": "revoke-receipt-resolved",
+          "result": "PASS"
+        },
+        {
+          "check": "revoke-unchanged-state-and-quota",
+          "result": "PASS"
+        },
+        {
+          "check": "client-sign-in",
+          "result": "PASS"
+        },
+        {
+          "check": "accept-protected-before-transport",
+          "result": "PASS"
+        },
+        {
+          "check": "accept-quota-pending-preserved",
+          "result": "PASS"
+        },
+        {
+          "check": "accept-quota-signout-and-B-blocked",
+          "result": "PASS"
+        },
+        {
+          "check": "accept-internal-pending-preserved",
+          "result": "PASS"
+        },
+        {
+          "check": "accept-internal-signout-and-B-blocked",
+          "result": "PASS"
+        },
+        {
+          "check": "accept-unauthorized-pending-preserved",
+          "result": "PASS"
+        },
+        {
+          "check": "accept-unauthorized-signout-and-B-blocked",
+          "result": "PASS"
+        },
+        {
+          "check": "accept-conflict-pending-preserved",
+          "result": "PASS"
+        },
+        {
+          "check": "accept-conflict-signout-and-B-blocked",
+          "result": "PASS"
+        },
+        {
+          "check": "entry-candidate-0-preserves-original",
+          "result": "PASS"
+        },
+        {
+          "check": "entry-candidate-1-preserves-original",
+          "result": "PASS"
+        },
+        {
+          "check": "entry-candidate-2-preserves-original",
+          "result": "PASS"
+        },
+        {
+          "check": "entry-owner-fence",
+          "result": "PASS"
+        },
+        {
+          "check": "matching-entry-and-critical-work-preserved",
+          "result": "PASS"
+        },
+        {
+          "check": "entry-state-diagnostics-redacted",
+          "result": "PASS"
+        },
+        {
+          "check": "entry-original-command-before-retry",
+          "result": "PASS"
+        },
+        {
+          "check": "entry-retry-resolved",
+          "result": "PASS"
+        },
+        {
+          "check": "accept-unchanged-state-and-quota",
+          "result": "PASS"
+        },
+        {
+          "check": "ordered-clean-departure",
+          "result": "PASS"
+        }
+      ],
+      "trials": {
+        "create": {
+          "before": {
+            "fingerprint": "8eb4f0c454381c11fe2d6df149a173f8a063012066e8fee3ebdf7f2d0d5768d0",
+            "receiptExists": true,
+            "membershipRevision": 1,
+            "rosterCount": 1,
+            "contributionCount": 1,
+            "accountCount": 1
+          },
+          "after": {
+            "fingerprint": "8eb4f0c454381c11fe2d6df149a173f8a063012066e8fee3ebdf7f2d0d5768d0",
+            "receiptExists": true,
+            "membershipRevision": 1,
+            "rosterCount": 1,
+            "contributionCount": 1,
+            "accountCount": 1
+          },
+          "unchanged": true,
+          "admissionQuota": 30
+        },
+        "resend": {
+          "before": {
+            "fingerprint": "1b86d7f3beb0452f10e16096dbdb189b7c509c89e9f7f5e57685f4713eff1870",
+            "receiptExists": true,
+            "membershipRevision": 1,
+            "rosterCount": 1,
+            "contributionCount": 1,
+            "accountCount": 1
+          },
+          "after": {
+            "fingerprint": "1b86d7f3beb0452f10e16096dbdb189b7c509c89e9f7f5e57685f4713eff1870",
+            "receiptExists": true,
+            "membershipRevision": 1,
+            "rosterCount": 1,
+            "contributionCount": 1,
+            "accountCount": 1
+          },
+          "unchanged": true,
+          "admissionQuota": 30
+        },
+        "revoke": {
+          "before": {
+            "fingerprint": "ca751bcac303956cac5a943b002f0f83f7111485a16f0767b2faed9e5ae6e6bb",
+            "receiptExists": true,
+            "membershipRevision": 1,
+            "rosterCount": 1,
+            "contributionCount": 1,
+            "accountCount": 1
+          },
+          "after": {
+            "fingerprint": "ca751bcac303956cac5a943b002f0f83f7111485a16f0767b2faed9e5ae6e6bb",
+            "receiptExists": true,
+            "membershipRevision": 1,
+            "rosterCount": 1,
+            "contributionCount": 1,
+            "accountCount": 1
+          },
+          "unchanged": true,
+          "admissionQuota": 30
+        },
+        "accept": {
+          "before": {
+            "fingerprint": "0aa42d17c456b625e40891086225a829821be78366c8953fdb1f7fd6ddb59cd3",
+            "receiptExists": true,
+            "membershipRevision": 1,
+            "rosterCount": 2,
+            "contributionCount": 2,
+            "accountCount": 1
+          },
+          "after": {
+            "fingerprint": "0aa42d17c456b625e40891086225a829821be78366c8953fdb1f7fd6ddb59cd3",
+            "receiptExists": true,
+            "membershipRevision": 1,
+            "rosterCount": 2,
+            "contributionCount": 2,
+            "accountCount": 1
+          },
+          "unchanged": true,
+          "admissionQuota": 30
+        }
+      }
+    }
+  },
+  "qualification": "Fresh native checks use real SDKs, encrypted storage, actual ViewModelStore disposal/recreation, rejected candidates and same-command receipt replay. The host commits and withholds the original response; quota uses the real endpoint, other rejection modes are deterministic wire faults. No new native process-death or touch/keyboard/scroll acceptance is claimed. Shared restart tests restore safe metadata into new memory; earlier native process-death evidence is retained separately."
+}

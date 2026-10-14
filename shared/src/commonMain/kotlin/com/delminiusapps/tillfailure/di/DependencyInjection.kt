@@ -16,6 +16,8 @@ private val foundationModule = module {
     viewModelOf(::FoundationHomeViewModel)
     viewModelOf(::FoundationDetailsViewModel)
     viewModel { (client: ProductIdentityClient) -> IdentityViewModel(client) }
+    viewModel { (client: com.delminiusapps.tillfailure.invitations.InvitationClient) ->
+        com.delminiusapps.tillfailure.invitations.InvitationViewModel(client) }
 }
 
 private var isKoinInitialized = false

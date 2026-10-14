@@ -45,6 +45,8 @@ Proposals below enable planning only. Affected features cannot be accepted until
 
 ### Production-only gates; local emulator work may proceed
 
+**PR 3 fixture status (2026-10-12):** Production invitation policy is still unapproved. The emulator implementation uses verified, pre-existing Auth fixture UID **and** normalized-email binding, a 48-hour lifetime, rotated versioned tokens, PR 2's two-contribution/five-roster caps, and a 30-admission/UID/minute quota plus a separate 120-request/replay budget. Receipt replays bypass admission quota; mutation errors retain protected commands pending authoritative reconciliation. Manual entry uses a reserved `.invalid` format; no email provider or production link domain is enabled. [The fixture procedure](milestone-4-pr3-invitations.md) records transaction, delivery, protected pending-command and retry behavior. These values and identity prerequisites are development fixtures, not owner approval of the recommendations above.
+
 | Owner | Gate before deployed/release acceptance |
 |---|---|
 | Platform/security | Separate development/production project ownership, regions and residency, billing/budgets, service accounts, Auth provider settings, authorized domains/link association, App Check decision, credentials and release signing. No Firebase deployment is part of this plan. |

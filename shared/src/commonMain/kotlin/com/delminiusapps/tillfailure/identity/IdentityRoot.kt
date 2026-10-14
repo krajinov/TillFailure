@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextField
@@ -20,6 +21,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -39,6 +43,10 @@ import kotlinx.coroutines.flow.Flow
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 import com.delminiusapps.tillfailure.core.designsystem.TillFailureTheme
+import com.delminiusapps.tillfailure.invitations.InvitationViewModel
+import com.delminiusapps.tillfailure.invitations.InvitationScreen
+import com.delminiusapps.tillfailure.invitations.InvitationEffect
+import com.delminiusapps.tillfailure.invitations.InvitationState
 
 @Serializable
 private sealed interface IdentityDestination : NavKey
@@ -75,7 +83,34 @@ fun IdentityRoot(client: ProductIdentityClient?, onOpenDevelopmentCatalog: (() -
             entry<IdentityGateDestination> {
                 val viewModel: IdentityViewModel = koinViewModel(parameters = { parametersOf(client) })
                 val state by viewModel.state.collectAsStateWithLifecycle()
-                IdentityStateNavigation(state, viewModel.effect, viewModel::onEvent, onOpenDevelopmentCatalog)
+                val invitationClient = viewModel.activeClient().invitations
+                if (invitationClient == null) {
+                    IdentityStateNavigation(state, viewModel.effect, viewModel::onEvent, onOpenDevelopmentCatalog)
+                } else {
+                    val invitations: InvitationViewModel = koinViewModel(parameters = { parametersOf(invitationClient) })
+                    val invitationState by invitations.state.collectAsStateWithLifecycle()
+                    // Identity effects run after composition. Never render an old UID's state in
+                    // that intervening frame, including its transient local-delivery token.
+                    val visibleInvitationState = if (invitationState.accountUid == state.accountUid)
+                        invitationState else InvitationState(hasLink = invitationClient.memory.linkFor(state.accountUid) != null)
+                    LaunchedEffect(state, invitationClient, invitationClient.memory.revision) {
+                        invitations.updateClient(invitationClient)
+                        invitations.updateIdentity(state)
+                    }
+                    val owner = LocalLifecycleOwner.current
+                    LaunchedEffect(invitations, owner) {
+                        owner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                            invitations.effect.collect { effect ->
+                                if (effect is InvitationEffect.RecheckMembership && viewModel.currentState().accountUid == effect.uid)
+                                    viewModel.onEvent(IdentityEvent.Retry)
+                            }
+                        }
+                    }
+                    IdentityStateNavigation(state.copy(busy = state.busy || visibleInvitationState.busy || visibleInvitationState.pending != null),
+                        viewModel.effect, viewModel::onEvent, onOpenDevelopmentCatalog) {
+                        InvitationScreen(visibleInvitationState, state, invitations::onEvent)
+                    }
+                }
             }
         },
     )
@@ -89,6 +124,7 @@ private fun IdentityStateNavigation(
     effect: Flow<IdentityEffect>,
     onEvent: (IdentityEvent) -> Unit,
     onOpenDevelopmentCatalog: (() -> Unit)?,
+    invitations: (@Composable () -> Unit)? = null,
 ) {
     val backStack = rememberNavBackStack(identitySavedState, IdentityStateDestination(GateStatus.Loading))
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -117,7 +153,7 @@ private fun IdentityStateNavigation(
     NavDisplay(
         backStack = backStack,
         entryProvider = entryProvider {
-            entry<IdentityStateDestination> { IdentityScreen(state, onEvent, onOpenDevelopmentCatalog) }
+            entry<IdentityStateDestination> { IdentityScreen(state, onEvent, onOpenDevelopmentCatalog, invitations) }
         },
     )
 }
@@ -127,11 +163,13 @@ fun IdentityScreen(
     state: IdentityState,
     onEvent: (IdentityEvent) -> Unit,
     onOpenDevelopmentCatalog: (() -> Unit)? = null,
+    invitations: (@Composable () -> Unit)? = null,
 ) {
     Column(
         modifier = Modifier.fillMaxSize()
             .background(TillFailureTheme.colors.background)
             .safeDrawingPadding()
+            .imePadding()
             .verticalScroll(rememberScrollState())
             .padding(PaddingValues(24.dp)),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -152,7 +190,7 @@ fun IdentityScreen(
                 GateStatus.UnverifiedEmail -> "Verify the email on this account, then recheck. Access stays locked until Auth reports it verified."
                 GateStatus.AccountDisabled -> "This account is disabled. Contact support."
                 GateStatus.WorkspaceGate -> "Workspace access pending. Ask your trainer or operator for access, then recheck."
-                GateStatus.TrainerHome -> "Trainer workspace verified. Your home is ready; invitations and programming are not available yet."
+                GateStatus.TrainerHome -> "Trainer workspace verified. Manage client invitations below."
                 GateStatus.MembershipVerifiedFeaturePending -> "Membership verified. This feature is coming soon."
                 GateStatus.UnsupportedSchema -> "Your account data needs an update. Contact support."
                 GateStatus.AccessLost -> "Access could not be verified. Contact support or retry."
@@ -168,12 +206,14 @@ fun IdentityScreen(
             color = TillFailureTheme.colors.primaryText,
             style = MaterialTheme.typography.bodyLarge,
         )
+        invitations?.invoke()
         if (state.status == GateStatus.Loading) CircularProgressIndicator()
         if (state.status == GateStatus.SignedOut || state.status == GateStatus.InvalidCredentials) {
             OutlinedTextField(
                 value = state.email,
                 onValueChange = { onEvent(IdentityEvent.EmailChanged(it)) },
                 label = { Text("Email") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, autoCorrectEnabled = false, imeAction = ImeAction.Next),
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
             )
@@ -184,6 +224,7 @@ fun IdentityScreen(
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false, imeAction = ImeAction.Done),
             )
             Button(onClick = { onEvent(IdentityEvent.SignIn) }, enabled = !state.busy) { Text("Sign in") }
             Text("Development emulator sign-in only", color = TillFailureTheme.colors.secondaryText)

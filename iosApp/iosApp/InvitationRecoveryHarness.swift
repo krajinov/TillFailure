@@ -1,0 +1,253 @@
+import Foundation
+import FirebaseAuth
+import FirebaseCore
+import Darwin
+import Shared
+
+#if DEBUG
+/// Real Swift SDK/protected-store/gate recovery. Host commits model lost replies; explicit wire
+/// faults model service/authority errors. Actual Admin Auth fault injection is backend evidence.
+enum InvitationRecoveryHarness {
+    private static var bridge: FirebaseNativeBridge!
+    private static var client: IosProductIdentityClient!
+    private static var gate: IdentityViewModel!
+    private static var ledger: InvitationLedger!
+    private static var store: IosAtomicFilePersistence!
+    private static var protectedBefore: AccountPersistenceEnvelope!
+    private static var entryRoot: NativeInvitationModels?
+    private static var password = ""
+    private static let actions = ["create", "resend", "revoke", "accept"]
+    private static func check(_ value: Bool, _ label: String) {
+        print("PR3_P1_IOS \(label)=\(value ? "PASS" : "FAIL")"); fflush(stdout)
+        if !value { exit(1) }
+    }
+    private static func poll(_ status: GateStatus, then: @escaping () -> Void) {
+        let deadline = Date().addingTimeInterval(35)
+        func tick() {
+            if gate.currentState().status == status { then(); return }
+            if Date() >= deadline { check(false, "gate-timeout"); return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.03, execute: tick)
+        }
+        tick()
+    }
+    private static func fixture(_ action: String, _ operation: String, mode: String? = nil,
+                                then: @escaping ([String: Any]) -> Void) {
+        let active = bridge.activeBridge() as! FirebaseNativeBridge
+        Auth.auth(app: FirebaseApp.app(name: active.debugAppName)!).currentUser!.getIDTokenForcingRefresh(true) { token, error in
+            guard error == nil, let token else { check(false, "fixture-auth"); return }
+            var request = URLRequest(url: URL(string: "http://127.0.0.1:9695/review/ios/\(action)/\(operation)")!)
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.timeoutInterval = 15
+            if operation != "evidence" {
+                request.httpMethod = "POST"; request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = try! JSONSerialization.data(withJSONObject: mode.map { ["mode": $0] } ?? [:])
+            }
+            URLSession.shared.dataTask(with: request) { data, response, error in
+                DispatchQueue.main.async {
+                    guard error == nil, (response as? HTTPURLResponse)?.statusCode == 200, let data, data.count <= 8192,
+                          let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                        check(false, "fixture-response"); return
+                    }
+                    then(body)
+                }
+            }.resume()
+        }
+    }
+    static func runIfRequested() {
+        guard ProcessInfo.processInfo.environment["TF_PR3_P1_RECOVERY"] == "1",
+              let supplied = ProcessInfo.processInfo.environment["TF_PR3_TEST_PASSWORD"],
+              let defaults = UserDefaults(suiteName: "tillfailure.pr3.p1.review") else { return }
+        password = supplied
+        bridge = FirebaseNativeBridge(productMemoryCache: true, identityDefaults: defaults)
+        let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("TillFailurePR3P1Review")
+        let recovery = RecoveryPersistenceBridge(rootURL: root)
+        client = IosProductIdentityClient(bridge: bridge, recoveryBridge: recovery)
+        store = IosAtomicFilePersistence(bridge: recovery)
+        ledger = InvitationLedger(store: store)
+        if ProcessInfo.processInfo.environment["TF_PR3_P1_RECONCILE"] == "1" {
+            reconcileInterruptedCreate(); return
+        }
+        _ = client.signIn(email: "p1-ios-trainer@example.invalid", password: password, epoch: 0) { failure in
+            check(failure == nil, "trainer-sign-in")
+            gate = IdentityViewModel(initialClient: client)
+            poll(.trainerhome) { trial(0) }
+        }
+    }
+    /// Explicitly recover an interrupted create trial through its original receipt, never discard it.
+    private static func reconcileInterruptedCreate() {
+        let uid = "p1_ios_trainer"
+        check(bridge.debugCurrentUid == uid, "reconcile-owner-restored")
+        func depart() {
+            gate = IdentityViewModel(initialClient: client)
+            poll(.trainerhome) {
+                gate.onEvent(event: IdentityEventSignOut.shared)
+                poll(.signedout) { check(true, "reconcile-clean-departure"); exit(0) }
+            }
+        }
+        guard let pending = ledger.pending(uid: uid) else {
+            check(client.hasProvenEmptyCriticalWork(uid: uid), "reconcile-already-settled")
+            depart(); return
+        }
+        check(pending.action == "create" && pending.uid == uid, "reconcile-original-command")
+        let request = InvitationRequest(action: pending.action, workspaceId: pending.workspaceId,
+            invitationId: pending.invitationId, email: pending.email, token: nil,
+            expectedVersion: pending.expectedVersion, idempotencyKey: pending.idempotencyKey)
+        fixture("create", "mode", mode: "forward") { _ in
+            _ = client.invitations.execute(uid: uid, request: request) { outcome in
+                check(outcome.error == nil && !outcome.ambiguous && outcome.reply?.replayed?.boolValue == true &&
+                      ledger.pending(uid: uid) == nil && client.hasProvenEmptyCriticalWork(uid: uid), "reconcile-receipt-resolved")
+                depart()
+            }
+        }
+    }
+    private static func trial(_ index: Int) {
+        if index == actions.count {
+            gate.onEvent(event: IdentityEventSignOut.shared)
+            poll(.signedout) { check(true, "ordered-clean-departure"); exit(0) }; return
+        }
+        let action = actions[index]
+        if action == "accept" {
+            gate.onEvent(event: IdentityEventSignOut.shared)
+            poll(.signedout) {
+                client = gate.activeClient() as? IosProductIdentityClient
+                _ = client.signIn(email: "p1-ios-client@example.invalid", password: password, epoch: 0) { failure in
+                    check(failure == nil, "client-sign-in")
+                    poll(.noaccount) { setup(index) }
+                }
+            }
+        } else { setup(index) }
+    }
+    private static func setup(_ index: Int) {
+        let action = actions[index]
+        fixture(action, "setup") { body in
+            let data = body["request"] as! [String: Any]
+            let request = InvitationRequest(action: action, workspaceId: data["workspaceId"] as? String,
+                invitationId: data["invitationId"] as? String, email: data["email"] as? String, token: data["token"] as? String,
+                expectedVersion: (data["expectedVersion"] as? NSNumber).map { KotlinInt(int: $0.int32Value) },
+                idempotencyKey: data["idempotencyKey"] as? String)
+            let uid = "p1_ios_\(action == "accept" ? "client" : "trainer")"
+            check(ledger.prepare(uid: uid, request: request), "\(action)-protected-before-transport")
+            let original = ledger.pending(uid: uid)!
+            protectedBefore = store.read(uid: uid)
+            if action == "accept" { restoredEntry(request, uid) }
+            failures(index, request, uid, original, 0)
+        }
+    }
+    private static func failures(_ index: Int, _ request: InvitationRequest, _ uid: String,
+                                 _ original: PendingInvitationCommand, _ faultIndex: Int) {
+        let action = actions[index]
+        let faults = ["quota", "internal", "unauthorized", "conflict"]
+        if faultIndex == faults.count { recover(index, request, uid); return }
+        let fault = faults[faultIndex]
+        func issue() {
+            _ = client.invitations.execute(uid: uid, request: request) { outcome in
+                let expected = ["quota": ["rate-limited"], "internal": ["unavailable", "invitation-unavailable"],
+                                "unauthorized": ["unauthorized"], "conflict": ["idempotency-key-reused"]]
+                let expectedError = expected[fault]!.contains(outcome.error ?? "")
+                let sameEnvelope = store.read(uid: uid) == protectedBefore
+                let sameCommand = ledger.pending(uid: uid) == original
+                let critical = !client.hasProvenEmptyCriticalWork(uid: uid)
+                let preserved = expectedError && sameEnvelope && outcome.ambiguous && outcome.reply == nil && sameCommand && critical
+                if !preserved {
+                    print("PR3_P1_IOS fault-diagnostic expectedError=\(expectedError) sameEnvelope=\(sameEnvelope) ambiguous=\(outcome.ambiguous) replyAbsent=\(outcome.reply == nil) sameCommand=\(sameCommand) critical=\(critical)")
+                }
+                check(preserved, "\(action)-\(fault)-pending-preserved")
+                gate.onEvent(event: IdentityEventSignOut.shared)
+                poll(.departureblocked) {
+                    _ = client.signIn(email: "p1-ios-client@example.invalid", password: password, epoch: 0) { failure in
+                        check(failure?.code == .failedPrecondition && (bridge.activeBridge() as! FirebaseNativeBridge).debugCurrentUid == uid,
+                              "\(action)-\(fault)-signout-and-B-blocked")
+                        failures(index, request, uid, original, faultIndex + 1)
+                    }
+                }
+            }
+        }
+        if fault == "quota" { issue() } else { fixture(action, "mode", mode: fault) { _ in issue() } }
+    }
+    private static func restoredEntry(_ request: InvitationRequest, _ uid: String) {
+        let root = NativeInvitationModels(client: client)
+        // Entry presentation starts before the authenticated gate supplies the restored UID.
+        let forged = InvitationLink(invitationId: request.invitationId!, version: request.expectedVersion!.int32Value,
+                                    token: String(repeating: "z", count: 43))
+        root.invitation.onEvent(event: InvitationEventEntry(value: forged.entry())); root.invitation.onEvent(event: InvitationEventOpen.shared)
+        check(client.invitations.memory.link?.token == forged.token, "restore-unverified-entry-before-uid")
+        let original = ledger.pending(uid: uid)
+        root.invitation.updateIdentity(next: gate.currentState())
+        check(client.invitations.memory.link == nil && !root.invitation.currentState().hasLink &&
+              root.invitation.currentState().pending == original, "restore-metadata-clears-unverified-entry")
+        root.invitation.onEvent(event: InvitationEventRetryCommand.shared)
+        check(!root.invitation.currentState().busy && ledger.pending(uid: uid) == original &&
+              !client.hasProvenEmptyCriticalWork(uid: uid), "restore-retry-needs-original-entry")
+        let entry = InvitationLink(invitationId: request.invitationId!, version: request.expectedVersion!.int32Value, token: request.token!)
+        root.invitation.onEvent(event: InvitationEventEntry(value: entry.entry())); root.invitation.onEvent(event: InvitationEventOpen.shared)
+        check(client.invitations.memory.linkFor(uid: uid)?.token == request.token && ledger.pending(uid: uid) == original,
+              "restore-real-entry-reopens")
+        root.clear()
+    }
+    private static func guardedRoot(_ request: InvitationRequest, _ uid: String) {
+        let retained = client.invitations.memory.linkFor(uid: uid)!
+        let original = ledger.pending(uid: uid)!
+        let old = NativeInvitationModels(client: client)
+        old.invitation.updateIdentity(next: gate.currentState()); old.clear()
+        let root = NativeInvitationModels(client: client)
+        root.invitation.updateIdentity(next: gate.currentState())
+        let otherId = (retained.invitationId.first == "f" ? "e" : "f") + String(retained.invitationId.dropFirst())
+        let candidates = [InvitationLink(invitationId: otherId, version: retained.version, token: String(repeating: "z", count: 43)).entry(),
+                          InvitationLink(invitationId: retained.invitationId, version: retained.version + 1, token: retained.token).entry(), "invalid-entry"]
+        for (index, candidate) in candidates.enumerated() {
+            old.invitation.onEvent(event: InvitationEventEntry(value: candidate)); old.invitation.onEvent(event: InvitationEventOpen.shared)
+            root.invitation.onEvent(event: InvitationEventEntry(value: candidate)); root.invitation.onEvent(event: InvitationEventOpen.shared)
+            check(client.invitations.memory.link === retained && ledger.pending(uid: uid) == original &&
+                  root.invitation.currentState().pending == original, "entry-candidate-\(index)-preserves-original")
+        }
+        check(client.invitations.memory.linkFor(uid: "another-account") == nil &&
+              !client.invitations.memory.clear(uid: "another-account"), "entry-owner-fence")
+        root.invitation.onEvent(event: InvitationEventPopulateEntry.shared); root.invitation.onEvent(event: InvitationEventOpen.shared)
+        check(client.invitations.memory.linkFor(uid: uid)?.token == request.token && !client.hasProvenEmptyCriticalWork(uid: uid),
+              "matching-entry-and-critical-work-preserved")
+        check(!root.invitation.currentState().description.contains(retained.token), "entry-state-diagnostics-redacted")
+        entryRoot = root
+    }
+    private static func recover(_ index: Int, _ request: InvitationRequest, _ uid: String) {
+        let action = actions[index]
+        if action == "accept" { guardedRoot(request, uid) }
+        fixture(action, "mode", mode: "forward") { _ in
+            if let root = entryRoot {
+                (bridge.activeBridge() as! FirebaseNativeBridge).debugBeforeInvitationTransport = { issue in
+                    check(ledger.pending(uid: uid) == request.pending(uid: uid), "entry-original-command-before-retry")
+                    issue()
+                }
+                root.invitation.onEvent(event: InvitationEventRetryCommand.shared)
+                let deadline = Date().addingTimeInterval(35)
+                func settled() {
+                    if root.invitation.currentState().busy {
+                        if Date() >= deadline { check(false, "entry-retry-timeout"); return }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03, execute: settled); return
+                    }
+                    check(root.invitation.currentState().message.hasPrefix("Invitation accepted") && ledger.pending(uid: uid) == nil &&
+                          client.invitations.memory.link == nil && client.hasProvenEmptyCriticalWork(uid: uid), "entry-retry-resolved")
+                    root.clear(); entryRoot = nil
+                    finish(index, uid)
+                }
+                settled(); return
+            }
+            _ = client.invitations.execute(uid: uid, request: request) { outcome in
+                check(outcome.error == nil && !outcome.ambiguous && outcome.reply?.replayed?.boolValue == true &&
+                      ledger.pending(uid: uid) == nil && client.hasProvenEmptyCriticalWork(uid: uid), "\(action)-receipt-resolved")
+                finish(index, uid)
+            }
+        }
+    }
+    private static func finish(_ index: Int, _ uid: String) {
+        let action = actions[index]
+        fixture(action, "evidence") { evidence in
+            check(evidence["unchanged"] as? Bool == true && (evidence["admissionQuota"] as? NSNumber)?.intValue == 30,
+                  "\(action)-unchanged-state-and-quota")
+            gate.onEvent(event: IdentityEventRetry.shared)
+            poll(action == "accept" ? .membershipverifiedfeaturepending : .trainerhome) { trial(index + 1) }
+        }
+    }
+
+}
+#endif

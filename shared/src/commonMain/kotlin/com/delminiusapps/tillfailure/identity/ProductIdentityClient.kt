@@ -14,6 +14,7 @@ data class MembershipDiscoveryResult(
 
 /** Narrow product surface. All reads used for authorization must be server sourced. */
 interface ProductIdentityClient {
+    val invitations: com.delminiusapps.tillfailure.invitations.InvitationClient? get() = null
     val departure: CleanDeparturePort? get() = null
     /** Installation-local account pin. A read failure must be reported as pinned/blocked. */
     fun hasPinnedIdentity(): Boolean

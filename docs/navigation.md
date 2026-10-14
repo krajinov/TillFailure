@@ -56,6 +56,8 @@ Confirmation dialogs, pickers, filters, snackbars, permission prompts, and most 
 
 ## Deep-link handling
 
+PR 3 supports manual invitation entry in the shared Android/iOS flow using the reserved emulator `.invalid` format defined in [the local procedure](milestones/milestone-4-pr3-invitations.md). Tokens stay in a process-only pending-link coordinator across sign-in, verification and a controlled wrong-account departure, and are cleared on acceptance. They never enter typed navigation/saved state. Restart requires reopening the original link; a protected safe command identity allows same-key reconciliation of an ambiguous acceptance. Associated domains, Universal Links and production delivery remain gated. The acceptance response only requests fresh server membership verification and stops at the existing client feature-pending root.
+
 Deep links enter a shared coordinator as a validated, project-owned intent after platform URL parsing:
 
 - Invitation: preserve opaque token; restore/authenticate; server preview/acceptance; then onboarding or correct shell.
