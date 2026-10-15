@@ -54,6 +54,7 @@ private fun serverDocument(document: FirebaseDocumentSnapshot?, path: String): B
 fun checkAccount(uid: String, account: FirebaseDocumentSnapshot?): IdentityDecision? {
     if (!serverDocument(account, "users/$uid")) return IdentityDecision.InvalidProof
     if (!account!!.exists) return IdentityDecision.NoAccount
+    if (account.fields["_invalidIdentityTypes"] != null) return IdentityDecision.InvalidProof
     if (account.fields["schemaVersion"] != "1") return IdentityDecision.UnsupportedSchema
     return when (account.fields["accountStatus"]) {
         "active" -> null
@@ -83,6 +84,15 @@ fun checkMembership(
         membership.fields["status"] != "active" || membership.fields["workspaceId"] != workspaceId ||
         membership.fields["userId"] != uid
     ) return IdentityDecision.InvalidProof
+    fun number(value: String?, minimum: Int, maximum: Int): Boolean = value?.toIntOrNull()?.let { it in minimum..maximum } == true
+    if (workspace.fields["_invalidIdentityTypes"] != null || membership.fields["_invalidIdentityTypes"] != null ||
+        !isPathSafeAuthUid(workspace.fields["ownerUid"]) ||
+        !number(workspace.fields["membershipRevision"], 0, Int.MAX_VALUE - 1) ||
+        !number(workspace.fields["activeRosterCount"], 1, 99) ||
+        !number(workspace.fields["catalogContributionCount"], 1, 99) ||
+        workspace.fields["activeRosterCount"] != workspace.fields["catalogContributionCount"] ||
+        !number(membership.fields["revision"], 1, Int.MAX_VALUE - 1) || membership.fields["catalogContributionActive"] != "true")
+        return IdentityDecision.InvalidProof
     val role = membership.fields["role"]
     if (role != "client" && role != "trainer") return IdentityDecision.InvalidProof
     return IdentityDecision.Verified(workspaceId, role)

@@ -199,3 +199,7 @@ If the process terminates mid-switch, the durable `SwitchingOut` marker is read 
 - Logged-set write survives restart before send, while pending, and after stale-revision rejection; both local/server values reach conflict UI and explicit resolution retries correctly.
 - Sign-out/switch while online and clean, while offline with pending work, after sync failure, after cleanup failure, and across process death follows the protocol; late callbacks cannot mutate the next account.
 - Android and Apple adapters prove matching Auth observation, cache/source metadata, write acknowledgement/rejection, `waitForPendingWrites`, termination/clear behavior, listener cancellation, and account-scope disposal before Firebase-backed features begin.
+
+## PR 4 completion recovery
+
+Minimal onboarding extends the existing UID-bound protected command slot with its original fields, acknowledgment, workspace, expected revisions and key. It is prepared before native transport and retained on every ambiguous/rejected/conflicting result. Only a validated matching success/receipt settles it, including after presentation cancellation. Root recreation recovers the same command; a ledger notification triggers fresh identity verification rather than trusting a saved route. Workspace preference uses the same ledger lock and is only a local hint. Unresolved completion blocks clean departure; no discard or privileged repair is introduced. Production writes and offline grants remain disabled. See [PR 4 evidence and limits](milestones/milestone-4-pr4-report.md).

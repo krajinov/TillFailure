@@ -110,7 +110,7 @@ class AndroidInvitationLifecycleTest {
         assertEquals(original, models.invitation.currentState().pending)
         com.google.android.gms.tasks.Tasks.await(FirebaseFirestore.getInstance(client.firebaseApp).enableNetwork(), 10, TimeUnit.SECONDS)
         main { models.identity.onEvent(IdentityEvent.Retry) }
-        waitUntil { models.identity.currentState().status == GateStatus.MembershipVerifiedFeaturePending }
+        waitUntil { models.identity.currentState().status == GateStatus.Onboarding }
         main { models.synchronize() }
         client.beforeInvitationTransportForTest = { issue ->
             assertEquals(original, client.invitations.pending("pr3_android_client")); issue()

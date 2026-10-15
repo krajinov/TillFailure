@@ -17,6 +17,11 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.key
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.lifecycle.LifecycleEventObserver
+import com.delminiusapps.tillfailure.onboarding.OnboardingRoute
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -55,7 +60,7 @@ private sealed interface IdentityDestination : NavKey
 private data object IdentityGateDestination : IdentityDestination
 
 @Serializable
-private data class IdentityStateDestination(val status: GateStatus) : IdentityDestination
+private data class IdentityStateDestination(val status: GateStatus, val epoch: Long = 0) : IdentityDestination
 
 private val identitySavedState = SavedStateConfiguration {
     serializersModule = SerializersModule {
@@ -83,6 +88,15 @@ fun IdentityRoot(client: ProductIdentityClient?, onOpenDevelopmentCatalog: (() -
             entry<IdentityGateDestination> {
                 val viewModel: IdentityViewModel = koinViewModel(parameters = { parametersOf(client) })
                 val state by viewModel.state.collectAsStateWithLifecycle()
+                val lifecycle = LocalLifecycleOwner.current.lifecycle
+                DisposableEffect(viewModel, lifecycle) {
+                    val observer = LifecycleEventObserver { _, event ->
+                        if (event == Lifecycle.Event.ON_STOP) viewModel.onEvent(IdentityEvent.Suspend)
+                        if (event == Lifecycle.Event.ON_START) viewModel.onEvent(IdentityEvent.Retry)
+                    }
+                    lifecycle.addObserver(observer)
+                    onDispose { lifecycle.removeObserver(observer) }
+                }
                 val invitationClient = viewModel.activeClient().invitations
                 if (invitationClient == null) {
                     IdentityStateNavigation(state, viewModel.effect, viewModel::onEvent, onOpenDevelopmentCatalog)
@@ -91,7 +105,8 @@ fun IdentityRoot(client: ProductIdentityClient?, onOpenDevelopmentCatalog: (() -
                     val invitationState by invitations.state.collectAsStateWithLifecycle()
                     // Identity effects run after composition. Never render an old UID's state in
                     // that intervening frame, including its transient local-delivery token.
-                    val visibleInvitationState = if (invitationState.accountUid == state.accountUid)
+                    val visibleInvitationState = if (invitationState.accountUid == state.accountUid && invitationState.workspaceId == state.verifiedWorkspaceId &&
+                        invitationState.authorityEpoch == state.authorityEpoch)
                         invitationState else InvitationState(hasLink = invitationClient.memory.linkFor(state.accountUid) != null)
                     LaunchedEffect(state, invitationClient, invitationClient.memory.revision) {
                         invitations.updateClient(invitationClient)
@@ -106,8 +121,8 @@ fun IdentityRoot(client: ProductIdentityClient?, onOpenDevelopmentCatalog: (() -
                             }
                         }
                     }
-                    IdentityStateNavigation(state.copy(busy = state.busy || visibleInvitationState.busy || visibleInvitationState.pending != null),
-                        viewModel.effect, viewModel::onEvent, onOpenDevelopmentCatalog) {
+                    IdentityStateNavigation(state.copy(busy = state.busy || visibleInvitationState.busy),
+                        viewModel.effect, viewModel::onEvent, onOpenDevelopmentCatalog, onboardingClient = invitationClient) {
                         InvitationScreen(visibleInvitationState, state, invitations::onEvent)
                     }
                 }
@@ -124,16 +139,18 @@ private fun IdentityStateNavigation(
     effect: Flow<IdentityEffect>,
     onEvent: (IdentityEvent) -> Unit,
     onOpenDevelopmentCatalog: (() -> Unit)?,
+    onboardingClient: com.delminiusapps.tillfailure.invitations.InvitationClient? = null,
     invitations: (@Composable () -> Unit)? = null,
 ) {
     val backStack = rememberNavBackStack(identitySavedState, IdentityStateDestination(GateStatus.Loading))
     val lifecycleOwner = LocalLifecycleOwner.current
+    val currentState by rememberUpdatedState(state)
     LaunchedEffect(effect, lifecycleOwner) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             effect.collect { emitted ->
                 when (emitted) {
                     is IdentityEffect.ReplaceRoot -> {
-                        val destination = IdentityStateDestination(emitted.status)
+                        val destination = IdentityStateDestination(currentState.status, currentState.authorityEpoch)
                         if (backStack.lastOrNull() != destination) {
                             backStack.clear()
                             backStack.add(destination)
@@ -143,8 +160,8 @@ private fun IdentityStateNavigation(
             }
         }
     }
-    LaunchedEffect(state.status) {
-        val destination = IdentityStateDestination(state.status)
+    LaunchedEffect(state.status, state.authorityEpoch) {
+        val destination = IdentityStateDestination(state.status, state.authorityEpoch)
         if (backStack.lastOrNull() != destination) {
             backStack.clear()
             backStack.add(destination)
@@ -152,8 +169,13 @@ private fun IdentityStateNavigation(
     }
     NavDisplay(
         backStack = backStack,
+        entryDecorators = listOf(rememberViewModelStoreNavEntryDecorator()),
         entryProvider = entryProvider {
-            entry<IdentityStateDestination> { IdentityScreen(state, onEvent, onOpenDevelopmentCatalog, invitations) }
+            entry<IdentityStateDestination> {
+                // Current server gate always wins over restored keys and buffered effects.
+                IdentityScreen(state, onEvent, onOpenDevelopmentCatalog, invitations,
+                    onboarding = onboardingClient?.let { service -> { OnboardingRoute(state, service) { onEvent(IdentityEvent.Retry) } } })
+            }
         },
     )
 }
@@ -164,7 +186,14 @@ fun IdentityScreen(
     onEvent: (IdentityEvent) -> Unit,
     onOpenDevelopmentCatalog: (() -> Unit)? = null,
     invitations: (@Composable () -> Unit)? = null,
+    onboarding: (@Composable () -> Unit)? = null,
 ) {
+    if (state.status in setOf(GateStatus.ClientHome, GateStatus.TrainerHome)) {
+        key(state.accountUid, state.verifiedWorkspaceId, state.verifiedRole, state.authorityEpoch) {
+            RoleShell(state, onEvent, invitations, onboarding)
+        }
+        return
+    }
     Column(
         modifier = Modifier.fillMaxSize()
             .background(TillFailureTheme.colors.background)
@@ -177,6 +206,8 @@ fun IdentityScreen(
         Text("TillFailure", style = MaterialTheme.typography.headlineLarge, color = TillFailureTheme.colors.primaryText)
         Text(
             when (state.status) {
+                GateStatus.Onboarding -> "About you"
+                GateStatus.ClientHome -> "Client home"
                 GateStatus.Loading -> "Verifying your account online…"
                 GateStatus.SignedOut -> "Sign in to continue."
                 GateStatus.InvalidCredentials -> "Email or password is incorrect."
@@ -196,7 +227,7 @@ fun IdentityScreen(
                 GateStatus.AccessLost -> "Access could not be verified. Contact support or retry."
                 GateStatus.ConnectToVerify -> "Connect to verify your account."
                 GateStatus.Retry -> "Verification timed out. Retry while connected."
-                GateStatus.MultipleMemberships -> "Multiple memberships found. Workspace selection is coming soon."
+                GateStatus.MultipleMemberships -> "Choose your workspace. Each option was verified online."
                 GateStatus.Unconfigured -> "Sign-in is not configured in this build."
                 GateStatus.SessionExpired -> "Your session expired. Account recovery is required before another sign-in."
                 GateStatus.CleanupRequired -> "This installation needs account cleanup before another sign-in. Contact support."
@@ -206,6 +237,13 @@ fun IdentityScreen(
             color = TillFailureTheme.colors.primaryText,
             style = MaterialTheme.typography.bodyLarge,
         )
+        if (state.status == GateStatus.MultipleMemberships) {
+            state.workspaces.sortedBy { it.workspaceId != state.preferredWorkspaceId }.forEach { workspace ->
+                com.delminiusapps.tillfailure.core.designsystem.TillFailureSecondaryButton(
+                    "${workspace.name} · ${workspace.role}", { onEvent(IdentityEvent.ChooseWorkspace(workspace.workspaceId)) }, enabled = !state.busy)
+            }
+        }
+        onboarding?.invoke()
         invitations?.invoke()
         if (state.status == GateStatus.Loading) CircularProgressIndicator()
         if (state.status == GateStatus.SignedOut || state.status == GateStatus.InvalidCredentials) {

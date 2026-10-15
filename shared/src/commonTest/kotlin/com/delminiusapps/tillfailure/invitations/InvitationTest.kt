@@ -138,7 +138,7 @@ class InvitationTest {
         assertEquals(request.pending("A"), restored.pending("A"))
         assertNull(restored.pending("B"))
         assertTrue(restored.prepare("A", request))
-        restored.settle("A", request, InvitationOutcome(reply = InvitationReply(status = "accepted", replayed = true)))
+        restored.settle("A", request, InvitationOutcome(reply = InvitationReply(invitationId = link.invitationId, workspaceId = "w", tokenVersion = 1, expiresAtMillis = 1000, status = "accepted", replayed = true)))
         assertTrue(store.record!!.pendingInvitationCommands.isEmpty())
         store.fails = true
         assertFalse(restored.prepare("A", request))

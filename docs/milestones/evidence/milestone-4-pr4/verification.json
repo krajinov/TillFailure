@@ -1,0 +1,166 @@
+{
+  "baseline": "d4ed91a8f6e928bb5961fb270acd63f1f4c4d8fe",
+  "branch": "feature/milestone-4-pr4-onboarding-shell",
+  "productionWritesEnabled": false,
+  "implementationResultsDate": "2026-10-14",
+  "retainedAtContinuation": {
+    "date": "2026-10-15",
+    "sharedAndroid": {
+      "tests": 123,
+      "failures": 0,
+      "skipped": 0
+    },
+    "sharedIosSimulatorArm64": {
+      "tests": 123,
+      "failures": 0,
+      "skipped": 0
+    },
+    "backendAndRulesNode22_23_2": {
+      "tests": 154,
+      "failures": 0,
+      "skipped": 0,
+      "ports": {
+        "auth": 29099,
+        "firestore": 28080,
+        "functions": 25001,
+        "storage": 29199
+      }
+    },
+    "androidDebugReleaseAndNativeTestApk": "passed",
+    "iosDebugRelease": "passed",
+    "iosNativeOnboarding": {
+      "passLabels": 13,
+      "touchEvidence": false
+    }
+  },
+  "continuationResults": {
+    "date": "2026-10-15",
+    "iosDebugRelease": "passed",
+    "androidApi34Native": {
+      "tests": 1,
+      "failures": 0,
+      "seconds": 15.177
+    },
+    "iosColdProcessRecovery": {
+      "passLabels": 5,
+      "newSignInInRestorePhase": false,
+      "originalPendingCommandRestored": true,
+      "receiptReconciled": true,
+      "cleanSignOut": true
+    },
+    "androidNormalUi": {
+      "signIn": true,
+      "onboardingKeyboardVisible": true,
+      "nextNameLocaleZone": true,
+      "keyboardBack": true,
+      "acknowledgmentValidation": true,
+      "completionClientHome": true,
+      "profileBackHome": true,
+      "forceStopRelaunchCompletedHome": true,
+      "cleanSignOut": true
+    },
+    "androidSystemFont200Ui": {
+      "signInKeyboardBack": true,
+      "formFieldEntry": true,
+      "slowScrollLowerActions": true,
+      "acknowledgmentAndCompletion": true,
+      "clientHome": true,
+      "profileBackHome": true,
+      "cleanSignOut": true,
+      "originalFontScaleRestored": true,
+      "restoredSystemFontScale": 1.0
+    },
+    "iosNormalUi": {
+      "signInOnboarding": true,
+      "threeFieldsEntered": true,
+      "softwareKeyboardVisible": true,
+      "keyboardNext": true,
+      "missingAcknowledgmentBlocked": true,
+      "touchCompletionAndShell": "not verified"
+    },
+    "androidTrainerFont200Ui": {
+      "trainerHome": true,
+      "invitationEntry": true,
+      "fieldEntry": true,
+      "softwareKeyboardVisible": true,
+      "keyboardBack": true,
+      "invalidEmailCreateValidation": true,
+      "nativeBackHome": true
+    },
+    "androidTrainerNormalUi": {
+      "trainerHome": true,
+      "invitationEntry": true,
+      "priorLargeTextDraftClearedAfterRecreation": true,
+      "cleanSignOut": true
+    }
+  },
+  "openInteractionGates": [
+    "Android trainer invitation create/confirmation/resend/revoke full touch walkthrough",
+    "Android client invitation preview/acceptance touch walkthrough",
+    "iOS onboarding completion and shell touch/Back",
+    "iOS trainer/preview lower-action touch scrolling at 200%",
+    "iOS OS Dynamic Type",
+    "VoiceOver and TalkBack traversal"
+  ],
+  "toolLimitations": [
+    "iOS computer use returned invalid/expired element IDs and a stale Simulator menu after reconnect/reset.",
+    "An initial Android execution hit tool approval usage limits; the subsequent native execution passed."
+  ],
+  "fixtureMaintenance": "Only missing named local Auth fixtures restored after process shutdown. Existing Auth identities, Firestore profiles/receipts/counters and protected device partitions preserved.",
+  "retainedPr3Evidence": "See milestone-4-pr3-report.md; no previous run is counted as a new PR4 run.",
+  "originalHandoffDisposition": {
+    "committed": false,
+    "staged": false,
+    "pushed": false,
+    "pullRequestCreated": false,
+    "deployed": false
+  },
+  "publicationAuthorization": {
+    "date": "2026-10-15",
+    "commit": "feat(onboarding): add minimal onboarding and role-aware shells",
+    "normalPushExistingBranch": true,
+    "prAgainst": "main",
+    "merge": false,
+    "deploy": false,
+    "rewriteHistory": false
+  },
+  "finalReview": {
+    "date": "2026-10-15",
+    "startingHead": "d4ed91a8f6e928bb5961fb270acd63f1f4c4d8fe",
+    "remoteMainAtInspection": "d4ed91a8f6e928bb5961fb270acd63f1f4c4d8fe",
+    "existingPrAtInspection": false,
+    "reviewedFiles": 48,
+    "fixes": [
+      "Reject case-insensitive duplicate locale variants before protected preparation.",
+      "Reject unincrementable or invalid expected revisions before protected preparation."
+    ],
+    "iosTouchAttempt": {
+      "result": "blocked",
+      "error": "Computer Use server error -10005: The element ID is no longer valid",
+      "stage": "Selecting freshly observed dedicated verification simulator from Window menu",
+      "repeatedAttempts": false,
+      "harnessSubstituted": false
+    },
+    "backendAndRules": "unchanged; 154-test result retained from 2026-10-14",
+    "nativeAndTouchEvidence": "retained with original attribution; not rerun during final review",
+    "freshChecks": {
+      "sharedAndroid": {
+        "tests": 125,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "sharedIosSimulatorArm64": {
+        "tests": 125,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "androidDebugReleaseAndNativeTestApk": "passed",
+      "iosDebugRelease": "passed",
+      "backendAndRulesRerun": false,
+      "nativeHarnessRerun": false,
+      "intendedInventoryWhitespaceSensitiveDataAudit": "passed; exact 48 intended files"
+    }
+  }
+}

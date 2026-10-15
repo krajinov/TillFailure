@@ -121,7 +121,7 @@ enum InvitationLifecycleHarness {
                         firestore.enableNetwork { error in
                             check(error == nil, "online-firestore")
                             models.identity.onEvent(event: IdentityEventRetry.shared)
-                            poll({ models.identity.currentState().status == .membershipverifiedfeaturepending }) {
+                            poll({ models.identity.currentState().status == .onboarding }) {
                                 models.synchronize()
                                 bridge.debugBeforeInvitationTransport = { issue in
                                     check(client.invitations.pending(uid: "pr3_ios_client") == pending, "same-caller-key-before-retry")

@@ -112,6 +112,26 @@ service cloud.firestore {
         allow list, write: if false;
       }
 
+      // Minimal PR 4 fixture profile. No coaching/health payload or trainer profile listing.
+      match /clientProfiles/{clientUid} {
+        allow get: if signedIn() && request.auth.uid == clientUid
+          && activeAccount(clientUid) && activeWorkspace(wid) && activeClientMembership(wid, clientUid)
+          && resource.data.schemaVersion == 1 && resource.data.workspaceId == wid
+          && resource.data.userId == clientUid && resource.data.trainerId is string
+          && resource.data.trainerId.size() > 0 && resource.data.trainerId.size() <= 128
+          && resource.data.createdAt is timestamp
+          && resource.data.keys().hasOnly(["schemaVersion", "workspaceId", "userId", "trainerId", "createdAt",
+            "onboardingStatus", "onboardingRevision", "onboardingPolicyVersion", "completedAt"])
+          && ((resource.data.onboardingStatus == "pending"
+              && resource.data.get("onboardingRevision", 0) is int
+              && resource.data.get("onboardingRevision", 0) >= 0
+              && !resource.data.keys().hasAny(["completedAt", "onboardingPolicyVersion"]))
+            || (resource.data.onboardingStatus == "complete"
+              && resource.data.onboardingRevision is int && resource.data.onboardingRevision > 0
+              && resource.data.onboardingPolicyVersion == 1 && resource.data.completedAt is timestamp));
+        allow list, write: if false;
+      }
+
       // Only this safe projection is readable. Its sole writer is the guarded trusted operation.
       match /invitationSummaries/{iid} {
         allow get: if signedIn() && activeAccount(request.auth.uid) && activeWorkspace(wid)

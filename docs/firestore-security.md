@@ -200,3 +200,7 @@ The Node 22 local `demo-tillfailure-m3` suite passed 84/84 trusted-operation and
 ## Unresolved policy inputs
 
 Retention durations, regional/privacy obligations, trainer access after client revocation, message edit/delete windows, progress-photo launch scope, audit-log retention, App Check rollout, offline eligibility duration, revoked-data recovery/export/discard, and shared-device persistence requirements need legal/product decisions before rules are finalized.
+
+## PR 4 emulator onboarding boundary
+
+`onboardingEmulator` is guarded by named loopback demo Auth/Firestore checks and repeats current Admin Auth, account/workspace/client membership, immutable identity, schema/field/type/bounds and two revision checks. Its transaction updates only global basics, workspace completion and caller-bound receipt. Direct mobile account/profile writes remain denied. Own-client profile gets require current active access and the minimal pending/complete allowlist; cross-account/workspace reads and all lists are denied. Goals, injuries, constraints and other health data remain excluded. Matching receipt replay rechecks current authority; failures retain the protected local command. See [the PR 4 report](milestones/milestone-4-pr4-report.md) for fixture policy and fresh verification.

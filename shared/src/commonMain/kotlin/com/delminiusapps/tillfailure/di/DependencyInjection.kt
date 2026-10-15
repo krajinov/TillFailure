@@ -13,6 +13,8 @@ import org.koin.dsl.module
 
 private val foundationModule = module {
     singleOf(::FoundationScopeProbe)
+    viewModel { (client: com.delminiusapps.tillfailure.invitations.InvitationClient) ->
+        com.delminiusapps.tillfailure.onboarding.OnboardingViewModel(client) }
     viewModelOf(::FoundationHomeViewModel)
     viewModelOf(::FoundationDetailsViewModel)
     viewModel { (client: ProductIdentityClient) -> IdentityViewModel(client) }

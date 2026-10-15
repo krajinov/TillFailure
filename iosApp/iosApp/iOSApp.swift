@@ -15,6 +15,7 @@ struct iOSApp: App {
         FirebaseSpikeHarness.runIfRequested(bridge: bridge)
         ProductIdentityHarness.runIfRequested(bridge: bridge)
         TrainerProvisioningHarness.runIfRequested()
+        OnboardingHarness.runIfRequested()
         InvitationHarness.runIfRequested()
         InvitationLifecycleHarness.runIfRequested()
         InvitationRecoveryHarness.runIfRequested()
