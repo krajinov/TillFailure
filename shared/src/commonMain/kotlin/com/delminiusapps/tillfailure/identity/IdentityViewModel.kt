@@ -11,6 +11,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
 import com.delminiusapps.tillfailure.persistence.RecoveryUidContract
 import com.delminiusapps.tillfailure.onboarding.*
+import com.delminiusapps.tillfailure.invitations.ProtectedRecoveryState
 
 @kotlinx.serialization.Serializable
 enum class GateStatus {
@@ -19,7 +20,7 @@ enum class GateStatus {
     UnverifiedEmail,
     WorkspaceGate, TrainerHome, MembershipVerifiedFeaturePending, UnsupportedSchema, AccessLost,
     ConnectToVerify, Retry, MultipleMemberships, Unconfigured, SessionExpired, CleanupRequired,
-    SwitchingOut, DepartureBlocked,
+    SwitchingOut, DepartureBlocked, LockedRecovery, ReconciliationRequired,
 }
 
 data class WorkspaceOption(val workspaceId: String, val name: String, val role: String)
@@ -34,6 +35,8 @@ data class IdentityState(
     val verifiedRole: String? = null,
     val accountUid: String? = null,
     val authorityEpoch: Long = 0,
+    val recovery: ProtectedRecoveryState = ProtectedRecoveryState.Clean,
+    val recoveryCause: GateStatus? = null,
     val workspaces: List<WorkspaceOption> = emptyList(),
     val preferredWorkspaceId: String? = null,
     val accountProfileRevision: Int = 0, val onboardingRevision: Int = 0,
@@ -49,6 +52,8 @@ sealed interface IdentityEvent {
     data class ChooseWorkspace(val workspaceId: String) : IdentityEvent
     data object ChangeWorkspace : IdentityEvent
     data object Suspend : IdentityEvent
+    data object Foreground : IdentityEvent
+    data class Connectivity(val connected: Boolean) : IdentityEvent
     data object RetryCleanup : IdentityEvent
 }
 
@@ -69,6 +74,11 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
     private var restrictedSession = false
     private var sessionListener: FirebaseCancellation? = null
     private var cleared = false
+    private var foreground = true
+    private var connectivity: Boolean? = null
+    private var networkListener: FirebaseCancellation? = null
+    private var observationGeneration = 0L
+    private var proofDepartureGeneration = 0L
     private var requestedWorkspace: String? = null
     private var accountFields: Map<String, String> = emptyMap()
 
@@ -87,7 +97,14 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
         // fence callbacks or retire this Firebase client. Join it and adopt its terminal outcome
         // instead of re-authorizing (and without starting a competing departure).
         if (port.ownership.observeInFlight(
-                onJoined = { setState(mutableState.value.copy(status = GateStatus.SwitchingOut, busy = true)) },
+                onJoined = {
+                    // The owner lock is held here. Publish only; never acquire native/storage locks.
+                    val previous = mutableState.value.status
+                    mutableState.value = mutableState.value.copy(status = GateStatus.SwitchingOut, busy = true,
+                        canSignOut = false, verifiedWorkspaceId = null, verifiedRole = null, workspaces = emptyList(),
+                        displayName = "", locale = "", timeZoneId = "", authorityEpoch = revision)
+                    if (previous != GateStatus.SwitchingOut) effectChannel.trySend(IdentityEffect.ReplaceRoot(GateStatus.SwitchingOut))
+                },
                 onSettled = ::onDepartureAdopted,
             ) != null) {
             return
@@ -105,7 +122,15 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
     }
 
     private fun observeSession() {
-        sessionListener = client.observeSession(0L) { session ->
+        cancelSessionAndOperations()
+        val generation = observationGeneration
+        connectivity = null
+        val network = client.observeConnectivity {
+            if (!cleared && generation == observationGeneration) onEvent(IdentityEvent.Connectivity(it))
+        }
+        if (generation == observationGeneration) networkListener = network else network.cancel()
+        val listener = client.observeSession(0L) { session ->
+            if (cleared || generation != observationGeneration) return@observeSession
             val uid = session.uid
             if (uid == null) {
                 val mustBlock = observedUid != null || client.hasPinnedIdentity()
@@ -156,6 +181,7 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
                 verify(uid)
             }
         }
+        if (generation == observationGeneration) sessionListener = listener else listener.cancel()
     }
 
     fun onEvent(event: IdentityEvent) {
@@ -167,14 +193,29 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
                 observedUid?.let { verify(it, event.workspaceId) }
             }
             IdentityEvent.ChangeWorkspace -> {
-                if (mutableState.value.status !in setOf(GateStatus.ClientHome, GateStatus.TrainerHome, GateStatus.Onboarding)) return
+                if (mutableState.value.status !in setOf(GateStatus.ClientHome, GateStatus.TrainerHome, GateStatus.Onboarding, GateStatus.AccessLost, GateStatus.LockedRecovery)) return
                 observedUid?.let { verify(it) }
             }
+            is IdentityEvent.Connectivity -> {
+                val previous = connectivity
+                connectivity = event.connected
+                if (previous == event.connected || !foreground || observedUid == null || restrictedSession || mutableState.value.status in
+                    setOf(GateStatus.SwitchingOut, GateStatus.CleanupRequired)) return
+                if (!event.connected) {
+                    cancelOperations()
+                    finish(GateStatus.ConnectToVerify)
+                } else if (previous == false) verify(observedUid!!, requestedWorkspace)
+            }
             IdentityEvent.Suspend -> {
+                foreground = false
                 if (observedUid == null || restrictedSession) return
                 if (mutableState.value.status in setOf(GateStatus.CleanupRequired, GateStatus.SwitchingOut)) return
                 cancelOperations()
                 finish(GateStatus.Loading)
+            }
+            IdentityEvent.Foreground -> {
+                foreground = true
+                onEvent(IdentityEvent.Retry)
             }
             is IdentityEvent.EmailChanged -> mutableState.value = mutableState.value.copy(email = event.value)
             is IdentityEvent.PasswordChanged -> mutableState.value = mutableState.value.copy(password = event.value)
@@ -200,11 +241,14 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
                     }
                 }
             }
-            IdentityEvent.Retry -> if (mutableState.value.status in setOf(GateStatus.CleanupRequired, GateStatus.SwitchingOut)) return
-            else if (observedUid != null && !restrictedSession) {
-                verify(observedUid!!, mutableState.value.verifiedWorkspaceId)
-            } else if (mutableState.value.status == GateStatus.ConnectToVerify) {
-                onEvent(IdentityEvent.SignIn)
+            IdentityEvent.Retry -> {
+                if (!foreground) return
+                if (mutableState.value.status in setOf(GateStatus.CleanupRequired, GateStatus.SwitchingOut)) return
+                else if (observedUid != null && !restrictedSession) {
+                    verify(observedUid!!, requestedWorkspace)
+                } else if (mutableState.value.status == GateStatus.ConnectToVerify) {
+                    onEvent(IdentityEvent.SignIn)
+                }
             }
             IdentityEvent.SignOut -> {
                 val uid = observedUid ?: return
@@ -232,7 +276,9 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
                     observedUid = null
                     restrictedSession = false
                     client = port.replacement()
-                    setState(IdentityState(status = GateStatus.SignedOut))
+                    // Marker absence does not prove Auth/pin/storage are clean. Wait for the
+                    // replacement's observed session before exposing another sign-in.
+                    setState(IdentityState(status = GateStatus.Loading))
                     observeSession()
                     return
                 }
@@ -245,14 +291,21 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
     }
 
     private fun verify(uid: String, selectedWorkspace: String? = null) {
+        if (!foreground) return
         requestedWorkspace = selectedWorkspace
         cancelOperations()
         val request = revision
+        proofDepartureGeneration = client.departure?.ownership?.admissionGeneration() ?: 0L
         setState(mutableState.value.copy(status = GateStatus.Loading, busy = true,
             password = "", verifiedWorkspaceId = null, verifiedRole = null, workspaces = emptyList(),
             displayName = "", locale = "", timeZoneId = ""))
         if (!isPathSafeAuthUid(uid)) {
             setState(mutableState.value.copy(status = GateStatus.IdentityUnsupported, busy = false))
+            return
+        }
+        val recovery = recoveryState(uid)
+        if (recovery in setOf(ProtectedRecoveryState.StorageLocked, ProtectedRecoveryState.ReconciliationRequired)) {
+            finish(GateStatus.LockedRecovery)
             return
         }
         operations += client.refreshSession(0L) { refresh ->
@@ -301,7 +354,7 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
             if (documents.size > 20 || documents.any { !it.exists || it.origin != FirebaseDataOrigin.SERVER || it.hasPendingWrites }) {
                 finish(GateStatus.AccessLost); return@discoverMemberships
             }
-            if (documents.isEmpty()) { finish(GateStatus.WorkspaceGate); return@discoverMemberships }
+            if (documents.isEmpty()) { finish(if (requestedWorkspace == null) GateStatus.WorkspaceGate else GateStatus.AccessLost); return@discoverMemberships }
             val ids = documents.map { discovered ->
                 val pieces = discovered.path.split('/')
                 if (pieces.size != 4 || pieces[0] != "users" || pieces[1] != uid || pieces[2] != "membershipRefs" ||
@@ -316,6 +369,10 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
             fun readNext(index: Int) {
                 if (request != revision) return
                 if (index == ids.size) {
+                    // Losing a selected workspace must close that scope, never silently select another.
+                    if (requestedWorkspace != null && options.none { it.workspaceId == requestedWorkspace }) {
+                        finish(GateStatus.AccessLost); return
+                    }
                     val chosen = if (options.size == 1) options.single() else options.find { it.workspaceId == requestedWorkspace }
                     if (chosen == null) {
                         val hint = runCatching { client.invitations?.workspacePreference(uid) }.getOrNull()?.takeIf { it in ids }
@@ -356,6 +413,7 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
         workspaceProof: com.delminiusapps.tillfailure.firebase.FirebaseDocumentSnapshot,
         membershipProof: com.delminiusapps.tillfailure.firebase.FirebaseDocumentSnapshot) {
         val wid = selected.workspaceId
+        requestedWorkspace = wid
         if (selected.role == "trainer") {
             setState(mutableState.value.copy(status = GateStatus.TrainerHome, busy = false,
                 verifiedWorkspaceId = wid, verifiedRole = "trainer", workspaces = emptyList()))
@@ -382,6 +440,7 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
     private fun observeRevocation(uid: String, wid: String, request: Long,
         workspaceProof: com.delminiusapps.tillfailure.firebase.FirebaseDocumentSnapshot,
         membershipProof: com.delminiusapps.tillfailure.firebase.FirebaseDocumentSnapshot) {
+        if (request != revision) return
         var latestWorkspace = workspaceProof
         var latestMembership = membershipProof
         val serverObserved = mutableSetOf<String>()
@@ -456,7 +515,9 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
                 } else {
                     // The joined departure was cancelled before any durable change; the account is
                     // intact and unfrozen, so this recreated root safely resumes verification.
-                    setState(mutableState.value.copy(status = GateStatus.SignedOut, busy = false))
+                    observedUid = null
+                    restrictedSession = false
+                    setState(mutableState.value.copy(status = GateStatus.Loading, busy = false))
                     observeSession()
                 }
             }
@@ -473,18 +534,48 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
     private fun setState(next: IdentityState) {
         val previousStatus = mutableState.value.status
         val uid = observedUid
+        val recovery = uid?.let(::recoveryState) ?: ProtectedRecoveryState.Clean
+        val lockable = next.status !in setOf(GateStatus.Loading, GateStatus.SwitchingOut, GateStatus.CleanupRequired,
+            GateStatus.SignedOut, GateStatus.InvalidCredentials, GateStatus.IdentityUnsupported, GateStatus.AnonymousSession)
+        val protectedStatus = next.status in setOf(GateStatus.Onboarding, GateStatus.ClientHome, GateStatus.TrainerHome, GateStatus.MultipleMemberships)
+        val locked = lockable && (recovery == ProtectedRecoveryState.StorageLocked || recovery == ProtectedRecoveryState.ReconciliationRequired ||
+            recovery == ProtectedRecoveryState.PendingCommand && !protectedStatus)
+        val effective = if (locked) next.copy(status = GateStatus.LockedRecovery,
+            recoveryCause = next.status.takeUnless { it == GateStatus.LockedRecovery },
+            verifiedWorkspaceId = null, verifiedRole = null, workspaces = emptyList(), displayName = "", locale = "", timeZoneId = "")
+            else next.copy(recoveryCause = null)
         val port = client.departure
         val canAttemptSignOut = uid != null && port != null &&
-            next.status !in setOf(GateStatus.Loading, GateStatus.SwitchingOut, GateStatus.CleanupRequired)
+            effective.status !in setOf(GateStatus.Loading, GateStatus.SwitchingOut, GateStatus.CleanupRequired) &&
+            recovery !in setOf(ProtectedRecoveryState.StorageLocked, ProtectedRecoveryState.ReconciliationRequired)
         val restrictedCleanupReady = if (canAttemptSignOut && restrictedSession) {
             runCatching {
                 val marker = port.readMarker()
                 marker.readable && marker.marker == null && port.hasProvenEmptyCriticalWork(uid)
             }.getOrDefault(false)
         } else true
-        mutableState.value = next.copy(authorityEpoch = revision, canSignOut = canAttemptSignOut && restrictedCleanupReady, accountUid = uid)
-        if (next.status != previousStatus) effectChannel.trySend(IdentityEffect.ReplaceRoot(next.status))
+        val publish = {
+            mutableState.value = effective.copy(recovery = recovery, authorityEpoch = revision, canSignOut = canAttemptSignOut && restrictedCleanupReady, accountUid = uid)
+            if (effective.status != previousStatus) effectChannel.trySend(IdentityEffect.ReplaceRoot(effective.status))
+            Unit
+        }
+        if (!protectedStatus || port == null) publish()
+        else if (!port.ownership.publishWhenIdle(proofDepartureGeneration, publish)) {
+            // Another root can lease departure after this root's startup inspection. Join the
+            // existing owner instead of publishing a proof obtained before its freeze/teardown.
+            cancelSessionAndOperations()
+            observedUid = null
+            restrictedSession = false
+            setState(mutableState.value.copy(status = GateStatus.SwitchingOut, busy = true,
+                verifiedWorkspaceId = null, verifiedRole = null))
+            if (port.isRetired()) client = port.replacement()
+            recoverOnStartup()
+        }
     }
+
+    private fun recoveryState(uid: String): ProtectedRecoveryState = try {
+        client.invitations?.recoveryState(uid) ?: ProtectedRecoveryState.Clean
+    } catch (_: Exception) { ProtectedRecoveryState.StorageLocked }
 
     private fun fail(failure: StableFirebaseFailure) = finish(failureStatus(failure))
 
@@ -492,7 +583,8 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
         StableFirebaseErrorCode.UNAVAILABLE -> GateStatus.ConnectToVerify
         StableFirebaseErrorCode.DEADLINE_EXCEEDED -> GateStatus.Retry
         StableFirebaseErrorCode.UNAUTHENTICATED -> GateStatus.SessionExpired
-        else -> GateStatus.AccessLost
+        StableFirebaseErrorCode.PERMISSION_DENIED -> GateStatus.AccessLost
+        else -> if (failure.retryable) GateStatus.Retry else GateStatus.ReconciliationRequired
     }
 
     private fun cancelOperations() {
@@ -502,15 +594,17 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
     }
 
     private fun cancelSessionAndOperations() {
+        observationGeneration++
         cancelOperations()
         sessionListener?.cancel()
         sessionListener = null
+        networkListener?.cancel()
+        networkListener = null
     }
 
     override fun onCleared() {
         cleared = true
-        cancelOperations()
-        sessionListener?.cancel()
+        cancelSessionAndOperations()
         effectChannel.close()
     }
 }

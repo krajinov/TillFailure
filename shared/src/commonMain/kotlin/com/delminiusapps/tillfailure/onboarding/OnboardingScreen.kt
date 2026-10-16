@@ -32,7 +32,7 @@ fun OnboardingRoute(gate: IdentityState, client: InvitationClient, onRecheck: ()
 fun OnboardingScreen(state: OnboardingState, gate: IdentityState, onEvent: (OnboardingEvent) -> Unit) {
     if (gate.status in setOf(GateStatus.CleanupRequired, GateStatus.SwitchingOut)) return
     if (state.pending != null) {
-        Text("Your completion is awaiting confirmation. The original fields and command are protected; sign-out stays blocked.", color = TillFailureTheme.colors.warning)
+        Text("Locked command recovery: your completion is awaiting confirmation. The original command is protected; sign-out stays blocked. If retries cannot resolve it, an approved reconciliation policy is required. Discard and automatic repair are unavailable.", color = TillFailureTheme.colors.warning)
         TillFailurePrimaryButton("Retry original completion", { onEvent(OnboardingEvent.Retry) }, enabled = !state.busy, loading = state.busy)
     } else if (state.completed) {
         Text("You’re ready. Verifying your completed profile…", color = TillFailureTheme.colors.success)

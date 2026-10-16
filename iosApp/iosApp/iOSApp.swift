@@ -16,6 +16,7 @@ struct iOSApp: App {
         ProductIdentityHarness.runIfRequested(bridge: bridge)
         TrainerProvisioningHarness.runIfRequested()
         OnboardingHarness.runIfRequested()
+        RecoveryHardeningHarness.runIfRequested()
         InvitationHarness.runIfRequested()
         InvitationLifecycleHarness.runIfRequested()
         InvitationRecoveryHarness.runIfRequested()

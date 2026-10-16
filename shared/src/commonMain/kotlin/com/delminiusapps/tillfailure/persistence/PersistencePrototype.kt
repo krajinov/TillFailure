@@ -14,7 +14,7 @@ class RecoveryPersistenceLockedException(
 
 @Serializable
 data class OfflineAccessGrant(
-    val schemaVersion: Int = 1,
+    @kotlinx.serialization.Required val schemaVersion: Int = 1,
     val uid: String,
     val workspaceId: String,
     val membershipRevision: Long,
@@ -24,7 +24,7 @@ data class OfflineAccessGrant(
 
 @Serializable
 data class DownloadManifest(
-    val schemaVersion: Int = 1,
+    @kotlinx.serialization.Required val schemaVersion: Int = 1,
     val uid: String,
     val workspaceId: String,
     val assignmentId: String,
@@ -34,7 +34,7 @@ data class DownloadManifest(
 
 @Serializable
 data class WorkoutRecoverySnapshot(
-    val schemaVersion: Int = 1,
+    @kotlinx.serialization.Required val schemaVersion: Int = 1,
     val uid: String,
     val workspaceId: String,
     val sessionId: String,
@@ -43,7 +43,7 @@ data class WorkoutRecoverySnapshot(
 
 @Serializable
 data class MutationJournalEntry(
-    val schemaVersion: Int = 1,
+    @kotlinx.serialization.Required val schemaVersion: Int = 1,
     val uid: String,
     val workspaceId: String,
     val operationId: String,
@@ -53,7 +53,7 @@ data class MutationJournalEntry(
 
 @Serializable
 data class PendingUpload(
-    val schemaVersion: Int = 1,
+    @kotlinx.serialization.Required val schemaVersion: Int = 1,
     val uid: String,
     val uploadId: String,
     val durableFileReference: String,
@@ -62,7 +62,7 @@ data class PendingUpload(
 
 @Serializable
 data class AccountSwitchMarker(
-    val schemaVersion: Int = 1,
+    @kotlinx.serialization.Required val schemaVersion: Int = 1,
     val departingUid: String,
     val accountEpoch: Long,
     val state: String,
@@ -70,7 +70,7 @@ data class AccountSwitchMarker(
 
 @Serializable
 data class AccountPersistenceEnvelope(
-    val schemaVersion: Int = 1,
+    @kotlinx.serialization.Required val schemaVersion: Int = 1,
     val uid: String,
     val offlineAccessGrant: OfflineAccessGrant? = null,
     val downloadManifests: List<DownloadManifest> = emptyList(),
@@ -82,6 +82,12 @@ data class AccountPersistenceEnvelope(
     val pendingInvitationCommands: List<PendingInvitationCommand> = emptyList(),
 ) {
     init {
+        require(schemaVersion == 1)
+        require(offlineAccessGrant?.schemaVersion == null || offlineAccessGrant.schemaVersion == 1)
+        require(downloadManifests.all { it.schemaVersion == 1 })
+        require(workoutRecoverySnapshot?.schemaVersion == null || workoutRecoverySnapshot.schemaVersion == 1)
+        require(mutationJournal.all { it.schemaVersion == 1 } && pendingUploads.all { it.schemaVersion == 1 })
+        require(switchMarker == null || switchMarker.schemaVersion == 1 && switchMarker.accountEpoch > 0 && switchMarker.state == "SwitchingOut")
         RecoveryUidContract.requireValid(uid)
         require(offlineAccessGrant?.uid == null || offlineAccessGrant.uid == uid)
         require(downloadManifests.all { it.uid == uid })

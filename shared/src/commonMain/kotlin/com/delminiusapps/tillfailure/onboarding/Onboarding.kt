@@ -158,6 +158,8 @@ class OnboardingViewModel(private val client: InvitationClient) : ViewModel() {
             if (disposed || captured != generation || identity.accountUid != uid) return@execute
             mutable.value = mutable.value.copy(busy = false, completed = result.reply?.status == "complete", message = when {
                 result.reply?.status == "complete" -> "Onboarding complete. Rechecking access online…"
+                result.error == "storage-unavailable" -> "Protected storage could not confirm settlement. Recovery stays locked; nothing was deleted."
+                result.error == "record-invalid" -> "Protected data needs trusted reconciliation. The original command remains locked."
                 result.error == "revision-conflict" -> "Profile changed. The original command needs trusted reconciliation; sign-out stays blocked."
                 result.error == "already-complete" -> "Already completed elsewhere. Recheck access; the unresolved command remains protected."
                 result.error == "unverified-email" -> "Verify your email and recheck access; the original command remains protected."

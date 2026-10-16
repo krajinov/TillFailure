@@ -66,7 +66,7 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
         val changedScope = next.verifiedWorkspaceId != identity.verifiedWorkspaceId || next.authorityEpoch != identity.authorityEpoch
         val lostTrainer = identity.status == GateStatus.TrainerHome && next.status != GateStatus.TrainerHome
         val locked = next.status in setOf(GateStatus.AccessLost, GateStatus.AccountDisabled, GateStatus.CleanupRequired,
-            GateStatus.SwitchingOut, GateStatus.IdentityUnsupported, GateStatus.AnonymousSession)
+            GateStatus.SwitchingOut, GateStatus.LockedRecovery, GateStatus.ReconciliationRequired, GateStatus.IdentityUnsupported, GateStatus.AnonymousSession)
         identity = next
         if (changedAccount || changedScope || lostTrainer || locked) {
             generation++; operation?.cancel(); operation = null
@@ -234,7 +234,13 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
     override fun onCleared() { disposed = true; generation++; operation?.cancel(); pendingObserver?.cancel(); effects.close() }
 }
 
-private fun message(error: String, ambiguous: Boolean): String = if (ambiguous)
+private fun message(error: String, ambiguous: Boolean): String = if (error == "storage-unavailable")
+    "Protected storage could not confirm settlement. The original command remains locked; no cleanup or repair was performed."
+else if (error in setOf("unauthorized", "unauthenticated"))
+    "Access was lost. The original command remains protected; a receipt cannot grant access. Recheck this account."
+else if (error in setOf("record-invalid", "counter-inconsistent", "idempotency-key-reused", "revision-conflict"))
+    "The original command needs trusted reconciliation. It remains locked; discard and automatic repair have no approved policy."
+else if (ambiguous)
     "The outcome is unknown. Retry the same command while connected. Sign-out stays blocked."
 else when (error) {
     "expired" -> "This invitation expired. Ask the trainer to resend it."

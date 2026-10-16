@@ -25,6 +25,8 @@ class IosAtomicFilePersistence(
     }
 
     override fun write(envelope: AccountPersistenceEnvelope) {
+        // Validate existing plaintext as well as native ciphertext before replacement.
+        read(envelope.uid)
         bridge.write(envelope.uid, PersistenceJson.format.encodeToString(envelope)).requireSuccess("write")
     }
 
@@ -43,6 +45,7 @@ class IosAtomicFilePersistence(
     }
 
     override fun delete(uid: String) {
+        read(uid) // Never erase unreadable/incompatible protected plaintext.
         bridge.delete(uid).requireSuccess("delete")
     }
 

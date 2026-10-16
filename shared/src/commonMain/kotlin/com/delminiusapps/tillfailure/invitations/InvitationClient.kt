@@ -59,7 +59,12 @@ data class InvitationReply(
 
 data class InvitationOutcome(val reply: InvitationReply? = null, val error: String? = null, val ambiguous: Boolean = false)
 
+enum class ProtectedRecoveryState { Clean, PendingCommand, StorageLocked, ReconciliationRequired }
+
 interface InvitationClient {
+    fun recoveryState(uid: String): ProtectedRecoveryState = try {
+        if (pending(uid) == null) ProtectedRecoveryState.Clean else ProtectedRecoveryState.PendingCommand
+    } catch (_: Exception) { ProtectedRecoveryState.StorageLocked }
     val memory: InvitationMemory
     fun pending(uid: String): PendingInvitationCommand?
     fun execute(uid: String, request: InvitationRequest, callback: (InvitationOutcome) -> Unit): FirebaseCancellation
@@ -140,16 +145,32 @@ class InvitationLink(val invitationId: String, val version: Int, val token: Stri
 /** Called within the native issuance/callback lock. Unreadable partitions fail closed. */
 class InvitationLedger(private val store: AccountPersistencePrototype) {
     private val lock = DepartureOwnershipLock()
-    fun workspacePreference(uid: String): String? = lock.locked { store.read(uid)?.preferredWorkspaceId }
+    private fun record(uid: String): com.delminiusapps.tillfailure.persistence.AccountPersistenceEnvelope {
+        val record = store.read(uid) ?: error("Missing protected registry")
+        require(record.schemaVersion == 1 && record.uid == uid)
+        require(record.pendingInvitationCommands.size <= 1 && record.pendingInvitationCommands.all { validPendingCommand(uid, it) })
+        return record
+    }
+    fun recoveryState(uid: String): ProtectedRecoveryState = lock.locked { try {
+        val r = record(uid)
+        when {
+            r.switchMarker != null || r.offlineAccessGrant != null || r.downloadManifests.isNotEmpty() ||
+                r.workoutRecoverySnapshot != null || r.mutationJournal.isNotEmpty() || r.pendingUploads.isNotEmpty() -> ProtectedRecoveryState.ReconciliationRequired
+            r.pendingInvitationCommands.isNotEmpty() -> ProtectedRecoveryState.PendingCommand
+            else -> ProtectedRecoveryState.Clean
+        }
+    } catch (_: Exception) { ProtectedRecoveryState.StorageLocked } }
+    fun workspacePreference(uid: String): String? = lock.locked { record(uid).preferredWorkspaceId }
     fun saveWorkspacePreference(uid: String, workspaceId: String) = lock.locked {
-        val record = store.read(uid) ?: return@locked
+        val record = record(uid)
         if (record.switchMarker == null) store.write(record.copy(preferredWorkspaceId = workspaceId))
     }
-    fun pending(uid: String): PendingInvitationCommand? = lock.locked { store.read(uid)?.pendingInvitationCommands?.singleOrNull() }
+    fun pending(uid: String): PendingInvitationCommand? = lock.locked { record(uid).pendingInvitationCommands.singleOrNull() }
     fun prepare(uid: String, request: InvitationRequest): Boolean = lock.locked { runCatching {
-        val record = store.read(uid) ?: return@runCatching false
-        if (record.schemaVersion != 1 || record.uid != uid || record.switchMarker != null) return@runCatching false
-        val command = request.pending(uid) ?: return@runCatching record.pendingInvitationCommands.isEmpty()
+        val record = record(uid)
+        if (recoveryState(uid) !in setOf(ProtectedRecoveryState.Clean, ProtectedRecoveryState.PendingCommand)) return@runCatching false
+        val command = request.pending(uid) ?: return@runCatching request.action in setOf("list", "preview") && record.pendingInvitationCommands.isEmpty()
+        if (!validPendingCommand(uid, command)) return@runCatching false
         if (record.pendingInvitationCommands.isNotEmpty() && record.pendingInvitationCommands != listOf(command)) return@runCatching false
         store.write(record.copy(pendingInvitationCommands = listOf(command)))
         true
@@ -160,12 +181,30 @@ class InvitationLedger(private val store: AccountPersistencePrototype) {
         // In particular, no receipt at throttle/Auth failure time rules out a later commit.
         // Without a validated matching success/receipt, never erase the protected command.
         if (outcome.ambiguous || outcome.error != null || outcome.reply == null || !InvitationJson.validReply(request, outcome.reply))
-            return@runCatching outcome.copy(ambiguous = true)
-        val record = store.read(uid) ?: return@runCatching InvitationOutcome(error = "unavailable", ambiguous = true)
+            return@runCatching InvitationOutcome(error = outcome.error ?: "unavailable", ambiguous = true)
+        val record = record(uid)
         if (record.pendingInvitationCommands != listOf(command)) return@runCatching InvitationOutcome(error = "unavailable", ambiguous = true)
         store.write(record.copy(pendingInvitationCommands = emptyList()))
         outcome
-    }.getOrDefault(InvitationOutcome(error = "unavailable", ambiguous = true)) }
+    }.getOrDefault(InvitationOutcome(error = "storage-unavailable", ambiguous = true)) }
+}
+
+/** Reject damaged or future command shapes before exposing or rewriting the protected partition. */
+internal fun validPendingCommand(uid: String, p: PendingInvitationCommand): Boolean {
+    fun segment(v: String?) = v != null && com.delminiusapps.tillfailure.identity.isPathSafeAuthUid(v) && '.' !in v
+    fun invitation() = p.invitationId != null && Regex("^[a-f0-9]{64}$").matches(p.invitationId)
+    if (p.uid != uid || !segment(p.idempotencyKey)) return false
+    return when (p.action) {
+        "create" -> segment(p.workspaceId) && p.invitationId == null && p.expectedVersion == null && p.onboarding == null &&
+            p.email != null && p.email.length <= 254 && Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$").matches(p.email)
+        "accept" -> p.workspaceId == null && invitation() && p.expectedVersion in 1..Int.MAX_VALUE && p.email == null && p.onboarding == null
+        "resend", "revoke" -> segment(p.workspaceId) && invitation() && p.expectedVersion in 1..Int.MAX_VALUE && p.email == null && p.onboarding == null
+        "complete-onboarding" -> segment(p.workspaceId) && p.invitationId == null && p.expectedVersion == null && p.email == null && p.onboarding?.let {
+            it.acknowledged && it.expectedAccountRevision in 0..Int.MAX_VALUE - 2 && it.expectedOnboardingRevision in 0..Int.MAX_VALUE - 2 &&
+                com.delminiusapps.tillfailure.onboarding.validOnboardingBasics(it.displayName, it.locale, it.timeZoneId)
+        } == true
+        else -> false
+    }
 }
 
 object InvitationJson {
@@ -189,6 +228,7 @@ object InvitationJson {
     }.getOrDefault(InvitationOutcome(error = "unavailable", ambiguous = true))
     fun outcome(request: InvitationRequest, json: String?, error: String?, ambiguous: Boolean): InvitationOutcome = if (error != null)
         InvitationOutcome(error = safeError(error), ambiguous = ambiguous || error == "idempotency-key-reused" || safeError(error) == "unavailable")
+    else if (ambiguous) InvitationOutcome(error = "unavailable", ambiguous = true)
     else runCatching {
         val reply = format.decodeFromString(InvitationReply.serializer(), json ?: "")
         require(validReply(request, reply))

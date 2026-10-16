@@ -50,6 +50,18 @@ class IosAtomicFilePersistenceTest {
         assertFailsWith<RecoveryPersistenceLockedException> { restartedStore.delete("uid_two") }
     }
 
+    @Test fun incompatibleOrPartialPlaintextCannotBeReplacedOrDeleted() {
+        for (payload in listOf("{", "{\"schemaVersion\":2,\"uid\":\"A\"}")) {
+            val bridge = FakeNativeRecoveryBridge()
+            bridge.write("A", payload)
+            val store = IosAtomicFilePersistence(bridge)
+            assertFailsWith<RecoveryPersistenceLockedException> { store.read("A") }
+            assertFailsWith<RecoveryPersistenceLockedException> { store.write(AccountPersistenceEnvelope(uid = "A")) }
+            assertFailsWith<RecoveryPersistenceLockedException> { store.delete("A") }
+            assertEquals(payload, bridge.read("A").payload)
+        }
+    }
+
     private class FakeNativeRecoveryBridge : NativeRecoveryPersistenceBridge {
         override val keyIdentifier = RECOVERY_KEY_IDENTIFIER
         override val encryptionVersion = RECOVERY_ENCRYPTION_VERSION

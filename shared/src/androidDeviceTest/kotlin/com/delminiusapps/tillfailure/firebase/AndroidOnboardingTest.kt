@@ -48,7 +48,7 @@ class AndroidOnboardingTest {
         main { root!!.clear(); root = NativeOnboardingModels(client) }; gate(root!!.identity, GateStatus.ClientHome)
         assertEquals("Android Client", root!!.identity.currentState().displayName)
         main { root!!.identity.onEvent(IdentityEvent.Suspend) }; assertEquals(GateStatus.Loading, root!!.identity.currentState().status)
-        main { root!!.identity.onEvent(IdentityEvent.Retry) }; gate(root!!.identity, GateStatus.ClientHome)
+        main { root!!.identity.onEvent(IdentityEvent.Foreground) }; gate(root!!.identity, GateStatus.ClientHome)
         main { root!!.identity.onEvent(IdentityEvent.SignOut) }; gate(root!!.identity, GateStatus.SignedOut)
         main { root!!.clear() }
     }

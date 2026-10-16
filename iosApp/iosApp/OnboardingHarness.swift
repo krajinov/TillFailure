@@ -86,7 +86,7 @@ enum OnboardingHarness {
                                 check(true, "recreated-root-restores-client-home")
                                 root.identity.onEvent(event: IdentityEventSuspend.shared)
                                 check(root.identity.currentState().status == .loading, "background-closes-root")
-                                root.identity.onEvent(event: IdentityEventRetry.shared)
+                                root.identity.onEvent(event: IdentityEventForeground.shared)
                                 poll(.clienthome) {
                                     check(true, "foreground-revalidates-completion")
                                     root.identity.onEvent(event: IdentityEventSignOut.shared)

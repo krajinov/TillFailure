@@ -76,7 +76,7 @@ class CleanDepartureCoordinator(private val port: CleanDeparturePort) {
         if (!read.readable) { done(DepartureOutcome.CleanupRequired, false); return }
         val marker = read.marker
         if (marker == null) { done(DepartureOutcome.Clean, false); return }
-        if (marker.schemaVersion != 1 || marker.state != "SwitchingOut" ||
+        if (marker.schemaVersion != 1 || marker.accountEpoch <= 0 || marker.state != "SwitchingOut" ||
             !RecoveryUidContract.isValid(marker.departingUid) || !port.freeze(marker.departingUid)) {
             done(DepartureOutcome.CleanupRequired, false)
             return
