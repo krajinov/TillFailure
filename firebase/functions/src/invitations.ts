@@ -314,3 +314,6 @@ export async function invitationOperation(db: Firestore, callerUid: string | und
     return { ...result, replayed: false, ...(token ? { deliveryToken: token } : {}) };
   });
 }
+
+// Reuse the same fresh Auth lookup and redacted infrastructure-failure policy for onboarding.
+export { identity as verifiedEmulatorIdentity };

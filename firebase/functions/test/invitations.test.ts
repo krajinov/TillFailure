@@ -243,7 +243,7 @@ describe("guarded local invitations", () => {
   });
 
   it("derives caller from callable Auth and rejects missing authentication and forged caller fields", async () => {
-    const endpoint = "http://127.0.0.1:5001/demo-tillfailure-m3/europe-west1/invitationEmulator";
+    const endpoint = `http://127.0.0.1:${process.env.TF_FUNCTIONS_EMULATOR_PORT ?? 5001}/demo-tillfailure-m3/europe-west1/invitationEmulator`;
     const invoke = async (data: unknown, token?: string) => {
       const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ data }) });

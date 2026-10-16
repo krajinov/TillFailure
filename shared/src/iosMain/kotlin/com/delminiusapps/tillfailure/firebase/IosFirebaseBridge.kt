@@ -103,6 +103,8 @@ class IosProductIdentityClient(
     private val recoveryStore = IosAtomicFilePersistence(recoveryBridge)
     private val invitationLedger = InvitationLedger(recoveryStore)
     override val invitations: InvitationClient = object : InvitationClient {
+        override fun workspacePreference(uid: String) = invitationLedger.workspacePreference(uid)
+        override fun saveWorkspacePreference(uid: String, workspaceId: String) = invitationLedger.saveWorkspacePreference(uid, workspaceId)
         override val memory get() = PendingInvitationLinks.memory
         override fun newCommandKey(): String = NSUUID().UUIDString
         override fun pending(uid: String): PendingInvitationCommand? = invitationLedger.pending(uid)

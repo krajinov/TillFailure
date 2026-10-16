@@ -62,7 +62,7 @@ class AndroidInvitationTest {
         assertNull(gate.currentState().verifiedRole)
         assertTrue(command(port, "pr3_android_client", accept).reply!!.replayed!!)
         assertNull(port.pending("pr3_android_client"))
-        gate.onEvent(IdentityEvent.Retry); awaitGate(gate, GateStatus.MembershipVerifiedFeaturePending)
+        gate.onEvent(IdentityEvent.Retry); awaitGate(gate, GateStatus.Onboarding)
         assertEquals("client", gate.currentState().verifiedRole)
         assertEquals("pr3_android_workspace", gate.currentState().verifiedWorkspaceId)
         gate.onEvent(IdentityEvent.SignOut); awaitGate(gate, GateStatus.SignedOut)

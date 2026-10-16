@@ -55,7 +55,7 @@ class IdentityViewModelTest {
         val client = FakeIdentityClient()
         val model = IdentityViewModel(client)
         client.emitSession("alice")
-        assertEquals(GateStatus.MembershipVerifiedFeaturePending, model.state.value.status)
+        assertEquals(GateStatus.Onboarding, model.state.value.status)
         assertEquals("client", model.state.value.verifiedRole)
         client.listeners["workspaces/w/memberships/alice"]?.invoke(
             FirebaseDocumentResult(document = client.documents.getValue("workspaces/w/memberships/alice")
@@ -112,7 +112,7 @@ class IdentityViewModelTest {
         client.documents["users/alice"] = client.documents.getValue("users/alice")
             .copy(origin = FirebaseDataOrigin.SERVER)
         model.onEvent(IdentityEvent.Retry)
-        assertEquals(GateStatus.MembershipVerifiedFeaturePending, model.state.value.status)
+        assertEquals(GateStatus.Onboarding, model.state.value.status)
         assertEquals(3, client.refreshCount)
         assertEquals(listOf("users/alice", "users/alice"), client.getPaths.take(2))
     }
@@ -254,7 +254,7 @@ class IdentityViewModelTest {
         // After the account email becomes verified, the safe retry reaches authorization.
         client.freshSession = client.freshSession.copy(emailVerified = true)
         model.onEvent(IdentityEvent.Retry)
-        assertEquals(GateStatus.MembershipVerifiedFeaturePending, model.state.value.status)
+        assertEquals(GateStatus.Onboarding, model.state.value.status)
         assertEquals("client", model.state.value.verifiedRole)
     }
 
@@ -265,7 +265,7 @@ class IdentityViewModelTest {
 
         val (firstStore, first) = scoped(client)
         client.emitSession("alice")
-        assertEquals(GateStatus.MembershipVerifiedFeaturePending, first.state.value.status)
+        assertEquals(GateStatus.Onboarding, first.state.value.status)
 
         first.onEvent(IdentityEvent.SignOut)
         assertEquals(GateStatus.SwitchingOut, first.state.value.status)
@@ -312,7 +312,7 @@ class IdentityViewModelTest {
         // Offline, the drain fails: the departure is cancelled before any durable change, Auth is
         // unchanged, and the recreated root safely resumes fresh server authorization.
         port.completeDrain(StableFirebaseFailure(StableFirebaseErrorCode.DEADLINE_EXCEEDED, true))
-        assertEquals(GateStatus.MembershipVerifiedFeaturePending, second.state.value.status)
+        assertEquals(GateStatus.Onboarding, second.state.value.status)
         assertEquals("client", second.state.value.verifiedRole)
         assertEquals(0, port.signOutCount)
         assertNull(port.marker)
@@ -347,16 +347,102 @@ class IdentityViewModelTest {
         assertEquals("alice", port.marker?.departingUid)
     }
 
+    @Test fun clientRootRequiresCompleteServerProfileAndSurvivesRestorationWithoutReset() {
+        val client = FakeIdentityClient(); val model = IdentityViewModel(client); client.emitSession("alice")
+        assertEquals(GateStatus.Onboarding, model.state.value.status)
+        val path = "workspaces/w/clientProfiles/alice"
+        client.documents[path] = client.documents.getValue(path).copy(fields = client.documents.getValue(path).fields + mapOf(
+            "onboardingStatus" to "complete", "onboardingRevision" to "1", "onboardingPolicyVersion" to "1", "completedAt" to "timestamp"))
+        client.documents["users/alice"] = client.documents.getValue("users/alice").copy(fields = client.documents.getValue("users/alice").fields + mapOf(
+            "displayName" to "Alice", "locale" to "en", "timeZoneId" to "UTC", "profileRevision" to "1"))
+        model.onEvent(IdentityEvent.Retry)
+        assertEquals(GateStatus.ClientHome, model.state.value.status)
+        assertEquals(GateStatus.ClientHome, IdentityViewModel(client).state.value.status)
+        assertEquals("complete", client.documents.getValue(path).fields["onboardingStatus"])
+        model.onEvent(IdentityEvent.Suspend); assertEquals(GateStatus.Loading, model.state.value.status)
+        client.refreshFailure = StableFirebaseFailure(StableFirebaseErrorCode.UNAVAILABLE, true)
+        model.onEvent(IdentityEvent.Retry); assertEquals(GateStatus.ConnectToVerify, model.state.value.status)
+    }
+
+    @Test fun multipleMembershipsRequireExplicitSelectionAndRevalidateForgedOrRevokedChoices() {
+        val client = FakeIdentityClient()
+        client.documents["users/alice/membershipRefs/other"] = doc("users/alice/membershipRefs/other", mapOf("schemaVersion" to "1", "status" to "active"))
+        client.documents["workspaces/other"] = doc("workspaces/other", mapOf("schemaVersion" to "1", "status" to "active", "name" to "Other workspace", "ownerUid" to "trainer", "membershipRevision" to "1", "activeRosterCount" to "1", "catalogContributionCount" to "1"))
+        client.documents["workspaces/other/memberships/alice"] = doc("workspaces/other/memberships/alice", mapOf(
+            "schemaVersion" to "1", "workspaceId" to "other", "userId" to "alice", "status" to "active", "role" to "trainer", "revision" to "1", "catalogContributionActive" to "true"))
+        client.discoveryDocuments = listOf(client.documents.getValue("users/alice/membershipRefs/w"), client.documents.getValue("users/alice/membershipRefs/other"))
+        val model = IdentityViewModel(client); client.emitSession("alice")
+        assertEquals(GateStatus.MultipleMemberships, model.state.value.status); assertEquals(2, model.state.value.workspaces.size)
+        model.onEvent(IdentityEvent.ChooseWorkspace("forged")); assertEquals(GateStatus.MultipleMemberships, model.state.value.status)
+        model.onEvent(IdentityEvent.ChooseWorkspace("other")); assertEquals(GateStatus.TrainerHome, model.state.value.status)
+        model.onEvent(IdentityEvent.ChangeWorkspace); assertEquals(GateStatus.MultipleMemberships, model.state.value.status)
+        client.documents["workspaces/other/memberships/alice"] = client.documents.getValue("workspaces/other/memberships/alice").copy(
+            fields = client.documents.getValue("workspaces/other/memberships/alice").fields + ("status" to "revoked"))
+        model.onEvent(IdentityEvent.ChooseWorkspace("other")); assertEquals(GateStatus.AccessLost, model.state.value.status)
+        assertNull(model.state.value.verifiedWorkspaceId)
+    }
+
+    @Test fun signedOutAndRestrictedRootsRemainUsableAcrossBackgroundForeground() {
+        val signedOut = FakeIdentityClient(); val auth = IdentityViewModel(signedOut); signedOut.emitSession(null)
+        auth.onEvent(IdentityEvent.Suspend); auth.onEvent(IdentityEvent.Retry)
+        assertEquals(GateStatus.SignedOut, auth.state.value.status)
+        val anonymous = FakeIdentityClient(); val restricted = IdentityViewModel(anonymous); anonymous.emitSession("guest", anonymous = true)
+        restricted.onEvent(IdentityEvent.Suspend); restricted.onEvent(IdentityEvent.Retry)
+        assertEquals(GateStatus.AnonymousSession, restricted.state.value.status)
+        assertEquals(0, anonymous.discoveryCount)
+    }
+
+    @Test fun staleWorkspaceHintDoesNotChooseAMultipleMembershipRoot() {
+        val client = FakeIdentityClient()
+        client.hint = "removed-workspace"
+        client.documents["users/alice/membershipRefs/other"] = doc("users/alice/membershipRefs/other", mapOf("schemaVersion" to "1", "status" to "active"))
+        client.documents["workspaces/other"] = client.documents.getValue("workspaces/w").copy(path = "workspaces/other")
+        client.documents["workspaces/other/memberships/alice"] = client.documents.getValue("workspaces/w/memberships/alice").copy(
+            path = "workspaces/other/memberships/alice", fields = client.documents.getValue("workspaces/w/memberships/alice").fields + ("workspaceId" to "other"))
+        client.discoveryDocuments = listOf(client.documents.getValue("users/alice/membershipRefs/w"), client.documents.getValue("users/alice/membershipRefs/other"))
+        val model = IdentityViewModel(client); client.emitSession("alice")
+        assertEquals(GateStatus.MultipleMemberships, model.state.value.status); assertNull(model.state.value.preferredWorkspaceId)
+        client.hint = "other"; model.onEvent(IdentityEvent.Retry)
+        assertEquals(GateStatus.MultipleMemberships, model.state.value.status); assertEquals("other", model.state.value.preferredWorkspaceId)
+        assertNull(model.state.value.verifiedRole)
+    }
+
+    @Test fun malformedMissingOrForeignOnboardingNeverEntersClientShell() {
+        val client = FakeIdentityClient(); val path = "workspaces/w/clientProfiles/alice"; val profile = client.documents.getValue(path)
+        val model = IdentityViewModel(client); client.emitSession("alice")
+        for (patch in listOf(mapOf("userId" to "b"), mapOf("workspaceId" to "foreign"), mapOf("onboardingRevision" to "false"),
+            mapOf("onboardingStatus" to "complete"), mapOf("injury" to "unapproved"))) {
+            client.documents[path] = profile.copy(fields = profile.fields + patch)
+            model.onEvent(IdentityEvent.Retry); assertEquals(GateStatus.AccessLost, model.state.value.status)
+        }
+        client.documents[path] = profile.copy(exists = false)
+        model.onEvent(IdentityEvent.Retry); assertEquals(GateStatus.AccessLost, model.state.value.status)
+    }
+
     private class FakeIdentityClient : ProductIdentityClient {
+        var hint: String? = null
+        override val invitations = object : com.delminiusapps.tillfailure.invitations.InvitationClient {
+            override val memory = com.delminiusapps.tillfailure.invitations.InvitationMemory()
+            override fun workspacePreference(uid: String) = hint
+            override fun saveWorkspacePreference(uid: String, workspaceId: String) { hint = workspaceId }
+            override fun pending(uid: String): com.delminiusapps.tillfailure.invitations.PendingInvitationCommand? = null
+            override fun newCommandKey() = "test"
+            override fun execute(uid: String, request: com.delminiusapps.tillfailure.invitations.InvitationRequest,
+                callback: (com.delminiusapps.tillfailure.invitations.InvitationOutcome) -> Unit) = FirebaseCancellation {}
+        }
+
         var departurePort: CleanDeparturePort? = null
         override val departure: CleanDeparturePort? get() = departurePort
         val documents = mutableMapOf(
-            "users/alice" to doc("users/alice", mapOf("schemaVersion" to "1", "accountStatus" to "active")),
+            "workspaces/w/clientProfiles/alice" to doc("workspaces/w/clientProfiles/alice", mapOf(
+                "schemaVersion" to "1", "workspaceId" to "w", "userId" to "alice", "trainerId" to "trainer",
+                "createdAt" to "timestamp", "onboardingStatus" to "pending")),
+            "users/alice" to doc("users/alice", mapOf("schemaVersion" to "1", "accountStatus" to "active", "displayName" to "")),
             "users/alice/membershipRefs/w" to doc("users/alice/membershipRefs/w", mapOf(
                 "schemaVersion" to "1", "status" to "active")),
-            "workspaces/w" to doc("workspaces/w", mapOf("schemaVersion" to "1", "status" to "active")),
+            "workspaces/w" to doc("workspaces/w", mapOf("schemaVersion" to "1", "status" to "active", "ownerUid" to "trainer", "membershipRevision" to "1", "activeRosterCount" to "1", "catalogContributionCount" to "1")),
             "workspaces/w/memberships/alice" to doc("workspaces/w/memberships/alice", mapOf(
-                "schemaVersion" to "1", "workspaceId" to "w", "userId" to "alice", "status" to "active", "role" to "client")),
+                "schemaVersion" to "1", "workspaceId" to "w", "userId" to "alice", "status" to "active", "role" to "client", "revision" to "1", "catalogContributionActive" to "true")),
         )
         val listeners = mutableMapOf<String, (FirebaseDocumentResult) -> Unit>()
         var refreshFailure: StableFirebaseFailure? = null

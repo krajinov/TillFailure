@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 
 data class InvitationState(
     val accountUid: String? = null,
+    val workspaceId: String? = null, val authorityEpoch: Long = 0,
     val email: String = "", val entry: String = "", val hasLink: Boolean = false,
     val busy: Boolean = false, val message: String = "", val workspaceName: String? = null, val expiresAtMillis: Long? = null,
     val summaries: List<InvitationSummary> = emptyList(), val confirmation: InvitationRequest? = null,
@@ -62,11 +63,12 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
     fun updateIdentity(next: IdentityState) {
         if (disposed) return
         val changedAccount = next.accountUid != identity.accountUid
+        val changedScope = next.verifiedWorkspaceId != identity.verifiedWorkspaceId || next.authorityEpoch != identity.authorityEpoch
         val lostTrainer = identity.status == GateStatus.TrainerHome && next.status != GateStatus.TrainerHome
         val locked = next.status in setOf(GateStatus.AccessLost, GateStatus.AccountDisabled, GateStatus.CleanupRequired,
             GateStatus.SwitchingOut, GateStatus.IdentityUnsupported, GateStatus.AnonymousSession)
         identity = next
-        if (changedAccount || lostTrainer || locked) {
+        if (changedAccount || changedScope || lostTrainer || locked) {
             generation++; operation?.cancel(); operation = null
             mutable.value = InvitationState(accountUid = next.accountUid, hasLink = client.memory.linkFor(identity.accountUid) != null)
         }
@@ -77,7 +79,7 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
             } }
         }
         refreshPending()
-        mutable.value = mutable.value.copy(accountUid = next.accountUid)
+        mutable.value = mutable.value.copy(accountUid = next.accountUid, workspaceId = next.verifiedWorkspaceId, authorityEpoch = next.authorityEpoch)
         if (client.memory.revision != memoryRevision) {
             memoryRevision = client.memory.revision
             mutable.value = mutable.value.copy(hasLink = client.memory.linkFor(identity.accountUid) != null, workspaceName = null, entry = "")
@@ -89,7 +91,7 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
         val read = runCatching { uid?.let(client::pending) }
         read.getOrNull()?.takeIf { it.action == "accept" && it.uid == uid }?.let { client.memory.protectAcceptance(it) }
         val previous = mutable.value.pending
-        mutable.value = mutable.value.copy(pending = read.getOrNull(), message = if (read.isFailure)
+        mutable.value = mutable.value.copy(pending = read.getOrNull()?.takeUnless { it.action == "complete-onboarding" }, message = if (read.isFailure)
             "Protected command recovery is unavailable. Sign-out stays blocked." else mutable.value.message)
         // A recreated root receives only a ledger change, never the old root's reply. It may
         // request the ordinary server gate, which independently decides current authority.
@@ -151,7 +153,7 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
                     mutable.value = s.copy(message = "Reopen the original invitation to resolve the pending acceptance."); return
                 }
                 execute(InvitationRequest(pending.action, pending.workspaceId, pending.invitationId, pending.email,
-                    if (pending.action == "accept") link?.token else null, pending.expectedVersion, pending.idempotencyKey))
+                    if (pending.action == "accept") link?.token else null, pending.expectedVersion, pending.idempotencyKey), recovery = true)
             }
         }
     }
@@ -178,7 +180,7 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
 
     private fun canTrain(): Boolean = identity.status == GateStatus.TrainerHome && identity.verifiedRole == "trainer" && !identity.busy
     private fun canUseInvitation(): Boolean = identity.accountUid != null && !identity.busy && identity.status in
-        setOf(GateStatus.NoAccount, GateStatus.WorkspaceGate, GateStatus.MembershipVerifiedFeaturePending, GateStatus.MultipleMemberships, GateStatus.DepartureBlocked)
+        setOf(GateStatus.NoAccount, GateStatus.WorkspaceGate, GateStatus.MembershipVerifiedFeaturePending, GateStatus.Onboarding, GateStatus.ClientHome, GateStatus.MultipleMemberships, GateStatus.DepartureBlocked)
     private fun preview() {
         if (!canUseInvitation()) return
         client.memory.linkFor(identity.accountUid)?.let { execute(InvitationRequest("preview", invitationId = it.invitationId, token = it.token, expectedVersion = it.version)) }
@@ -189,10 +191,11 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
             workspaceId = identity.verifiedWorkspaceId, invitationId = summary.invitationId,
             expectedVersion = summary.tokenVersion, idempotencyKey = client.newCommandKey()))
     }
-    private fun execute(request: InvitationRequest) {
+    private fun execute(request: InvitationRequest, recovery: Boolean = false) {
         val uid = identity.accountUid ?: return
-        if (request.action in setOf("create", "list", "resend", "revoke") && !canTrain()) return
-        if (request.action in setOf("preview", "accept") && !canUseInvitation()) return
+        if (recovery && identity.status in setOf(GateStatus.CleanupRequired, GateStatus.SwitchingOut)) return
+        if (!recovery && request.action in setOf("create", "list", "resend", "revoke") && !canTrain()) return
+        if (!recovery && request.action in setOf("preview", "accept") && !canUseInvitation()) return
         val captured = ++generation
         mutable.value = mutable.value.copy(busy = true, message = "Contacting the invitation service…", deliveryLink = null)
         operation = client.execute(uid, request) { outcome ->

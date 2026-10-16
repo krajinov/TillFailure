@@ -30,7 +30,7 @@ enum InvitationHarness {
             workspaceId: ["create", "list", "resend", "revoke"].contains(action) ? "pr3_ios_workspace" : nil,
             invitationId: reply?.invitationId, email: action == "create" ? "pr3-ios-client@example.invalid" : nil,
             token: ["accept", "preview"].contains(action) ? reply?.deliveryToken : nil,
-            expectedVersion: reply?.tokenVersion, idempotencyKey: key)
+            expectedVersion: reply?.tokenVersion, idempotencyKey: key, onboarding: nil)
         _ = client!.invitations.execute(uid: uid, request: request, callback: then)
     }
     static func runIfRequested() {
@@ -83,7 +83,7 @@ enum InvitationHarness {
                         command("pr3_ios_client", "preview", reply: live) { preview in
                             check(preview.reply?.workspaceName == "Apple Training" && gate!.currentState().verifiedRole == nil, "preview-no-role")
                             let pending = InvitationRequest(action: "accept", workspaceId: nil, invitationId: live!.invitationId,
-                                email: nil, token: live!.deliveryToken, expectedVersion: live!.tokenVersion, idempotencyKey: "native-accept")
+                                email: nil, token: live!.deliveryToken, expectedVersion: live!.tokenVersion, idempotencyKey: "native-accept", onboarding: nil)
                             check(ledger!.prepare(uid: "pr3_ios_client", request: pending), "pending-command-recorded")
                             gate!.onEvent(event: IdentityEventSignOut.shared)
                             poll(.departureblocked) {
@@ -94,7 +94,7 @@ enum InvitationHarness {
                                     check(replay.reply?.replayed?.boolValue == true, "receipt-replay")
                                     check(client!.invitations.pending(uid: "pr3_ios_client") == nil, "protected-command-settled")
                                     gate!.onEvent(event: IdentityEventRetry.shared)
-                                    poll(.membershipverifiedfeaturepending) {
+                                    poll(.onboarding) {
                                         check(gate!.currentState().verifiedRole == "client" && gate!.currentState().verifiedWorkspaceId == "pr3_ios_workspace", "fresh-client-server-gate")
                                         gate!.onEvent(event: IdentityEventSignOut.shared)
                                         poll(.signedout) { check(true, "client-clean-departure"); exit(0) }

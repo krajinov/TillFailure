@@ -78,6 +78,7 @@ data class AccountPersistenceEnvelope(
     val mutationJournal: List<MutationJournalEntry> = emptyList(),
     val pendingUploads: List<PendingUpload> = emptyList(),
     val switchMarker: AccountSwitchMarker? = null,
+    val preferredWorkspaceId: String? = null,
     val pendingInvitationCommands: List<PendingInvitationCommand> = emptyList(),
 ) {
     init {

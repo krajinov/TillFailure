@@ -494,7 +494,7 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
         let callbackEpoch = currentEpoch
         invitationInFlight = true
         let transport = {
-          functions.httpsCallable("invitationEmulator").call(payload) { [weak self] result, error in
+          functions.httpsCallable(payload["action"] as? String == "complete-onboarding" ? "onboardingEmulator" : "invitationEmulator").call(payload) { [weak self] result, error in
             DispatchQueue.main.async {
                 guard let self else { return }
                 let deliver = {
@@ -832,9 +832,33 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
     }
 
     private func nativeDocument(_ snapshot: DocumentSnapshot) -> NativeFirebaseDocument {
-        NativeFirebaseDocument(
+        let data = snapshot.data() ?? [:]
+        var fields = data.mapValues { String(describing: $0) }
+        let identityPath = snapshot.reference.path.range(of: "^(users/[^/]+|workspaces/[^/]+|workspaces/[^/]+/memberships/[^/]+)$", options: .regularExpression) != nil
+        for (key, value) in data {
+            if identityPath && ["schemaVersion", "lifecycleRevision", "revision", "membershipRevision", "activeRosterCount", "catalogContributionCount"].contains(key) {
+                if let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID(),
+                   ["q", "i", "s", "l"].contains(String(cString: number.objCType)) {} else { fields["_invalidIdentityTypes"] = "true" }
+            }
+            if identityPath && key == "catalogContributionActive" {
+                if let number = value as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() {
+                    fields[key] = number.boolValue ? "true" : "false"
+                } else { fields["_invalidIdentityTypes"] = "true" }
+            }
+            if ["displayName", "locale", "timeZoneId"].contains(key) && !(value is String) {
+                fields["_invalidOnboardingTypes"] = "true"
+            }
+            if ["profileRevision", "onboardingRevision", "onboardingPolicyVersion"].contains(key) {
+                if let number = value as? NSNumber {
+                    if CFGetTypeID(number) == CFBooleanGetTypeID() || !["q", "i", "s", "l"].contains(String(cString: number.objCType)) {
+                        fields["_invalidOnboardingTypes"] = "true"
+                    }
+                } else { fields["_invalidOnboardingTypes"] = "true" }
+            }
+        }
+        return NativeFirebaseDocument(
             path: snapshot.reference.path,
-            fields: snapshot.data()?.mapValues { String(describing: $0) } ?? [:],
+            fields: fields,
             exists: snapshot.exists,
             isFromCache: snapshot.metadata.isFromCache,
             hasPendingWrites: snapshot.metadata.hasPendingWrites

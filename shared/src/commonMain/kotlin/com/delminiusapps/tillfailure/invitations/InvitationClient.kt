@@ -19,6 +19,7 @@ data class PendingInvitationCommand(
     val invitationId: String? = null,
     val expectedVersion: Int? = null,
     val email: String? = null,
+    val onboarding: com.delminiusapps.tillfailure.onboarding.OnboardingCompletion? = null,
 )
 
 @Serializable
@@ -30,11 +31,12 @@ data class InvitationRequest(
     val token: String? = null,
     val expectedVersion: Int? = null,
     val idempotencyKey: String? = null,
+    val onboarding: com.delminiusapps.tillfailure.onboarding.OnboardingCompletion? = null,
 ) {
     // Deliberately exclude bearer material from diagnostic interpolation.
     override fun toString(): String = "InvitationRequest(action=$action)"
     fun pending(uid: String): PendingInvitationCommand? = idempotencyKey?.let {
-        PendingInvitationCommand(uid, action, it, workspaceId, invitationId, expectedVersion, email)
+        PendingInvitationCommand(uid, action, it, workspaceId, invitationId, expectedVersion, email, onboarding)
     }
 }
 
@@ -50,6 +52,7 @@ data class InvitationReply(
     val status: String? = null, val tokenVersion: Int? = null, val expiresAtMillis: Long? = null,
     val replayed: Boolean? = null, val deliveryToken: String? = null,
     val summaries: List<InvitationSummary>? = null,
+    val accountRevision: Int? = null, val onboardingRevision: Int? = null,
 ) {
     override fun toString(): String = "InvitationReply(status=$status)"
 }
@@ -60,6 +63,8 @@ interface InvitationClient {
     val memory: InvitationMemory
     fun pending(uid: String): PendingInvitationCommand?
     fun execute(uid: String, request: InvitationRequest, callback: (InvitationOutcome) -> Unit): FirebaseCancellation
+    fun workspacePreference(uid: String): String? = null
+    fun saveWorkspacePreference(uid: String, workspaceId: String) {}
     fun newCommandKey(): String
     fun observePending(uid: String, callback: () -> Unit): FirebaseCancellation = FirebaseCancellation {}
 }
@@ -134,27 +139,33 @@ class InvitationLink(val invitationId: String, val version: Int, val token: Stri
 
 /** Called within the native issuance/callback lock. Unreadable partitions fail closed. */
 class InvitationLedger(private val store: AccountPersistencePrototype) {
-    fun pending(uid: String): PendingInvitationCommand? = store.read(uid)?.pendingInvitationCommands?.singleOrNull()
-    fun prepare(uid: String, request: InvitationRequest): Boolean = runCatching {
+    private val lock = DepartureOwnershipLock()
+    fun workspacePreference(uid: String): String? = lock.locked { store.read(uid)?.preferredWorkspaceId }
+    fun saveWorkspacePreference(uid: String, workspaceId: String) = lock.locked {
+        val record = store.read(uid) ?: return@locked
+        if (record.switchMarker == null) store.write(record.copy(preferredWorkspaceId = workspaceId))
+    }
+    fun pending(uid: String): PendingInvitationCommand? = lock.locked { store.read(uid)?.pendingInvitationCommands?.singleOrNull() }
+    fun prepare(uid: String, request: InvitationRequest): Boolean = lock.locked { runCatching {
         val record = store.read(uid) ?: return@runCatching false
         if (record.schemaVersion != 1 || record.uid != uid || record.switchMarker != null) return@runCatching false
         val command = request.pending(uid) ?: return@runCatching record.pendingInvitationCommands.isEmpty()
         if (record.pendingInvitationCommands.isNotEmpty() && record.pendingInvitationCommands != listOf(command)) return@runCatching false
         store.write(record.copy(pendingInvitationCommands = listOf(command)))
         true
-    }.getOrDefault(false)
-    fun settle(uid: String, request: InvitationRequest, outcome: InvitationOutcome): InvitationOutcome = runCatching {
+    }.getOrDefault(false) }
+    fun settle(uid: String, request: InvitationRequest, outcome: InvitationOutcome): InvitationOutcome = lock.locked { runCatching {
         val command = request.pending(uid) ?: return@runCatching outcome
         // A rejection describes this invocation, not every earlier invocation of this command.
         // In particular, no receipt at throttle/Auth failure time rules out a later commit.
         // Without a validated matching success/receipt, never erase the protected command.
-        if (outcome.ambiguous || outcome.error != null || outcome.reply == null)
+        if (outcome.ambiguous || outcome.error != null || outcome.reply == null || !InvitationJson.validReply(request, outcome.reply))
             return@runCatching outcome.copy(ambiguous = true)
         val record = store.read(uid) ?: return@runCatching InvitationOutcome(error = "unavailable", ambiguous = true)
         if (record.pendingInvitationCommands != listOf(command)) return@runCatching InvitationOutcome(error = "unavailable", ambiguous = true)
         store.write(record.copy(pendingInvitationCommands = emptyList()))
         outcome
-    }.getOrDefault(InvitationOutcome(error = "unavailable", ambiguous = true))
+    }.getOrDefault(InvitationOutcome(error = "unavailable", ambiguous = true)) }
 }
 
 object InvitationJson {
@@ -184,7 +195,15 @@ object InvitationJson {
         InvitationOutcome(reply = reply)
     }
         .getOrDefault(InvitationOutcome(error = "unavailable", ambiguous = true))
-    private fun validReply(request: InvitationRequest, reply: InvitationReply): Boolean {
+    fun validReply(request: InvitationRequest, reply: InvitationReply): Boolean {
+        if (request.action == "complete-onboarding") {
+            val p = request.onboarding ?: return false
+            return reply.workspaceId == request.workspaceId && reply.status == "complete" && reply.replayed != null &&
+                reply.accountRevision == p.expectedAccountRevision + 1 && reply.onboardingRevision == p.expectedOnboardingRevision + 1 &&
+                reply.invitationId == null && reply.workspaceName == null && reply.tokenVersion == null && reply.expiresAtMillis == null &&
+                reply.deliveryToken == null && reply.summaries == null
+        }
+        if (reply.accountRevision != null || reply.onboardingRevision != null) return false
         fun id(value: String?) = value != null && Regex("^[a-f0-9]{64}$").matches(value)
         fun workspace(value: String?) = value != null && com.delminiusapps.tillfailure.identity.isPathSafeAuthUid(value) && !value.contains('.')
         fun time(value: Long?) = value != null && value in 0..8_640_000_000_000_000L
@@ -213,6 +232,6 @@ object InvitationJson {
     }
     fun safeError(value: String): String = if (value in setOf("unauthenticated", "unauthorized", "unverified-email", "wrong-account-email",
         "expired", "rotated", "revoked", "already-used", "idempotency-key-reused", "membership-conflict", "rate-limited",
-        "fixture-account-required", "record-invalid", "counter-inconsistent", "input-invalid", "email-invalid", "token-invalid",
+        "already-complete", "revision-conflict", "fixture-account-required", "record-invalid", "counter-inconsistent", "input-invalid", "email-invalid", "token-invalid",
         "membership-bound-violated", "workspace-roster-bound-violated", "invitation-unavailable")) value else "unavailable"
 }

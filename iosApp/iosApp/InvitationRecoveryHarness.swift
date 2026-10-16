@@ -92,7 +92,7 @@ enum InvitationRecoveryHarness {
         check(pending.action == "create" && pending.uid == uid, "reconcile-original-command")
         let request = InvitationRequest(action: pending.action, workspaceId: pending.workspaceId,
             invitationId: pending.invitationId, email: pending.email, token: nil,
-            expectedVersion: pending.expectedVersion, idempotencyKey: pending.idempotencyKey)
+            expectedVersion: pending.expectedVersion, idempotencyKey: pending.idempotencyKey, onboarding: nil)
         fixture("create", "mode", mode: "forward") { _ in
             _ = client.invitations.execute(uid: uid, request: request) { outcome in
                 check(outcome.error == nil && !outcome.ambiguous && outcome.reply?.replayed?.boolValue == true &&
@@ -125,7 +125,7 @@ enum InvitationRecoveryHarness {
             let request = InvitationRequest(action: action, workspaceId: data["workspaceId"] as? String,
                 invitationId: data["invitationId"] as? String, email: data["email"] as? String, token: data["token"] as? String,
                 expectedVersion: (data["expectedVersion"] as? NSNumber).map { KotlinInt(int: $0.int32Value) },
-                idempotencyKey: data["idempotencyKey"] as? String)
+                idempotencyKey: data["idempotencyKey"] as? String, onboarding: nil)
             let uid = "p1_ios_\(action == "accept" ? "client" : "trainer")"
             check(ledger.prepare(uid: uid, request: request), "\(action)-protected-before-transport")
             let original = ledger.pending(uid: uid)!
@@ -245,7 +245,7 @@ enum InvitationRecoveryHarness {
             check(evidence["unchanged"] as? Bool == true && (evidence["admissionQuota"] as? NSNumber)?.intValue == 30,
                   "\(action)-unchanged-state-and-quota")
             gate.onEvent(event: IdentityEventRetry.shared)
-            poll(action == "accept" ? .membershipverifiedfeaturepending : .trainerhome) { trial(index + 1) }
+            poll(action == "accept" ? .onboarding : .trainerhome) { trial(index + 1) }
         }
     }
 

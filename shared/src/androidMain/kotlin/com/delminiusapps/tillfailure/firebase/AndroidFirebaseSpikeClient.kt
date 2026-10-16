@@ -55,6 +55,8 @@ class AndroidFirebaseSpikeClient(
     internal var beforeInvitationTransportForTest: ((() -> Unit) -> Unit)? = null
     internal var beforeInvitationCompletionForTest: ((() -> Unit) -> Unit)? = null
     override val invitations: InvitationClient = object : InvitationClient {
+        override fun workspacePreference(uid: String) = synchronized(callbackLock) { invitationLedger.workspacePreference(uid) }
+        override fun saveWorkspacePreference(uid: String, workspaceId: String) = synchronized(callbackLock) { if (!accountFrozen) invitationLedger.saveWorkspacePreference(uid, workspaceId) }
         override val memory get() = PendingInvitationLinks.memory
         override fun newCommandKey(): String = UUID.randomUUID().toString()
         override fun pending(uid: String): PendingInvitationCommand? = synchronized(callbackLock) { invitationLedger.pending(uid) }
@@ -96,7 +98,8 @@ class AndroidFirebaseSpikeClient(
                     val outcome = runCatching {
                         val valid = synchronized(callbackLock) { !terminated.get() && auth.currentUser?.uid == uid && issuedEpoch == invitationAuthEpoch }
                         check(valid && identity.token != null)
-                        val endpoint = URL("http://${configuration.host}:${configuration.functionsPort}/demo-tillfailure-m3/europe-west1/invitationEmulator")
+                        val callable = if (request.action == "complete-onboarding") "onboardingEmulator" else "invitationEmulator"
+                        val endpoint = URL("http://${configuration.host}:${configuration.functionsPort}/demo-tillfailure-m3/europe-west1/$callable")
                         val connection = endpoint.openConnection() as HttpURLConnection
                         try {
                             connection.requestMethod = "POST"
@@ -630,7 +633,16 @@ class AndroidFirebaseSpikeClient(
 
     private fun DocumentSnapshot.toContract() = FirebaseDocumentSnapshot(
         path = reference.path,
-        fields = data.orEmpty().mapValues { (_, value) -> value?.toString().orEmpty() },
+        fields = data.orEmpty().mapValues { (_, value) -> value?.toString().orEmpty() } +
+            (if (Regex("^(users/[^/]+|workspaces/[^/]+|workspaces/[^/]+/memberships/[^/]+)$").matches(reference.path) &&
+                data.orEmpty().any { (key, value) ->
+                    key in setOf("schemaVersion", "lifecycleRevision", "revision", "membershipRevision", "activeRosterCount", "catalogContributionCount") && value !is Long ||
+                        key == "catalogContributionActive" && value !is Boolean
+                }) mapOf("_invalidIdentityTypes" to "true") else emptyMap()) +
+            if (data.orEmpty().any { (key, value) ->
+                key in setOf("displayName", "locale", "timeZoneId") && value !is String ||
+                    key in setOf("profileRevision", "onboardingRevision", "onboardingPolicyVersion") && value !is Long
+            }) mapOf("_invalidOnboardingTypes" to "true") else emptyMap(),
         exists = exists(),
         origin = if (metadata.isFromCache) FirebaseDataOrigin.CACHE else FirebaseDataOrigin.SERVER,
         hasPendingWrites = metadata.hasPendingWrites(),

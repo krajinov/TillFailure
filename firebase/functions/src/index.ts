@@ -6,7 +6,19 @@ import { participantUid, safeBufferMinutes, safeEpochMillis, strictPathIdentifie
 import { invitationOperation, invitationFailure } from "./invitations.js";
 import { requireProvisioningEmulators } from "./provisioning.js";
 
+import { completeOnboarding, onboardingFailure } from "./onboarding.js";
+
 setGlobalOptions({ region: "europe-west1", maxInstances: 1 });
+
+export const onboardingEmulator = onCall(async request => {
+  try {
+    requireProvisioningEmulators();
+    return await completeOnboarding(emulatorFirestore(), request.auth?.uid, request.data);
+  } catch (error) {
+    const failure = onboardingFailure(error);
+    throw new HttpsError(failure.code, failure.reason);
+  }
+});
 
 // The primitive guards BOTH named loopback emulators before Auth/Firestore acquisition.
 // Deploying this export does not enable production invitation operations.

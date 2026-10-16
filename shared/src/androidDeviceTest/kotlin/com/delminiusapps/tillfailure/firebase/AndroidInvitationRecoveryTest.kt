@@ -174,7 +174,7 @@ class AndroidInvitationRecoveryTest {
             assertEquals("30", evidence.getValue("admissionQuota").jsonPrimitive.content)
             println("PR3_P1_ANDROID $action: four-error-ledger-and-departure-preservation, unchanged-receipt-replay PASS")
             main { model.onEvent(IdentityEvent.Retry) }
-            gate(model, if (action == "accept") GateStatus.MembershipVerifiedFeaturePending else GateStatus.TrainerHome)
+            gate(model, if (action == "accept") GateStatus.Onboarding else GateStatus.TrainerHome)
         }
         main { model.onEvent(IdentityEvent.SignOut) }; gate(model, GateStatus.SignedOut)
     }

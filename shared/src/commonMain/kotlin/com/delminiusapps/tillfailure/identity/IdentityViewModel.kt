@@ -10,15 +10,19 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
 import com.delminiusapps.tillfailure.persistence.RecoveryUidContract
+import com.delminiusapps.tillfailure.onboarding.*
 
 @kotlinx.serialization.Serializable
 enum class GateStatus {
+    Onboarding, ClientHome,
     Loading, SignedOut, InvalidCredentials, IdentityUnsupported, AnonymousSession, NoAccount, AccountDisabled,
     UnverifiedEmail,
     WorkspaceGate, TrainerHome, MembershipVerifiedFeaturePending, UnsupportedSchema, AccessLost,
     ConnectToVerify, Retry, MultipleMemberships, Unconfigured, SessionExpired, CleanupRequired,
     SwitchingOut, DepartureBlocked,
 }
+
+data class WorkspaceOption(val workspaceId: String, val name: String, val role: String)
 
 data class IdentityState(
     val status: GateStatus = GateStatus.Loading,
@@ -29,6 +33,11 @@ data class IdentityState(
     val verifiedWorkspaceId: String? = null,
     val verifiedRole: String? = null,
     val accountUid: String? = null,
+    val authorityEpoch: Long = 0,
+    val workspaces: List<WorkspaceOption> = emptyList(),
+    val preferredWorkspaceId: String? = null,
+    val accountProfileRevision: Int = 0, val onboardingRevision: Int = 0,
+    val displayName: String = "", val locale: String = "", val timeZoneId: String = "",
 )
 
 sealed interface IdentityEvent {
@@ -37,6 +46,9 @@ sealed interface IdentityEvent {
     data object SignIn : IdentityEvent
     data object Retry : IdentityEvent
     data object SignOut : IdentityEvent
+    data class ChooseWorkspace(val workspaceId: String) : IdentityEvent
+    data object ChangeWorkspace : IdentityEvent
+    data object Suspend : IdentityEvent
     data object RetryCleanup : IdentityEvent
 }
 
@@ -57,6 +69,8 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
     private var restrictedSession = false
     private var sessionListener: FirebaseCancellation? = null
     private var cleared = false
+    private var requestedWorkspace: String? = null
+    private var accountFields: Map<String, String> = emptyMap()
 
     init { recoverOnStartup() }
 
@@ -145,7 +159,23 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
     }
 
     fun onEvent(event: IdentityEvent) {
+        if (cleared) return
         when (event) {
+            is IdentityEvent.ChooseWorkspace -> {
+                if (mutableState.value.status != GateStatus.MultipleMemberships ||
+                    mutableState.value.workspaces.none { it.workspaceId == event.workspaceId }) return
+                observedUid?.let { verify(it, event.workspaceId) }
+            }
+            IdentityEvent.ChangeWorkspace -> {
+                if (mutableState.value.status !in setOf(GateStatus.ClientHome, GateStatus.TrainerHome, GateStatus.Onboarding)) return
+                observedUid?.let { verify(it) }
+            }
+            IdentityEvent.Suspend -> {
+                if (observedUid == null || restrictedSession) return
+                if (mutableState.value.status in setOf(GateStatus.CleanupRequired, GateStatus.SwitchingOut)) return
+                cancelOperations()
+                finish(GateStatus.Loading)
+            }
             is IdentityEvent.EmailChanged -> mutableState.value = mutableState.value.copy(email = event.value)
             is IdentityEvent.PasswordChanged -> mutableState.value = mutableState.value.copy(password = event.value)
             IdentityEvent.SignIn -> {
@@ -170,8 +200,9 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
                     }
                 }
             }
-            IdentityEvent.Retry -> if (observedUid != null && !restrictedSession) {
-                verify(observedUid!!)
+            IdentityEvent.Retry -> if (mutableState.value.status in setOf(GateStatus.CleanupRequired, GateStatus.SwitchingOut)) return
+            else if (observedUid != null && !restrictedSession) {
+                verify(observedUid!!, mutableState.value.verifiedWorkspaceId)
             } else if (mutableState.value.status == GateStatus.ConnectToVerify) {
                 onEvent(IdentityEvent.SignIn)
             }
@@ -213,11 +244,13 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
         }
     }
 
-    private fun verify(uid: String) {
+    private fun verify(uid: String, selectedWorkspace: String? = null) {
+        requestedWorkspace = selectedWorkspace
         cancelOperations()
         val request = revision
         setState(mutableState.value.copy(status = GateStatus.Loading, busy = true,
-            password = "", verifiedWorkspaceId = null, verifiedRole = null))
+            password = "", verifiedWorkspaceId = null, verifiedRole = null, workspaces = emptyList(),
+            displayName = "", locale = "", timeZoneId = ""))
         if (!isPathSafeAuthUid(uid)) {
             setState(mutableState.value.copy(status = GateStatus.IdentityUnsupported, busy = false))
             return
@@ -230,7 +263,7 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
                 return@refreshSession
             }
             val session = refresh.session
-            if (session == null) { finish(GateStatus.AccessLost); return@refreshSession }
+            if (session == null || session.uid != uid || session.isAnonymous || session.email == null) { finish(GateStatus.AccessLost); return@refreshSession }
             // A non-anonymous email/password session whose freshly refreshed Auth user is not
             // verified must stop before any account/workspace/membership authorization. A cached
             // observed flag or a client-entered email is never authority.
@@ -238,6 +271,7 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
                 setState(mutableState.value.copy(status = GateStatus.UnverifiedEmail, busy = false))
                 return@refreshSession
             }
+            if (!session.emailVerified) { finish(GateStatus.UnverifiedEmail); return@refreshSession }
             readAccount(uid, request)
         }
     }
@@ -250,7 +284,7 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
                 return@getDocument
             }
             when (val decision = checkAccount(uid, result.document)) {
-                null -> discover(uid, request)
+                null -> { accountFields = result.document!!.fields; discover(uid, request) }
                 IdentityDecision.NoAccount -> finish(GateStatus.NoAccount)
                 IdentityDecision.AccountDisabled -> finish(GateStatus.AccountDisabled)
                 IdentityDecision.UnsupportedSchema -> finish(GateStatus.UnsupportedSchema)
@@ -264,44 +298,97 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
             if (request != revision) return@discoverMemberships
             if (result.failure != null) { fail(result.failure); return@discoverMemberships }
             val documents = result.documents ?: run { finish(GateStatus.AccessLost); return@discoverMemberships }
-            if (documents.any { it.origin != FirebaseDataOrigin.SERVER || it.hasPendingWrites }) {
+            if (documents.size > 20 || documents.any { !it.exists || it.origin != FirebaseDataOrigin.SERVER || it.hasPendingWrites }) {
                 finish(GateStatus.AccessLost); return@discoverMemberships
             }
             if (documents.isEmpty()) { finish(GateStatus.WorkspaceGate); return@discoverMemberships }
-            if (documents.size > 1) { finish(GateStatus.MultipleMemberships); return@discoverMemberships }
-            val discovered = documents.single()
-            val pieces = discovered.path.split('/')
-            if (pieces.size != 4 || pieces[0] != "users" || pieces[1] != uid ||
-                pieces[2] != "membershipRefs" || !isPathSafeAuthUid(pieces[3]) ||
-                discovered.fields["schemaVersion"] != "1" || discovered.fields["status"] != "active"
-            ) { finish(GateStatus.AccessLost); return@discoverMemberships }
-            val wid = pieces[3]
-            operations += client.getDocument("workspaces/$wid", 0L) { workspaceResult ->
-                if (request != revision) return@getDocument
-                if (workspaceResult.failure != null) { fail(workspaceResult.failure); return@getDocument }
-                operations += client.getDocument("workspaces/$wid/memberships/$uid", 0L) { memberResult ->
-                    if (request != revision) return@getDocument
-                    if (memberResult.failure != null) { fail(memberResult.failure); return@getDocument }
-                    when (val decision = checkMembership(uid, wid, workspaceResult.document, memberResult.document)) {
-                        is IdentityDecision.Verified -> {
-                            setState(mutableState.value.copy(
-                                status = if (decision.role == "trainer") GateStatus.TrainerHome
-                                    else GateStatus.MembershipVerifiedFeaturePending, busy = false,
-                                verifiedWorkspaceId = decision.workspaceId, verifiedRole = decision.role,
-                            ))
-                            observeRevocation(uid, wid, request)
+            val ids = documents.map { discovered ->
+                val pieces = discovered.path.split('/')
+                if (pieces.size != 4 || pieces[0] != "users" || pieces[1] != uid || pieces[2] != "membershipRefs" ||
+                    !isPathSafeAuthUid(pieces[3]) || discovered.fields["schemaVersion"] != "1" || discovered.fields["status"] != "active") {
+                    finish(GateStatus.AccessLost); return@discoverMemberships
+                }
+                pieces[3]
+            }
+            if (ids.distinct().size != ids.size) { finish(GateStatus.AccessLost); return@discoverMemberships }
+            val options = mutableListOf<WorkspaceOption>()
+            val proofs = mutableMapOf<String, Pair<com.delminiusapps.tillfailure.firebase.FirebaseDocumentSnapshot, com.delminiusapps.tillfailure.firebase.FirebaseDocumentSnapshot>>()
+            fun readNext(index: Int) {
+                if (request != revision) return
+                if (index == ids.size) {
+                    val chosen = if (options.size == 1) options.single() else options.find { it.workspaceId == requestedWorkspace }
+                    if (chosen == null) {
+                        val hint = runCatching { client.invitations?.workspacePreference(uid) }.getOrNull()?.takeIf { it in ids }
+                        setState(mutableState.value.copy(status = GateStatus.MultipleMemberships, busy = false,
+                            workspaces = options.toList(), preferredWorkspaceId = hint))
+                        return
+                    }
+                    if (requestedWorkspace == chosen.workspaceId) runCatching { client.invitations?.saveWorkspacePreference(uid, chosen.workspaceId) }
+                    val proof = proofs.getValue(chosen.workspaceId)
+                    routeMembership(uid, chosen, request, proof.first, proof.second)
+                    return
+                }
+                val wid = ids[index]
+                operations += client.getDocument("workspaces/$wid", 0L) workspace@ { workspaceResult ->
+                    if (request != revision) return@workspace
+                    if (workspaceResult.failure != null) { fail(workspaceResult.failure); return@workspace }
+                    operations += client.getDocument("workspaces/$wid/memberships/$uid", 0L) membership@ { memberResult ->
+                        if (request != revision) return@membership
+                        if (memberResult.failure != null) { fail(memberResult.failure); return@membership }
+                        when (val decision = checkMembership(uid, wid, workspaceResult.document, memberResult.document)) {
+                            is IdentityDecision.Verified -> {
+                                val name = workspaceResult.document?.fields?.get("name") ?: wid
+                                options += WorkspaceOption(wid, name.take(80), decision.role)
+                                proofs[wid] = workspaceResult.document!! to memberResult.document!!
+                                readNext(index + 1)
+                            }
+                            IdentityDecision.UnsupportedSchema -> finish(GateStatus.UnsupportedSchema)
+                            else -> finish(GateStatus.AccessLost)
                         }
-                        IdentityDecision.UnsupportedSchema -> finish(GateStatus.UnsupportedSchema)
-                        else -> finish(GateStatus.AccessLost)
                     }
                 }
             }
+            readNext(0)
         }
     }
 
-    private fun observeRevocation(uid: String, wid: String, request: Long) {
+    private fun routeMembership(uid: String, selected: WorkspaceOption, request: Long,
+        workspaceProof: com.delminiusapps.tillfailure.firebase.FirebaseDocumentSnapshot,
+        membershipProof: com.delminiusapps.tillfailure.firebase.FirebaseDocumentSnapshot) {
+        val wid = selected.workspaceId
+        if (selected.role == "trainer") {
+            setState(mutableState.value.copy(status = GateStatus.TrainerHome, busy = false,
+                verifiedWorkspaceId = wid, verifiedRole = "trainer", workspaces = emptyList()))
+            observeRevocation(uid, wid, request, workspaceProof, membershipProof)
+            return
+        }
+        operations += client.getDocument("workspaces/$wid/clientProfiles/$uid", 0L) { result ->
+            if (request != revision) return@getDocument
+            if (result.failure != null) { fail(result.failure); return@getDocument }
+            val profileRevision = onboardingRevision(uid, wid, result.document)
+            val accountRevision = accountProfileRevision(accountFields)
+            if (profileRevision == null || accountRevision == null) { finish(GateStatus.AccessLost); return@getDocument }
+            val complete = result.document!!.fields["onboardingStatus"] == "complete"
+            if (complete && accountRevision == 0) { finish(GateStatus.AccessLost); return@getDocument }
+            setState(mutableState.value.copy(status = if (complete) GateStatus.ClientHome else GateStatus.Onboarding,
+                busy = false, verifiedWorkspaceId = wid, verifiedRole = "client", workspaces = emptyList(),
+                accountProfileRevision = accountRevision, onboardingRevision = profileRevision,
+                displayName = accountFields["displayName"].orEmpty(), locale = accountFields["locale"].orEmpty(),
+                timeZoneId = accountFields["timeZoneId"].orEmpty()))
+            observeRevocation(uid, wid, request, workspaceProof, membershipProof)
+        }
+    }
+
+    private fun observeRevocation(uid: String, wid: String, request: Long,
+        workspaceProof: com.delminiusapps.tillfailure.firebase.FirebaseDocumentSnapshot,
+        membershipProof: com.delminiusapps.tillfailure.firebase.FirebaseDocumentSnapshot) {
+        var latestWorkspace = workspaceProof
+        var latestMembership = membershipProof
         val serverObserved = mutableSetOf<String>()
-        for (path in listOf("users/$uid", "workspaces/$wid", "workspaces/$wid/memberships/$uid")) {
+        val profilePath = "workspaces/$wid/clientProfiles/$uid"
+        val paths = listOf("users/$uid", "workspaces/$wid", "workspaces/$wid/memberships/$uid") +
+            if (mutableState.value.verifiedRole == "client") listOf(profilePath) else emptyList()
+        for (path in paths) {
             operations += client.listenDocument(path, 0L) { result ->
                 if (request != revision) return@listenDocument
                 if (result.failure != null) { cancelOperations(); finish(failureStatus(result.failure)); return@listenDocument }
@@ -314,6 +401,25 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
                     return@listenDocument
                 }
                 serverObserved += path
+                if (path == "workspaces/$wid") latestWorkspace = document
+                if (path.endsWith("/memberships/$uid")) latestMembership = document
+                if (checkMembership(uid, wid, latestWorkspace, latestMembership) !is IdentityDecision.Verified) {
+                    cancelOperations(); finish(GateStatus.AccessLost); return@listenDocument
+                }
+                if (path == "users/$uid" && checkAccount(uid, document) != null) {
+                    cancelOperations(); finish(GateStatus.AccessLost); return@listenDocument
+                }
+                if (path == profilePath) {
+                    val r = onboardingRevision(uid, wid, document)
+                    if (r == null) { cancelOperations(); finish(GateStatus.AccessLost); return@listenDocument }
+                    if (document.fields["onboardingStatus"] == "complete" && mutableState.value.status == GateStatus.Onboarding ||
+                        document.fields["onboardingStatus"] == "pending" && mutableState.value.status == GateStatus.ClientHome) {
+                        verify(uid, wid); return@listenDocument
+                    }
+                }
+                if (path == "users/$uid" && mutableState.value.verifiedRole == "client" && accountProfileRevision(document.fields) == null) {
+                    cancelOperations(); finish(GateStatus.AccessLost); return@listenDocument
+                }
                 if (document.hasPendingWrites || !document.exists || document.fields["schemaVersion"] != "1" ||
                     (path == "users/$uid" && document.fields["accountStatus"] != "active") ||
                     (path == "workspaces/$wid" && document.fields["status"] != "active") ||
@@ -360,7 +466,8 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
 
     private fun finish(status: GateStatus) {
         setState(mutableState.value.copy(status = status, busy = false,
-            verifiedWorkspaceId = null, verifiedRole = null))
+            verifiedWorkspaceId = null, verifiedRole = null, workspaces = emptyList(),
+            displayName = "", locale = "", timeZoneId = ""))
     }
 
     private fun setState(next: IdentityState) {
@@ -375,7 +482,7 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
                 marker.readable && marker.marker == null && port.hasProvenEmptyCriticalWork(uid)
             }.getOrDefault(false)
         } else true
-        mutableState.value = next.copy(canSignOut = canAttemptSignOut && restrictedCleanupReady, accountUid = uid)
+        mutableState.value = next.copy(authorityEpoch = revision, canSignOut = canAttemptSignOut && restrictedCleanupReady, accountUid = uid)
         if (next.status != previousStatus) effectChannel.trySend(IdentityEffect.ReplaceRoot(next.status))
     }
 

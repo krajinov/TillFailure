@@ -54,6 +54,35 @@ async function seedEligibleAssignment(): Promise<void> {
 }
 
 describe("Firestore and Storage rules", () => {
+  it("allows only own active client minimal onboarding profile gets; denies writes, list, malformed, cross-account and revoked reads", async () => {
+    const admin = emulatorFirestore();
+    await admin.doc("users/client").set({ schemaVersion: 1, accountStatus: "active" });
+    await admin.doc("workspaces/onboard").set({ schemaVersion: 1, status: "active" });
+    await admin.doc("workspaces/onboard/memberships/client").set({ schemaVersion: 1, workspaceId: "onboard", userId: "client", role: "client", status: "active" });
+    const path = "workspaces/onboard/clientProfiles/client";
+    const profile = { schemaVersion: 1, workspaceId: "onboard", userId: "client", trainerId: "trainer", createdAt: new Date(), onboardingStatus: "pending" };
+    await admin.doc(path).set(profile);
+    const own = verifiedContext("client").firestore();
+    await assertSucceeds(getDoc(doc(own, path)));
+    await assertFails(getDoc(doc(verifiedContext("other").firestore(), path)));
+    await assertFails(getDoc(doc(environment.authenticatedContext("client", { email_verified: false }).firestore(), path)));
+    await assertFails(getDocs(query(collection(own, "workspaces/onboard/clientProfiles"), limit(20))));
+    await assertFails(updateDoc(doc(own, path), { onboardingStatus: "complete" }));
+    await assertFails(updateDoc(doc(own, "users/client"), { displayName: "Changed", profileRevision: 1 }));
+    await assertFails(getDoc(doc(own, "workspaces/foreign/clientProfiles/client")));
+    for (const patch of [{ userId: "other" }, { workspaceId: "foreign" }, { schemaVersion: 2 }, { onboardingStatus: "complete" },
+      { onboardingRevision: false }, { injury: "unapproved" }]) {
+      await admin.doc(path).set({ ...profile, ...patch }); await assertFails(getDoc(doc(own, path)));
+    }
+    await admin.doc(path).set({ ...profile, onboardingStatus: "complete", onboardingRevision: 1, onboardingPolicyVersion: 1, completedAt: new Date() });
+    await assertSucceeds(getDoc(doc(own, path)));
+    await admin.doc("workspaces/onboard/memberships/client").update({ status: "revoked" });
+    await assertFails(getDoc(doc(own, path)));
+    await admin.doc("workspaces/onboard/memberships/client").update({ status: "active" });
+    await admin.doc("users/client").update({ accountStatus: "disabled" });
+    await assertFails(getDoc(doc(own, path)));
+  });
+
   it("keeps internal invitations Admin-only and authorizes safe projection gets only for active workspace trainers while denying client list and writes", async () => {
     await environment.withSecurityRulesDisabled(async context => {
       const db = context.firestore();

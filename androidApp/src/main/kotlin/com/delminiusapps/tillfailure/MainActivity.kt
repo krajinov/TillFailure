@@ -31,7 +31,13 @@ class MainActivity : ComponentActivity() {
             CompositionLocalProvider(LocalDensity provides if (scale in 1f..2f) Density(density.density, scale) else density) {
                 App(
                     identityClientProvider = {
-                        if (BuildConfig.DEBUG) AndroidProductIdentitySession.get(applicationContext) else null
+                        if (BuildConfig.DEBUG) AndroidProductIdentitySession.get(applicationContext,
+                            configuration = com.delminiusapps.tillfailure.firebase.FirebaseEmulatorConfiguration(
+                                host = "10.0.2.2",
+                                authPort = intent.getIntExtra("tfAuthPort", 9099),
+                                firestorePort = intent.getIntExtra("tfFirestorePort", 8080),
+                                functionsPort = intent.getIntExtra("tfFunctionsPort", 5001),
+                            )) else null
                     },
                     showDevelopmentCatalog = BuildConfig.DEBUG,
                 )

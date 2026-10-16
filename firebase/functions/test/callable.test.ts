@@ -14,9 +14,9 @@ before(() => {
   if (!process.env.FIRESTORE_EMULATOR_HOST) throw new Error("Callable tests require local emulators");
   app = initializeApp({ projectId: SPIKE_PROJECT_ID, apiKey: "fake-emulator-api-key" }, "callable-test");
   const auth = getAuth(app);
-  connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
+  connectAuthEmulator(auth, `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST ?? "127.0.0.1:9099"}`, { disableWarnings: true });
   const functions = getFunctions(app, "europe-west1");
-  connectFunctionsEmulator(functions, "127.0.0.1", 5001);
+  connectFunctionsEmulator(functions, "127.0.0.1", Number(process.env.TF_FUNCTIONS_EMULATOR_PORT ?? 5001));
   call = httpsCallable(functions, "bookAppointmentSpike");
 });
 

@@ -18,7 +18,13 @@ import com.delminiusapps.tillfailure.identity.IdentityState
 @Composable
 fun InvitationScreen(state: InvitationState, gate: IdentityState, onEvent: (InvitationEvent) -> Unit) {
     if (gate.status in setOf(GateStatus.Unconfigured, GateStatus.Loading, GateStatus.CleanupRequired, GateStatus.SwitchingOut,
-            GateStatus.IdentityUnsupported, GateStatus.AnonymousSession, GateStatus.AccountDisabled, GateStatus.AccessLost)) return
+            GateStatus.IdentityUnsupported, GateStatus.AnonymousSession, GateStatus.AccountDisabled, GateStatus.AccessLost)) {
+        if (state.pending != null && gate.status !in setOf(GateStatus.CleanupRequired, GateStatus.SwitchingOut)) {
+            Text("An invitation command remains protected. Recheck access or retry its original identity.", color = TillFailureTheme.colors.warning)
+            TillFailureSecondaryButton("Retry invitation recovery", { onEvent(InvitationEvent.RetryCommand) }, enabled = !state.busy)
+        }
+        return
+    }
     val trainer = gate.status == GateStatus.TrainerHome && gate.verifiedRole == "trainer"
     Column(verticalArrangement = Arrangement.spacedBy(TillFailureSpacing.md)) {
         Text(if (trainer) "Client invitations" else "Your invitation", style = MaterialTheme.typography.titleLarge,

@@ -29,10 +29,10 @@ class IdentityGateTest {
     }
 
     @Test fun membershipRequiresMatchingWorkspaceRoleAndServerDocuments() {
-        val workspace = document("workspaces/w", mapOf("schemaVersion" to "1", "status" to "active"))
+        val workspace = document("workspaces/w", mapOf("schemaVersion" to "1", "status" to "active", "ownerUid" to "trainer", "membershipRevision" to "1", "activeRosterCount" to "1", "catalogContributionCount" to "1"))
         val member = document("workspaces/w/memberships/a", mapOf(
             "schemaVersion" to "1", "workspaceId" to "w", "userId" to "a",
-            "status" to "active", "role" to "client",
+            "status" to "active", "role" to "client", "revision" to "1", "catalogContributionActive" to "true",
         ))
         assertEquals(IdentityDecision.Verified("w", "client"), checkMembership("a", "w", workspace, member))
         assertEquals(IdentityDecision.InvalidProof, checkMembership("b", "w", workspace, member))

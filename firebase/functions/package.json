@@ -14,7 +14,8 @@
     "seed:pr1": "node scripts/seed-pr1.mjs",
     "seed:pr2": "node scripts/seed-pr2.mjs",
     "seed:pr3": "npm run build && node scripts/seed-pr3.mjs",
-    "provision:pr2:emulator": "npm run build && node lib/src/provisioning-cli.js"
+    "provision:pr2:emulator": "npm run build && node lib/src/provisioning-cli.js",
+    "seed:pr4": "npm run build && node scripts/seed-pr4.mjs"
   },
   "dependencies": {
     "firebase-admin": "14.4.0",
