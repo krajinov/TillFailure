@@ -1,7 +1,7 @@
 # Implementation roadmap
 
-Status: **Milestone 3 locally accepted; later product milestones require explicit approval**
-Review date: **2026-09-20**
+Status: **Milestone 3 locally accepted; Milestone 4 PRs 1–5 merged with acceptance gates open; Milestone 5 client-management plan proposed**
+Review date: **2026-10-17**
 
 Milestones are ordered, reviewable changes. Foundation work may be horizontal; feature milestones must demonstrate an end-to-end user outcome with authorization and recovery, not just screens or repositories. “Commands” are planned verification and may require files that do not exist yet.
 
@@ -45,6 +45,8 @@ Implementation status (verified through 2026-09-13): **implemented; acceptance p
 
 ## 4. Authentication, invitations, and role-aware shell
 
+Implementation status (2026-10-17): **all five slices merged through PR #8; Milestone 4 is not fully accepted**. The [closeout](milestones/milestone-4-closeout.md) consolidates original verification attribution, remaining interaction/accessibility and OS connectivity checks, physical security, unresolved policies and production release gates. The [original plan](milestones/milestone-4-plan.md) retains its historical planning baseline. Merged code/review does not waive acceptance.
+
 - **User outcome:** A user signs in/restores a session, accepts a valid invitation, completes necessary onboarding and reaches the correct client/trainer shell; expired/revoked access fails safely.
 - **Affected areas:** `auth`, `onboarding`, `app/session`, navigation, native links/push registration.
 - **Domain/data:** User/workspace/membership/profile/invitation models; session and invitation use cases; account-scoped DI/listeners.
@@ -55,6 +57,8 @@ Implementation status (verified through 2026-09-13): **implemented; acceptance p
 - **Dependencies/risks:** Approved invitation account/email binding, operator-only trainer provisioning, and email delivery provider gate the affected online slices. Offline eligibility duration and destructive recovery-discard policy gate only those future behaviors; they do not block the safe online Milestone 4 flows while grants and discard stay disabled.
 
 ## 5. Client management
+
+Planning status (2026-10-17): **PR 1 named, assigned-client read behavior approved by Josip; no implementation authorized by the documentation task**. The [Milestone 5 plan](milestones/milestone-5-plan.md) inventories existing mechanisms and proposes sequential PRs: named assigned-client read-only emulator roster/minimal details, invitation integration, then policy-gated own-profile editing, relationship revocation and private notes. PR 1 exposes only displayName and relationship/onboarding status for the active trainer’s assigned clients in the selected active workspace, with active caller/path-bound trainer authorization on every request. Its trusted response projection keeps global accounts private and tracks authoritative onboarding name changes; bounded createdAt/clientId ordering and validated scope-bound cursors grant no authority themselves. Contact data, search, mutations and sensitive content remain excluded. The missing endpoint/validators, query/index/cursor proof and native wiring are engineering deliverables of PR 1; no additional external prerequisite blocks starting it. Deployment, retention and broader visibility remain unapproved. Search, trainer editing, reassignment and archive/reactivation require their actual policies; future feature tabs remain in their existing milestones.
 
 - **User outcome:** Trainer lists, invites, opens and maintains active clients; client sees only own profile; trainer-only notes remain private.
 - **Affected areas:** `clients`, `profile`, trainer dashboard summaries.
