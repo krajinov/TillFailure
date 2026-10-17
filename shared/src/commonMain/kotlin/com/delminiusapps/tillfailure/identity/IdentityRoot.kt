@@ -21,6 +21,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.lifecycle.LifecycleEventObserver
+import com.delminiusapps.tillfailure.clients.ClientRepository
 import com.delminiusapps.tillfailure.onboarding.OnboardingRoute
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -99,7 +100,7 @@ fun IdentityRoot(client: ProductIdentityClient?, onOpenDevelopmentCatalog: (() -
                 }
                 val invitationClient = viewModel.activeClient().invitations
                 if (invitationClient == null) {
-                    IdentityStateNavigation(state, viewModel.effect, viewModel::onEvent, onOpenDevelopmentCatalog)
+                    IdentityStateNavigation(state, viewModel.effect, viewModel::onEvent, onOpenDevelopmentCatalog, clients = viewModel.activeClient().clients)
                 } else {
                     val invitations: InvitationViewModel = koinViewModel(parameters = { parametersOf(invitationClient) })
                     val invitationState by invitations.state.collectAsStateWithLifecycle()
@@ -122,7 +123,7 @@ fun IdentityRoot(client: ProductIdentityClient?, onOpenDevelopmentCatalog: (() -
                         }
                     }
                     IdentityStateNavigation(state.copy(busy = state.busy || visibleInvitationState.busy),
-                        viewModel.effect, viewModel::onEvent, onOpenDevelopmentCatalog, onboardingClient = invitationClient) {
+                        viewModel.effect, viewModel::onEvent, onOpenDevelopmentCatalog, onboardingClient = invitationClient, clients = viewModel.activeClient().clients) {
                         InvitationScreen(visibleInvitationState, state, invitations::onEvent)
                     }
                 }
@@ -140,6 +141,7 @@ private fun IdentityStateNavigation(
     onEvent: (IdentityEvent) -> Unit,
     onOpenDevelopmentCatalog: (() -> Unit)?,
     onboardingClient: com.delminiusapps.tillfailure.invitations.InvitationClient? = null,
+    clients: ClientRepository? = null,
     invitations: (@Composable () -> Unit)? = null,
 ) {
     val backStack = rememberNavBackStack(identitySavedState, IdentityStateDestination(GateStatus.Loading))
@@ -173,7 +175,7 @@ private fun IdentityStateNavigation(
         entryProvider = entryProvider {
             entry<IdentityStateDestination> {
                 // Current server gate always wins over restored keys and buffered effects.
-                IdentityScreen(state, onEvent, onOpenDevelopmentCatalog, invitations,
+                IdentityScreen(state, onEvent, onOpenDevelopmentCatalog, invitations, clients = clients,
                     onboarding = onboardingClient?.let { service -> { OnboardingRoute(state, service) { onEvent(IdentityEvent.Retry) } } })
             }
         },
@@ -187,10 +189,11 @@ fun IdentityScreen(
     onOpenDevelopmentCatalog: (() -> Unit)? = null,
     invitations: (@Composable () -> Unit)? = null,
     onboarding: (@Composable () -> Unit)? = null,
+    clients: ClientRepository? = null,
 ) {
     if (state.status in setOf(GateStatus.ClientHome, GateStatus.TrainerHome)) {
         key(state.accountUid, state.verifiedWorkspaceId, state.verifiedRole, state.authorityEpoch) {
-            RoleShell(state, onEvent, invitations, onboarding)
+            RoleShell(state, onEvent, invitations, onboarding, clients)
         }
         return
     }
