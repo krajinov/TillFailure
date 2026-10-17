@@ -507,6 +507,53 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
         }
     }
 
+    func callClients(uid: String, json: String, callback: @escaping (NativeClientOutcome) -> Void) -> String {
+        let token = UUID().uuidString
+        #if DEBUG
+        lock.lock()
+        defer { lock.unlock() }
+        guard !terminated, !accountFrozen, auth.currentUser?.uid == uid, generation.projectID == "demo-tillfailure-m3",
+              json.utf8.count <= 8192, let bytes = json.data(using: .utf8),
+              let payload = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any],
+              ["list", "get"].contains(payload["action"] as? String ?? "") else {
+            callback(NativeClientOutcome(json: nil, error: "unavailable")); return token
+        }
+        let issuedEpoch = invitationAuthEpoch, callbackEpoch = currentEpoch
+        var cancelled = false
+        cancellations[token] = { cancelled = true }
+        func allowed() -> Bool { !cancelled && !self.terminated && !self.accountFrozen && self.auth.currentUser?.uid == uid &&
+            self.invitationAuthEpoch == issuedEpoch && self.currentEpoch == callbackEpoch }
+        auth.currentUser!.getIDTokenForcingRefresh(true) { [weak self] _, error in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.lock.lock(); defer { self.lock.unlock() }
+                guard allowed() else { return }
+                if error != nil { self.cancellations.removeValue(forKey: token); callback(NativeClientOutcome(json: nil, error: "unavailable")); return }
+                let functions = Functions.functions(app: self.generation.app, region: "europe-west1")
+                let port = Int(ProcessInfo.processInfo.environment["TF_FUNCTIONS_EMULATOR_PORT"] ?? "") ?? 5001
+                functions.useEmulator(withHost: self.emulatorHost, port: port)
+                functions.httpsCallable("clientsEmulator").call(payload) { result, error in
+                    DispatchQueue.main.async {
+                        self.lock.lock(); defer { self.lock.unlock() }
+                        guard allowed() else { return }
+                        self.cancellations.removeValue(forKey: token)
+                        if let error = error as NSError? {
+                            let reason = error.domain == FunctionsErrorDomain ? error.localizedDescription : "unavailable"
+                            callback(NativeClientOutcome(json: nil, error: reason))
+                        } else if let data = result?.data, let bytes = try? JSONSerialization.data(withJSONObject: data),
+                                  bytes.count <= 64 * 1024, let json = String(data: bytes, encoding: .utf8) {
+                            callback(NativeClientOutcome(json: json, error: nil))
+                        } else { callback(NativeClientOutcome(json: nil, error: "unavailable")) }
+                    }
+                }
+            }
+        }
+        #else
+        callback(NativeClientOutcome(json: nil, error: "unavailable"))
+        #endif
+        return token
+    }
+
     func callInvitation(uid: String, json: String, prepare: @escaping () -> KotlinBoolean,
                         callback: @escaping (NativeInvitationOutcome) -> Void) -> String {
         let token = UUID().uuidString

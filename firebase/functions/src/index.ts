@@ -1,3 +1,4 @@
+import { clientOperation, clientFailure } from "./clients.js";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { setGlobalOptions } from "firebase-functions/v2";
 import { bookAppointment } from "./booking.js";
@@ -77,5 +78,15 @@ export const bookAppointmentSpike = onCall(async (request) => {
     const message = error instanceof Error ? error.message : "booking-failed";
     if (AUTHORIZATION_FAILURES.has(message)) throw new HttpsError("permission-denied", message);
     throw new HttpsError("failed-precondition", message);
+  }
+});
+
+export const clientsEmulator = onCall(async request => {
+  try {
+    requireProvisioningEmulators();
+    return await clientOperation(emulatorFirestore(), request.auth?.uid, request.data);
+  } catch (error) {
+    const failure = clientFailure(error);
+    throw new HttpsError(failure.code, failure.reason);
   }
 });

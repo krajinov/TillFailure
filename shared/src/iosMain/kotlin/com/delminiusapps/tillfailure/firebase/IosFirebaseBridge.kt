@@ -11,6 +11,7 @@ import com.delminiusapps.tillfailure.persistence.IosAtomicFilePersistence
 import com.delminiusapps.tillfailure.persistence.NativeRecoveryPersistenceBridge
 import com.delminiusapps.tillfailure.persistence.RecoveryUidContract
 import com.delminiusapps.tillfailure.invitations.*
+import com.delminiusapps.tillfailure.clients.*
 import platform.Foundation.NSUUID
 
 class NativeFirebaseAuthState(
@@ -68,9 +69,12 @@ class NativeMembershipDiscoveryResult(
 
 class NativeDepartureMarkerRead(val uid: String?, val epoch: Long, val readable: Boolean)
 
+class NativeClientOutcome(val json: String?, val error: String?)
+
 class NativeInvitationOutcome(val json: String?, val error: String?, val ambiguous: Boolean)
 
 interface NativeIdentityBridge : NativeFirebaseBridge {
+    fun callClients(uid: String, json: String, callback: (NativeClientOutcome) -> Unit): String
     val invitationChanges: InvitationChanges
     /** Shared native issuance/freeze lock, including all protected read-modify-write operations. */
     fun withWritableAccount(uid: String, operation: () -> Boolean): Boolean
@@ -130,6 +134,18 @@ class IosProductIdentityClient(
             }
             // Keep native settlement alive to reconcile durable work; suppress only presentation.
             return FirebaseCancellation { cancelled = true }
+        }
+    }
+    override val clients: ClientRepository = object : ClientRepository {
+        override fun read(scope: ClientScope, request: ClientRequest, callback: (ClientResult) -> Unit): FirebaseCancellation {
+            if (!ClientJson.valid(request) || request.workspaceId != scope.workspaceId) {
+                callback(ClientResult(error = "unavailable")); return FirebaseCancellation {}
+            }
+            var cancelled = false
+            val token = bridge.callClients(scope.uid, ClientJson.request(request)) { result ->
+                if (!cancelled) callback(ClientJson.result(request, result.json, result.error))
+            }
+            return FirebaseCancellation { cancelled = true; bridge.cancel(token) }
         }
     }
     override val departure: CleanDeparturePort get() = this
