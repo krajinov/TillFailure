@@ -136,7 +136,7 @@ class InvitationTest {
         ledger.settle("A", request, InvitationOutcome(error = "unavailable", ambiguous = true))
         val restored = InvitationLedger(store)
         assertEquals(request.pending("A"), restored.pending("A"))
-        assertNull(restored.pending("B"))
+        assertFails { restored.pending("B") } // An uninitialized partition is not proof of no work.
         assertTrue(restored.prepare("A", request))
         restored.settle("A", request, InvitationOutcome(reply = InvitationReply(invitationId = link.invitationId, workspaceId = "w", tokenVersion = 1, expiresAtMillis = 1000, status = "accepted", replayed = true)))
         assertTrue(store.record!!.pendingInvitationCommands.isEmpty())

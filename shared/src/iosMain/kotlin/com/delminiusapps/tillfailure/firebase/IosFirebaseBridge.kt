@@ -72,6 +72,9 @@ class NativeInvitationOutcome(val json: String?, val error: String?, val ambiguo
 
 interface NativeIdentityBridge : NativeFirebaseBridge {
     val invitationChanges: InvitationChanges
+    /** Shared native issuance/freeze lock, including all protected read-modify-write operations. */
+    fun withWritableAccount(uid: String, operation: () -> Boolean): Boolean
+    fun observeConnectivity(callback: (Boolean) -> Unit): String
     fun hasInvitationInFlight(): Boolean
     /** prepare executes under the native issuance lock before the SDK call, after writable/UID checks. */
     fun callInvitation(uid: String, json: String, prepare: () -> Boolean, callback: (NativeInvitationOutcome) -> Unit): String
@@ -104,7 +107,12 @@ class IosProductIdentityClient(
     private val invitationLedger = InvitationLedger(recoveryStore)
     override val invitations: InvitationClient = object : InvitationClient {
         override fun workspacePreference(uid: String) = invitationLedger.workspacePreference(uid)
-        override fun saveWorkspacePreference(uid: String, workspaceId: String) = invitationLedger.saveWorkspacePreference(uid, workspaceId)
+        override fun saveWorkspacePreference(uid: String, workspaceId: String) {
+            bridge.withWritableAccount(uid) {
+                runCatching { invitationLedger.saveWorkspacePreference(uid, workspaceId); true }.getOrDefault(false)
+            }
+        }
+        override fun recoveryState(uid: String) = invitationLedger.recoveryState(uid)
         override val memory get() = PendingInvitationLinks.memory
         override fun newCommandKey(): String = NSUUID().UUIDString
         override fun pending(uid: String): PendingInvitationCommand? = invitationLedger.pending(uid)
@@ -129,13 +137,19 @@ class IosProductIdentityClient(
     override val ownership: CleanDepartureOwnership get() = bridge.ownership
     override fun isRetired(): Boolean = bridge.isRetired()
 
+    override fun observeConnectivity(callback: (Boolean) -> Unit): FirebaseCancellation {
+        val token = bridge.observeConnectivity(callback)
+        return FirebaseCancellation { bridge.cancel(token) }
+    }
     override fun hasPinnedIdentity(): Boolean = bridge.hasPinnedIdentity()
-    override fun claimPinnedIdentity(uid: String): Boolean = runCatching {
-        if (!bridge.hasPinnedIdentity() && recoveryStore.read(uid) == null) {
-            recoveryStore.write(AccountPersistenceEnvelope(uid = uid))
-        }
-        bridge.claimPinnedIdentity(uid)
-    }.getOrDefault(false)
+    override fun claimPinnedIdentity(uid: String): Boolean = bridge.withWritableAccount(uid) {
+        runCatching {
+            if (!bridge.hasPinnedIdentity() && recoveryStore.read(uid) == null) {
+                recoveryStore.write(AccountPersistenceEnvelope(uid = uid))
+            }
+            bridge.claimPinnedIdentity(uid)
+        }.getOrDefault(false)
+    }
 
     override fun readMarker(): DepartureMarkerRead {
         val read = bridge.readDepartureMarker()

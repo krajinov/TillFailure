@@ -5,6 +5,7 @@ import FirebaseCore
 import FirebaseFirestore
 import FirebaseFunctions
 import Foundation
+import Network
 import Shared
 
 /// Process-wide ownership of the named `FirebaseApp` instances used by the spike bridge.
@@ -245,6 +246,13 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
         return try issue()
     }
 
+    func withWritableAccount(uid: String, operation: () -> KotlinBoolean) -> Bool {
+        issueIfWritable {
+            guard auth.currentUser?.uid == uid else { return false }
+            return operation().boolValue
+        } ?? false
+    }
+
     func readDepartureMarker() -> NativeDepartureMarkerRead {
         Self.identityPinLock.lock()
         defer { Self.identityPinLock.unlock() }
@@ -379,6 +387,33 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
         if epoch == currentEpoch && (allowTerminated || !terminated) { deliver() }
     }
 
+    private final class ConnectivityGate {
+        private let lock = NSLock()
+        private var value = false
+        var cancelled: Bool {
+            get { lock.lock(); defer { lock.unlock() }; return value }
+            set { lock.lock(); value = newValue; lock.unlock() }
+        }
+    }
+
+    func observeConnectivity(callback: @escaping (KotlinBoolean) -> Void) -> String {
+        let monitor = NWPathMonitor()
+        let token = UUID().uuidString
+        let gate = ConnectivityGate()
+        monitor.pathUpdateHandler = { [weak self] path in
+            let connected = path.status == .satisfied
+            DispatchQueue.main.async {
+                guard !gate.cancelled else { return }
+                self?.deliverIfEpochMatches(epoch: 0) { callback(KotlinBoolean(bool: connected)) }
+            }
+        }
+        _ = issueIfLive {
+            registerCancellation(token: token) { gate.cancelled = true; monitor.cancel() }
+            monitor.start(queue: DispatchQueue(label: "tillfailure.connectivity"))
+        }
+        return token
+    }
+
     func observeSession(accountEpoch: Int64, callback_: @escaping (NativeFirebaseAuthState) -> Void) -> String {
         activate(epoch: accountEpoch)
         // A terminated bridge registers no listener: there is no live SDK instance left to observe.
@@ -413,7 +448,7 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
 
     func signIn(email: String, password: String, accountEpoch: Int64, callback: @escaping (NativeFirebaseUnitResult) -> Void) -> String {
         activate(epoch: accountEpoch)
-        guard !hasPinnedIdentity() else {
+        guard !hasPinnedIdentity(), auth.currentUser == nil else {
             return deliverTerminatedFailure(accountEpoch: accountEpoch) {
                 callback(NativeFirebaseUnitResult(failure: NativeFirebaseFailure(code: "FAILED_PRECONDITION", retryable: false)))
             }

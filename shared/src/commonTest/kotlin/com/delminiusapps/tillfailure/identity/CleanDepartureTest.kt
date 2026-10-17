@@ -73,6 +73,17 @@ class CleanDepartureTest {
         assertFalse(port.canEnter("account_b"))
     }
 
+    @Test fun invalidDurableEpochNeverStartsCleanup() {
+        val port = FakePort()
+        port.marker = AccountSwitchMarker(departingUid = "account_a", accountEpoch = 0, state = "SwitchingOut")
+        var outcome: DepartureOutcome? = null
+        CleanDepartureCoordinator(port).recover({}, { result, _ -> outcome = result })
+        assertEquals(DepartureOutcome.CleanupRequired, outcome)
+        assertTrue(port.signedIn)
+        assertEquals(0, port.fenceCount)
+        assertEquals(0, port.marker?.accountEpoch)
+    }
+
     @Test fun unsupportedFirestorePathUidStillRecoversItsOwnDepartureMarker() {
         val port = FakePort()
         port.marker = AccountSwitchMarker(departingUid = "unsafe/uid", accountEpoch = 7, state = "SwitchingOut")

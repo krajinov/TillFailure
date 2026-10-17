@@ -56,7 +56,10 @@ class AndroidFirebaseSpikeClient(
     internal var beforeInvitationCompletionForTest: ((() -> Unit) -> Unit)? = null
     override val invitations: InvitationClient = object : InvitationClient {
         override fun workspacePreference(uid: String) = synchronized(callbackLock) { invitationLedger.workspacePreference(uid) }
-        override fun saveWorkspacePreference(uid: String, workspaceId: String) = synchronized(callbackLock) { if (!accountFrozen) invitationLedger.saveWorkspacePreference(uid, workspaceId) }
+        override fun saveWorkspacePreference(uid: String, workspaceId: String) = synchronized(callbackLock) {
+            if (!terminated.get() && !accountFrozen && auth.currentUser?.uid == uid) invitationLedger.saveWorkspacePreference(uid, workspaceId)
+        }
+        override fun recoveryState(uid: String) = invitationLedger.recoveryState(uid)
         override val memory get() = PendingInvitationLinks.memory
         override fun newCommandKey(): String = UUID.randomUUID().toString()
         override fun pending(uid: String): PendingInvitationCommand? = synchronized(callbackLock) { invitationLedger.pending(uid) }
@@ -225,12 +228,29 @@ class AndroidFirebaseSpikeClient(
         val identityPinLock = Any()
     }
 
+    override fun observeConnectivity(callback: (Boolean) -> Unit): FirebaseCancellation {
+        val manager = applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        val cancelled = AtomicBoolean(false)
+        val main = Handler(Looper.getMainLooper())
+        val observer = object : android.net.ConnectivityManager.NetworkCallback() {
+            private fun publish(connected: Boolean) { main.post { if (!cancelled.get() && !terminated.get()) callback(connected) } }
+            override fun onAvailable(network: android.net.Network) = publish(true)
+            override fun onLost(network: android.net.Network) = publish(manager.activeNetwork != null)
+        }
+        return try {
+            if (issueIfLive { manager.registerDefaultNetworkCallback(observer); true } == null) return FirebaseCancellation {}
+            main.post { if (!cancelled.get() && !terminated.get()) callback(manager.activeNetwork != null) }
+            FirebaseCancellation { if (cancelled.compareAndSet(false, true)) manager.unregisterNetworkCallback(observer) }
+        } catch (_: Exception) { FirebaseCancellation {} }
+    }
+
     override fun hasPinnedIdentity(): Boolean = runCatching {
         identityPin.contains("uidSha256")
     }.getOrDefault(true)
 
-    override fun claimPinnedIdentity(uid: String): Boolean = synchronized(identityPinLock) {
-        runCatching {
+    override fun claimPinnedIdentity(uid: String): Boolean = synchronized(callbackLock) {
+        if (terminated.get() || accountFrozen || auth.currentUser?.uid != uid) return@synchronized false
+        synchronized(identityPinLock) { runCatching {
             val digest = MessageDigest.getInstance("SHA-256").digest(uid.toByteArray(Charsets.UTF_8))
                 .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
             val existing = identityPin.getString("uidSha256", null)
@@ -240,7 +260,7 @@ class AndroidFirebaseSpikeClient(
                 identityPin.edit().putString("uidSha256", digest).commit()
             }
             else existing == digest
-        }.getOrDefault(false)
+        }.getOrDefault(false) }
     }
 
     override fun observeSession(accountEpoch: Long, callback: (FirebaseAuthSession) -> Unit): FirebaseCancellation {
@@ -272,7 +292,7 @@ class AndroidFirebaseSpikeClient(
 
     override fun signIn(email: String, password: String, epoch: Long, callback: (StableFirebaseFailure?) -> Unit): FirebaseCancellation {
         val cancelled = AtomicBoolean(false)
-        val task = issueIfLive { if (accountFrozen || hasPinnedIdentity()) null else auth.signInWithEmailAndPassword(email, password) } ?: run {
+        val task = issueIfLive { if (accountFrozen || hasPinnedIdentity() || auth.currentUser != null) null else auth.signInWithEmailAndPassword(email, password) } ?: run {
             callback(StableFirebaseFailure(StableFirebaseErrorCode.FAILED_PRECONDITION, false))
             return FirebaseCancellation {}
         }

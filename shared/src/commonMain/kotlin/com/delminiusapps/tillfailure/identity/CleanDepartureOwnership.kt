@@ -36,6 +36,7 @@ class CleanDepartureOwnership {
     private var departingUid: String? = null
     private var postMarker = false
     private var settled = false
+    private var generation = 0L
     private val observers = mutableListOf<(DepartureOutcome) -> Unit>()
 
     fun progress(): DepartureProgress = lock.locked {
@@ -48,6 +49,13 @@ class CleanDepartureOwnership {
 
     /** The departing UID, or null when idle. */
     fun currentUid(): String? = lock.locked { departingUid }
+
+    fun admissionGeneration(): Long = lock.locked { generation }
+
+    /** A completed departure also invalidates earlier proofs. No storage/SDK calls in [publish]. */
+    fun publishWhenIdle(expectedGeneration: Long, publish: () -> Unit): Boolean = lock.locked {
+        if (departingUid != null || generation != expectedGeneration) false else { publish(); true }
+    }
 
     /** True once a departure has settled; cleared when the next one is leased. */
     fun isSettled(): Boolean = lock.locked { settled }
@@ -63,6 +71,7 @@ class CleanDepartureOwnership {
             false
         } else {
             departingUid = uid
+            generation++
             postMarker = false
             settled = false
             true

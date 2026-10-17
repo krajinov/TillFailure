@@ -14,6 +14,8 @@ data class MembershipDiscoveryResult(
 
 /** Narrow product surface. All reads used for authorization must be server sourced. */
 interface ProductIdentityClient {
+    /** Connectivity is a recheck trigger, never evidence of authority. Delivered on the UI thread. */
+    fun observeConnectivity(callback: (Boolean) -> Unit): FirebaseCancellation = FirebaseCancellation {}
     val invitations: com.delminiusapps.tillfailure.invitations.InvitationClient? get() = null
     val departure: CleanDeparturePort? get() = null
     /** Installation-local account pin. A read failure must be reported as pinned/blocked. */

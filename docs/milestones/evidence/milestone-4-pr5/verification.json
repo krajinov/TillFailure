@@ -1,0 +1,150 @@
+{
+  "date": "2026-10-16",
+  "baseline": "b12b46797a63cf8c58842f284b02481435a2c8c4",
+  "branch": "feature/milestone-4-pr5-recovery-hardening",
+  "milestoneFullyAccepted": false,
+  "fresh": {
+    "androidShared": {
+      "tests": 137,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "iosShared": {
+      "tests": 138,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "androidDebugReleaseAndDeviceTestBuild": "passed",
+    "iosNativeMain": {
+      "passLabels": 21,
+      "failLabels": 0,
+      "scope": "Before final markerless-admission/schema-tag follow-up; real SDK/store and lifecycle recovery, not touch evidence"
+    },
+    "iosActualProcessRestart": {
+      "stagingPassLabels": 2,
+      "restorePassLabels": 5,
+      "failLabels": 0,
+      "newSignInOnRestore": false
+    },
+    "iosDebugReleaseBuild": "passed after final shared/admission changes; simulator Debug signed, Release unsigned",
+    "androidDamagedStorage": {
+      "tests": 1,
+      "failures": 0,
+      "scope": "Encrypted storage damage closes root, preserves bytes and Auth; independent test namespace"
+    },
+    "androidActualProcessRestart": {
+      "stageTests": 1,
+      "restoreTests": 1,
+      "failures": 0,
+      "newSignInOnRestore": false,
+      "scope": "Original UID/key restored; receipt reconciles and ordinary cleanup completes after isolated Auth/Functions were restored"
+    },
+    "iosSuspensionRevalidation": {
+      "passLabels": 3,
+      "failLabels": 0,
+      "scope": "Retained Auth owner, current server denial and ordinary clean departure; initial live-notification attempt failed with emulator post-commit error"
+    },
+    "androidIntegrated": {
+      "tests": 1,
+      "failures": 0,
+      "scope": "In-flight original-command replay, explicit SDK network cycle/shared connectivity stimuli, revalidation denial, root recreation, original recovery, foreground, account disablement, ordered departure and B isolation; resumed original receipt/profile after prior partial runs"
+    },
+    "androidWorkspaceSuspension": {
+      "tests": 1,
+      "failures": 0,
+      "scope": "Open root, confirmed fixture suspension, explicit SDK network/revalidation cycle, denial and clean departure"
+    }
+  },
+  "retained": {
+    "departureDurableBoundaries": "PR 1 report; not rerun in PR 5",
+    "backendRules": "PR 4: 154/154; PR 3: 144/144; not rerun for unchanged backend/Rules sources",
+    "interaction": "PR 4 report; original attribution retained"
+  },
+  "openGates": [
+    "iOS completion, Home, Profile, Back touch sequence and keyboard submission/dismissal",
+    "Large-text lower-action reachability, OS Dynamic Type and screen readers",
+    "Native OS network-toggle/offline-startup and reliable live Android revocation notification acceptance; current evidence combines shared, explicit reconnect and retained native results",
+    "Full Android invitation interaction walkthrough",
+    "Physical-device storage, backup and shared-device privacy",
+    "Permanent unresolved-command retention and trusted-resolution policy",
+    "Production identity, provisioning, invitation delivery, infrastructure and privacy approvals"
+  ],
+  "offlineGrantIssued": false,
+  "destructiveRecoveryAdded": false,
+  "productionEnabled": false,
+  "failedAttempts": [
+    "Restricted cache/device access before authorized native/build execution",
+    "Temporary external emulator config misresolved Functions source; dataset preserved across correction",
+    "Firestore post-commit listener notification returned UNKNOWN/HTTP 500; earlier native attempts failed or stalled and are not counted as passing",
+    "Overlapping iOS Release invocation cancelled; not a passing build",
+    "Simulator automation app inspection took approximately twenty minutes; no new touch evidence",
+    "Auth, Functions and hub stopped while Firestore remained; unavailable native retries preserved commands. Latest Firestore exported directly; missing synthetic Auth identities recreated; successful original-command retry followed without new device sign-in.",
+    "An integrated Android rerun initially expected onboarding although prior probe had committed completion and disabled the fixture account. The probe now resumes original server state/receipt; only the test account-status precondition was re-established, without changing profile, receipt or device payload."
+  ],
+  "implementationStageAttribution": "The existing fresh section retains the original implementation-stage runs, including 137 Android / 138 iOS and their native evidence. It is not a final-review rerun. Final-review results are separate below.",
+  "finalReview": {
+    "date": "2026-10-16",
+    "startingHead": "b12b46797a63cf8c58842f284b02481435a2c8c4",
+    "branchVerified": true,
+    "remoteMainAtReview": "b12b46797a63cf8c58842f284b02481435a2c8c4",
+    "remoteBranchAndPrAtStart": "absent; checked again before publication",
+    "initialFileCount": 30,
+    "finalFileCount": 33,
+    "reviewScope": "Complete tracked and untracked diff; registry admission, old envelope compatibility, storage preservation, command settlement, connectivity/lifecycle ownership, selection, Auth isolation and Release gates",
+    "fixes": [
+      "Serialize final role publication with existing departure ownership lock and proof generation, including a departure that settles during final inspection",
+      "Use explicit host foreground; background retry or Auth completion cannot admit a role",
+      "Cancel and generation-fence replaced Auth/connectivity observers; suppress duplicate network events and retired native monitor registration",
+      "Use existing iOS issuance/freeze lock across recreated wrappers for initialization/preferences; both platforms require live, unfrozen, current Auth ownership",
+      "Preserve ambiguity through native reply decoding; reject mutations missing command identity",
+      "Keep prior positive invitation version range compatible, including highest representable matching receipts",
+      "Strengthen retained pending/complete integrated fixture assertions without resetting payloads, revisions or receipts"
+    ],
+    "androidShared": {
+      "tests": 144,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "iosShared": {
+      "tests": 145,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "androidDebugReleaseAndDeviceTestBuild": "passed after final source changes",
+    "iosDebugBuild": "passed after final source changes; signed simulator",
+    "iosReleaseBuild": "passed after final source changes; unsigned simulator",
+    "androidNative": {
+      "tests": 2,
+      "failures": 0,
+      "scope": "Final APK: no-Auth/retired owner guards, double disposal/queued callback fencing, frozen byte preservation, original-command retention across preference update; runtime synthetic fixture retained"
+    },
+    "iosNativeGuards": {
+      "passLabels": 12,
+      "failLabels": 0,
+      "scope": "Final signed Debug app: no-Auth/retired writes refused; registration, double disposal, queued and retired callback fencing"
+    },
+    "iosNativeFrozen": {
+      "passLabels": 8,
+      "failLabels": 0,
+      "scope": "Final signed Debug app: restored dedicated Auth owner, recreated Kotlin wrapper shares native freeze lock, exact encrypted bytes preserved while frozen; unfreeze/preference update preserves original command and blocks departure; transport withheld"
+    },
+    "nativeFixturePolicy": "Only two new fixed synthetic Auth identities in an isolated Auth-only emulator imported from the prior snapshot. Existing identities and device partitions were not reset. Original pending fixtures and owner remain intact; no backend mutation was issued by these checks.",
+    "integratedNativeRerun": false,
+    "integratedAssertionChanges": "Reviewed and compiled, not attributed to the original integrated native pass",
+    "revocationEvidenceAttribution": "Original Android integrated/suspension uses explicit SDK network/server revalidation; original Swift main revocation/disablement uses live notification. New focused checks do not claim revocation/OS network execution.",
+    "backendRulesRerun": false,
+    "backendRulesReason": "No backend/Rules source changes or concrete backend concern identified",
+    "interactionRetried": false,
+    "interactionReason": "Known broken iOS automation surface; all original interaction gates remain open",
+    "audit": "33 intended files; no secrets, runtime fixture password, bearer links, generated output, machine paths or whitespace errors; emulator owner literal remains test-only",
+    "milestoneFullyAccepted": false,
+    "offlineGrantIssued": false,
+    "productionEnabled": false,
+    "releaseArtifactAudit": "Swift PR 5 harness name/labels absent from Release executable; Android instrumentation class absent from Release dex. Source host gates remain DEBUG/BuildConfig.DEBUG.",
+    "ownedAuthEmulator": "gracefully stopped after export; retained snapshot and new synthetic identities preserved"
+  }
+}

@@ -92,7 +92,7 @@ fun IdentityRoot(client: ProductIdentityClient?, onOpenDevelopmentCatalog: (() -
                 DisposableEffect(viewModel, lifecycle) {
                     val observer = LifecycleEventObserver { _, event ->
                         if (event == Lifecycle.Event.ON_STOP) viewModel.onEvent(IdentityEvent.Suspend)
-                        if (event == Lifecycle.Event.ON_START) viewModel.onEvent(IdentityEvent.Retry)
+                        if (event == Lifecycle.Event.ON_START) viewModel.onEvent(IdentityEvent.Foreground)
                     }
                     lifecycle.addObserver(observer)
                     onDispose { lifecycle.removeObserver(observer) }
@@ -232,6 +232,16 @@ fun IdentityScreen(
                 GateStatus.SessionExpired -> "Your session expired. Account recovery is required before another sign-in."
                 GateStatus.CleanupRequired -> "This installation needs account cleanup before another sign-in. Contact support."
                 GateStatus.SwitchingOut -> "Safely signing out…"
+                GateStatus.ReconciliationRequired -> "Account verification needs reconciliation. Access remains locked; contact support."
+                GateStatus.LockedRecovery -> when (state.recovery) {
+                    com.delminiusapps.tillfailure.invitations.ProtectedRecoveryState.StorageLocked -> "Locked recovery: protected storage cannot be read safely. Nothing was deleted. Retry or contact support; another account cannot sign in."
+                    com.delminiusapps.tillfailure.invitations.ProtectedRecoveryState.ReconciliationRequired -> "Locked recovery: retained work needs an approved reconciliation policy. No discard or automatic repair is available."
+                    else -> when (state.recoveryCause) {
+                        GateStatus.AccessLost, GateStatus.AccountDisabled, GateStatus.SessionExpired -> "Locked recovery: access is no longer verified. The original command remains protected. Retry under this account; a receipt cannot restore workspace access."
+                        GateStatus.ReconciliationRequired -> "Locked recovery: reconciliation needs review. The original command remains protected."
+                        else -> "Locked recovery: connect and retry the original command. An unresolved result keeps sign-out blocked. Permanent resolution requires an approved policy; discard is unavailable."
+                    }
+                }
                 GateStatus.DepartureBlocked -> "Sign-out is blocked by pending work or an unavailable cleanup check. Retry while connected."
             },
             color = TillFailureTheme.colors.primaryText,
@@ -275,6 +285,11 @@ fun IdentityScreen(
             Button(onClick = { onEvent(IdentityEvent.Retry) }, enabled = !state.busy) { Text("Recheck access") }
         } else if (state.status == GateStatus.ConnectToVerify) {
             Button(onClick = { onEvent(IdentityEvent.Retry) }) { Text("Retry") }
+        }
+        if (state.status in setOf(GateStatus.AccessLost, GateStatus.LockedRecovery) && state.accountUid != null &&
+            state.recovery !in setOf(com.delminiusapps.tillfailure.invitations.ProtectedRecoveryState.StorageLocked,
+                com.delminiusapps.tillfailure.invitations.ProtectedRecoveryState.ReconciliationRequired)) {
+            Button(onClick = { onEvent(IdentityEvent.ChangeWorkspace) }, enabled = !state.busy) { Text("Choose another workspace") }
         }
         if (state.status == GateStatus.CleanupRequired) {
             Button(onClick = { onEvent(IdentityEvent.RetryCleanup) }, enabled = !state.busy) { Text("Retry cleanup") }

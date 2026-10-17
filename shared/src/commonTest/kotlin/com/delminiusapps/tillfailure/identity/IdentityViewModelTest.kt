@@ -361,7 +361,7 @@ class IdentityViewModelTest {
         assertEquals("complete", client.documents.getValue(path).fields["onboardingStatus"])
         model.onEvent(IdentityEvent.Suspend); assertEquals(GateStatus.Loading, model.state.value.status)
         client.refreshFailure = StableFirebaseFailure(StableFirebaseErrorCode.UNAVAILABLE, true)
-        model.onEvent(IdentityEvent.Retry); assertEquals(GateStatus.ConnectToVerify, model.state.value.status)
+        model.onEvent(IdentityEvent.Foreground); assertEquals(GateStatus.ConnectToVerify, model.state.value.status)
     }
 
     @Test fun multipleMembershipsRequireExplicitSelectionAndRevalidateForgedOrRevokedChoices() {
@@ -384,10 +384,10 @@ class IdentityViewModelTest {
 
     @Test fun signedOutAndRestrictedRootsRemainUsableAcrossBackgroundForeground() {
         val signedOut = FakeIdentityClient(); val auth = IdentityViewModel(signedOut); signedOut.emitSession(null)
-        auth.onEvent(IdentityEvent.Suspend); auth.onEvent(IdentityEvent.Retry)
+        auth.onEvent(IdentityEvent.Suspend); auth.onEvent(IdentityEvent.Foreground)
         assertEquals(GateStatus.SignedOut, auth.state.value.status)
         val anonymous = FakeIdentityClient(); val restricted = IdentityViewModel(anonymous); anonymous.emitSession("guest", anonymous = true)
-        restricted.onEvent(IdentityEvent.Suspend); restricted.onEvent(IdentityEvent.Retry)
+        restricted.onEvent(IdentityEvent.Suspend); restricted.onEvent(IdentityEvent.Foreground)
         assertEquals(GateStatus.AnonymousSession, restricted.state.value.status)
         assertEquals(0, anonymous.discoveryCount)
     }
@@ -419,9 +419,202 @@ class IdentityViewModelTest {
         model.onEvent(IdentityEvent.Retry); assertEquals(GateStatus.AccessLost, model.state.value.status)
     }
 
+    @Test fun cleanupRetryWithoutAMarkerWaitsForAuthInsteadOfExposingAnotherSignIn() {
+        val client = FakeIdentityClient().apply { pinAllowed = false }
+        client.departurePort = FakeDeparturePort(client)
+        val model = IdentityViewModel(client)
+        client.emitSession("alice")
+        assertEquals(GateStatus.CleanupRequired, model.currentState().status)
+        client.deferSessionRegistration = true
+        model.onEvent(IdentityEvent.RetryCleanup)
+        assertEquals(GateStatus.Loading, model.currentState().status)
+        model.onEvent(IdentityEvent.SignIn)
+        assertEquals(GateStatus.Loading, model.currentState().status)
+        assertFalse(model.currentState().canSignOut)
+    }
+
+    @Test fun damagedProtectedRegistryLocksBeforeServerReadsAndCanRetryWithoutDeletion() {
+        val client = FakeIdentityClient()
+        client.recovery = com.delminiusapps.tillfailure.invitations.ProtectedRecoveryState.StorageLocked
+        val model = IdentityViewModel(client)
+        client.emitSession("alice")
+        assertEquals(GateStatus.LockedRecovery, model.currentState().status)
+        assertTrue(client.getPaths.isEmpty())
+        assertEquals(0, client.refreshCount)
+        assertFalse(model.currentState().canSignOut)
+        client.recovery = com.delminiusapps.tillfailure.invitations.ProtectedRecoveryState.Clean
+        model.onEvent(IdentityEvent.Retry)
+        assertEquals(GateStatus.Onboarding, model.currentState().status)
+    }
+
+    @Test fun authorityLossWithPendingCommandLocksAndLateCallbackCannotReopenShell() {
+        for (path in listOf("users/alice", "workspaces/w", "workspaces/w/memberships/alice")) {
+            val client = FakeIdentityClient()
+            val model = IdentityViewModel(client)
+            client.emitSession("alice")
+            val late = client.listeners.getValue("workspaces/w/memberships/alice")
+            client.recovery = com.delminiusapps.tillfailure.invitations.ProtectedRecoveryState.PendingCommand
+            client.listeners.getValue(path)(FirebaseDocumentResult(failure = StableFirebaseFailure(StableFirebaseErrorCode.PERMISSION_DENIED, false)))
+            assertEquals(GateStatus.LockedRecovery, model.currentState().status, path)
+            assertEquals(GateStatus.AccessLost, model.currentState().recoveryCause)
+            assertNull(model.currentState().verifiedRole)
+            late(FirebaseDocumentResult(document = client.documents.getValue("workspaces/w/memberships/alice")))
+            assertEquals(GateStatus.LockedRecovery, model.currentState().status)
+            // Settling a receipt does not grant access; a fresh denied server check still wins.
+            client.recovery = com.delminiusapps.tillfailure.invitations.ProtectedRecoveryState.Clean
+            client.refreshFailure = StableFirebaseFailure(StableFirebaseErrorCode.PERMISSION_DENIED, false)
+            model.onEvent(IdentityEvent.Retry)
+            assertEquals(GateStatus.AccessLost, model.currentState().status)
+        }
+    }
+
+    @Test fun connectivityAndForegroundAlwaysRevalidateAndNeverUseAnOfflineGrant() {
+        val client = FakeIdentityClient()
+        val model = IdentityViewModel(client)
+        client.emitSession("alice")
+        val initial = client.refreshCount
+        model.onEvent(IdentityEvent.Connectivity(false))
+        assertEquals(GateStatus.ConnectToVerify, model.currentState().status)
+        assertNull(model.currentState().verifiedRole)
+        model.onEvent(IdentityEvent.Connectivity(true))
+        assertEquals(GateStatus.Onboarding, model.currentState().status)
+        assertEquals(initial + 1, client.refreshCount)
+        model.onEvent(IdentityEvent.Suspend)
+        model.onEvent(IdentityEvent.Connectivity(false))
+        model.onEvent(IdentityEvent.Connectivity(true))
+        assertEquals(GateStatus.Loading, model.currentState().status)
+        assertEquals(initial + 1, client.refreshCount)
+        client.refreshFailure = StableFirebaseFailure(StableFirebaseErrorCode.UNAVAILABLE, true)
+        model.onEvent(IdentityEvent.Foreground)
+        assertEquals(GateStatus.ConnectToVerify, model.currentState().status)
+        client.recovery = com.delminiusapps.tillfailure.invitations.ProtectedRecoveryState.PendingCommand
+        model.onEvent(IdentityEvent.Retry)
+        assertEquals(GateStatus.LockedRecovery, model.currentState().status)
+        assertEquals(GateStatus.ConnectToVerify, model.currentState().recoveryCause)
+    }
+
+    @Test fun invalidSelectedWorkspaceDoesNotAutomaticallyOpenTheRemainingWorkspace() {
+        val client = FakeIdentityClient(); val model = IdentityViewModel(client)
+        client.emitSession("alice")
+        for ((path, document) in client.documents.toMap()) {
+            if (path.contains("workspaces/w") || path.endsWith("membershipRefs/w"))
+                client.documents[path.replace("workspaces/w", "workspaces/other").replace("membershipRefs/w", "membershipRefs/other")] =
+                    document.copy(path = document.path.replace("workspaces/w", "workspaces/other").replace("membershipRefs/w", "membershipRefs/other"),
+                        fields = document.fields.mapValues { if (it.key == "workspaceId") "other" else it.value })
+        }
+        client.discoveryDocuments = listOf(client.documents.getValue("users/alice/membershipRefs/other"))
+        model.onEvent(IdentityEvent.Retry)
+        assertEquals(GateStatus.AccessLost, model.currentState().status)
+        assertNull(model.currentState().verifiedWorkspaceId)
+        model.onEvent(IdentityEvent.ChangeWorkspace)
+        assertEquals(GateStatus.Onboarding, model.currentState().status)
+        assertEquals("other", model.currentState().verifiedWorkspaceId)
+    }
+
+    @Test fun serviceAndReconciliationFailuresDoNotMasqueradeAsConfirmedRevocation() {
+        val client = FakeIdentityClient(); val model = IdentityViewModel(client)
+        client.refreshFailure = StableFirebaseFailure(StableFirebaseErrorCode.UNKNOWN, true)
+        client.emitSession("alice")
+        assertEquals(GateStatus.Retry, model.currentState().status)
+        client.refreshFailure = StableFirebaseFailure(StableFirebaseErrorCode.FAILED_PRECONDITION, false)
+        model.onEvent(IdentityEvent.Retry)
+        assertEquals(GateStatus.ReconciliationRequired, model.currentState().status)
+    }
+
+    @Test fun retryAndLateAuthCannotReopenABackgroundRoot() {
+        val client = FakeIdentityClient(); val model = IdentityViewModel(client)
+        model.onEvent(IdentityEvent.Suspend)
+        client.emitSession("alice")
+        model.onEvent(IdentityEvent.Retry) // Feature completion is not a host foreground event.
+        assertEquals(GateStatus.Loading, model.currentState().status)
+        assertNull(model.currentState().verifiedRole)
+        assertEquals(0, client.refreshCount)
+        model.onEvent(IdentityEvent.Foreground)
+        assertEquals(GateStatus.Onboarding, model.currentState().status)
+        assertEquals(1, client.refreshCount)
+    }
+
+    @Test fun duplicateConnectivityAndDisposedObserversCannotCancelANewProof() {
+        val client = FakeIdentityClient().apply { pinAllowed = false }
+        client.departurePort = FakeDeparturePort(client)
+        val (store, model) = scoped(client)
+        client.emitSession("alice")
+        val oldAuth = client.sessionCallbacks.single()
+        val oldNetwork = client.networkCallbacks.single()
+        client.pinAllowed = true
+        model.onEvent(IdentityEvent.RetryCleanup)
+        assertEquals(GateStatus.Onboarding, model.currentState().status)
+        assertEquals(1, client.sessionCancellations)
+        assertEquals(1, client.networkCancellations)
+        oldAuth(FirebaseAuthSession(null, false)); oldNetwork(false)
+        assertEquals(GateStatus.Onboarding, model.currentState().status)
+        val network = client.networkCallbacks.last()
+        network(false)
+        val epoch = model.currentState().authorityEpoch
+        network(false)
+        assertEquals(epoch, model.currentState().authorityEpoch)
+        network(true)
+        val checks = client.refreshCount
+        network(true)
+        assertEquals(checks, client.refreshCount)
+        assertEquals(GateStatus.Onboarding, model.currentState().status)
+        store.clear()
+        val disposedState = model.currentState()
+        client.sessionCallbacks.last()(FirebaseAuthSession(null, false)); network(false)
+        assertEquals(disposedState, model.currentState())
+        assertEquals(2, client.sessionCancellations)
+        assertEquals(2, client.networkCancellations)
+    }
+
+    @Test fun departureLeasedDuringFinalRegistryInspectionPreventsRoleAdmission() {
+        val client = FakeIdentityClient().apply { deferAccount = true }
+        val port = FakeDeparturePort(client); client.departurePort = port
+        val model = IdentityViewModel(client); client.emitSession("alice")
+        val account = client.deferredAccount!!
+        client.beforeRecoveryRead = {
+            client.beforeRecoveryRead = null
+            assertTrue(port.ownership.lease("alice") {})
+        }
+        account(FirebaseDocumentResult(document = client.documents.getValue("users/alice")))
+        assertEquals(GateStatus.SwitchingOut, model.currentState().status)
+        assertNull(model.currentState().verifiedRole)
+        assertTrue(client.listeners.isEmpty())
+        account(FirebaseDocumentResult(document = client.documents.getValue("users/alice")))
+        assertEquals(GateStatus.SwitchingOut, model.currentState().status)
+        client.deferAccount = false
+        port.ownership.settle("alice", DepartureOutcome.PreflightBlocked)
+        assertEquals(GateStatus.Onboarding, model.currentState().status)
+        assertEquals(2, client.refreshCount)
+    }
+
+    @Test fun departureSettledDuringFinalRegistryInspectionRequiresANewProof() {
+        val client = FakeIdentityClient().apply { deferAccount = true }
+        val port = FakeDeparturePort(client); client.departurePort = port
+        val model = IdentityViewModel(client); client.emitSession("alice")
+        val account = client.deferredAccount!!
+        client.beforeRecoveryRead = {
+            client.beforeRecoveryRead = null
+            client.deferAccount = false
+            assertTrue(port.ownership.lease("alice") {})
+            port.ownership.settle("alice", DepartureOutcome.PreflightBlocked)
+        }
+        account(FirebaseDocumentResult(document = client.documents.getValue("users/alice")))
+        assertEquals(GateStatus.Onboarding, model.currentState().status)
+        assertEquals(2, client.refreshCount)
+        assertEquals(4, client.listeners.size)
+    }
+
     private class FakeIdentityClient : ProductIdentityClient {
+        var pinAllowed = true
+        var deferSessionRegistration = false
+        var recovery = com.delminiusapps.tillfailure.invitations.ProtectedRecoveryState.Clean
         var hint: String? = null
+        var beforeRecoveryRead: (() -> Unit)? = null
         override val invitations = object : com.delminiusapps.tillfailure.invitations.InvitationClient {
+            override fun recoveryState(uid: String): com.delminiusapps.tillfailure.invitations.ProtectedRecoveryState {
+                beforeRecoveryRead?.invoke()
+                return recovery
+            }
             override val memory = com.delminiusapps.tillfailure.invitations.InvitationMemory()
             override fun workspacePreference(uid: String) = hint
             override fun saveWorkspacePreference(uid: String, workspaceId: String) { hint = workspaceId }
@@ -455,11 +648,16 @@ class IdentityViewModelTest {
         var discoveryDocuments: List<FirebaseDocumentSnapshot>? = null
         var refreshCount = 0
         private var session: ((FirebaseAuthSession) -> Unit)? = null
+        val sessionCallbacks = mutableListOf<(FirebaseAuthSession) -> Unit>()
+        val networkCallbacks = mutableListOf<(Boolean) -> Unit>()
+        var sessionCancellations = 0
+        var networkCancellations = 0
         private var currentSession: FirebaseAuthSession? = null
         private var pinnedUid: String? = null
 
         override fun hasPinnedIdentity(): Boolean = pinnedUid != null
         override fun claimPinnedIdentity(uid: String): Boolean {
+            if (!pinAllowed) return false
             if (pinnedUid != null && pinnedUid != uid) return false
             pinnedUid = uid
             return true
@@ -485,11 +683,16 @@ class IdentityViewModelTest {
         }
 
         override fun observeSession(epoch: Long, callback: (FirebaseAuthSession) -> Unit): FirebaseCancellation {
+            sessionCallbacks += callback
             session = callback
             // The real SDK delivers the current Auth state on registration; a recreated root would
             // otherwise re-authorize the still-signed-in session before a departure settles.
-            currentSession?.let(callback)
-            return FirebaseCancellation { session = null }
+            if (!deferSessionRegistration) currentSession?.let(callback)
+            return FirebaseCancellation { sessionCancellations++; if (session === callback) session = null }
+        }
+        override fun observeConnectivity(callback: (Boolean) -> Unit): FirebaseCancellation {
+            networkCallbacks += callback
+            return FirebaseCancellation { networkCancellations++ }
         }
         override fun signIn(email: String, password: String, epoch: Long, callback: (StableFirebaseFailure?) -> Unit): FirebaseCancellation {
             callback(null)

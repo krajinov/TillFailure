@@ -30,7 +30,7 @@ fun InvitationScreen(state: InvitationState, gate: IdentityState, onEvent: (Invi
         Text(if (trainer) "Client invitations" else "Your invitation", style = MaterialTheme.typography.titleLarge,
             color = TillFailureTheme.colors.primaryText)
         if (state.pending != null) {
-            Text("A ${state.pending.action} command needs confirmation. Sign-out is blocked until it is resolved.",
+            Text("Locked command recovery: a ${state.pending.action} command needs confirmation. Sign-out stays blocked. If retries cannot resolve it, an approved reconciliation policy is required; discard and automatic repair are unavailable.",
                 color = TillFailureTheme.colors.warning)
             TillFailurePrimaryButton("Retry same command", { onEvent(InvitationEvent.RetryCommand) }, enabled = !state.busy)
         }
