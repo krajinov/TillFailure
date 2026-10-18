@@ -12,11 +12,12 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import com.delminiusapps.tillfailure.core.designsystem.*
+import kotlin.time.Clock
 import com.delminiusapps.tillfailure.identity.GateStatus
 import com.delminiusapps.tillfailure.identity.IdentityState
 
 @Composable
-fun InvitationScreen(state: InvitationState, gate: IdentityState, onEvent: (InvitationEvent) -> Unit) {
+fun InvitationScreen(state: InvitationState, gate: IdentityState, onEvent: (InvitationEvent) -> Unit, onBack: (() -> Unit)? = null) {
     if (gate.status in setOf(GateStatus.Unconfigured, GateStatus.Loading, GateStatus.CleanupRequired, GateStatus.SwitchingOut,
             GateStatus.IdentityUnsupported, GateStatus.AnonymousSession, GateStatus.AccountDisabled, GateStatus.AccessLost)) {
         if (state.pending != null && gate.status !in setOf(GateStatus.CleanupRequired, GateStatus.SwitchingOut)) {
@@ -35,24 +36,41 @@ fun InvitationScreen(state: InvitationState, gate: IdentityState, onEvent: (Invi
             TillFailurePrimaryButton("Retry same command", { onEvent(InvitationEvent.RetryCommand) }, enabled = !state.busy)
         }
         if (trainer) {
-            Text("Send a personal invitation.", style = MaterialTheme.typography.headlineSmall, color = TillFailureTheme.colors.primaryText)
-            TillFailureTextField(state.email, { onEvent(InvitationEvent.Email(it)) }, "Client email",
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, autoCorrectEnabled = false),
-                enabled = !state.busy && state.pending == null)
-            TillFailurePrimaryButton("Create invitation", { onEvent(InvitationEvent.Create) }, enabled = !state.busy && state.pending == null)
-            TillFailureSecondaryButton("Refresh invitations", { onEvent(InvitationEvent.ListInvitations) }, enabled = !state.busy && state.pending == null)
-            for (summary in state.summaries) {
-                TillFailureCard(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(TillFailureSpacing.lg), verticalArrangement = Arrangement.spacedBy(TillFailureSpacing.sm)) {
-                        Text(summary.emailMasked, color = TillFailureTheme.colors.primaryText)
-                        Text("${summary.status} · version ${summary.tokenVersion}", color = TillFailureTheme.colors.secondaryText)
-                        Text("Expires ${expiry(summary.expiresAtMillis)}", color = TillFailureTheme.colors.secondaryText)
-                        if (summary.status == "pending") {
-                            TillFailureSecondaryButton("Resend", { onEvent(InvitationEvent.Resend(summary)) }, enabled = !state.busy && state.pending == null)
-                            TillFailureTextButton("Revoke", { onEvent(InvitationEvent.Revoke(summary)) }, enabled = !state.busy && state.pending == null)
+            onBack?.let { back -> TillFailureSecondaryButton("Back to Clients", back) }
+            Text("Only the workspace owner can manage invitations.", color = TillFailureTheme.colors.secondaryText)
+            if (state.trainerPage == TrainerInvitationPage.Form) {
+                Text("Invite client", style = MaterialTheme.typography.headlineSmall, color = TillFailureTheme.colors.primaryText)
+                TillFailureTextField(state.email, { onEvent(InvitationEvent.Email(it)) }, "Client email",
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, autoCorrectEnabled = false),
+                    enabled = !state.busy && state.pending == null)
+                TillFailurePrimaryButton("Create invitation", { onEvent(InvitationEvent.Create) }, enabled = !state.busy && state.pending == null)
+            }
+            if (state.trainerPage == TrainerInvitationPage.Result) {
+                Text("Invitation confirmed", style = MaterialTheme.typography.headlineSmall, color = TillFailureTheme.colors.primaryText)
+                Text("No email was sent. View invitations for current status. After acceptance, return to Clients and refresh.", color = TillFailureTheme.colors.secondaryText)
+            }
+            TillFailureSecondaryButton(if (state.trainerPage == TrainerInvitationPage.List) "Refresh invitations" else "View invitations",
+                { onEvent(InvitationEvent.ListInvitations) }, enabled = !state.busy && state.pending == null)
+            if (state.trainerPage == TrainerInvitationPage.List) {
+                Text("Newest 20 invitation summaries", style = MaterialTheme.typography.headlineSmall, color = TillFailureTheme.colors.primaryText)
+                Text("Pending and past invitations. Active clients are shown in Clients.", color = TillFailureTheme.colors.secondaryText)
+                TillFailurePrimaryButton("Invite client", { onEvent(InvitationEvent.ShowForm) }, enabled = !state.busy && state.pending == null)
+                if (!state.busy && state.listLoaded && state.summaries.isEmpty()) Text("No invitations yet.", color = TillFailureTheme.colors.secondaryText)
+                if (state.listFailed) Text("Invitation summaries are unavailable. Refresh while connected.", color = TillFailureTheme.colors.warning)
+                for (summary in state.summaries) {
+                    TillFailureCard(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(TillFailureSpacing.lg), verticalArrangement = Arrangement.spacedBy(TillFailureSpacing.sm)) {
+                            Text(summary.emailMasked, color = TillFailureTheme.colors.primaryText)
+                            Text(invitationStatus(summary, Clock.System.now().toEpochMilliseconds()), color = TillFailureTheme.colors.secondaryText)
+                            Text("Expires ${expiry(summary.expiresAtMillis)}", color = TillFailureTheme.colors.secondaryText)
+                            if (summary.status == "pending") {
+                                TillFailureSecondaryButton("Resend", { onEvent(InvitationEvent.Resend(summary)) }, enabled = !state.busy && state.pending == null)
+                                TillFailureTextButton("Revoke", { onEvent(InvitationEvent.Revoke(summary)) }, enabled = !state.busy && state.pending == null)
+                            }
                         }
                     }
                 }
+                onBack?.let { back -> TillFailureSecondaryButton("Recheck active clients", back) }
             }
         } else {
             TillFailureTextField(state.entry, { onEvent(InvitationEvent.Entry(it)) }, "Invitation link",
@@ -80,7 +98,7 @@ fun InvitationScreen(state: InvitationState, gate: IdentityState, onEvent: (Invi
         if (state.message.isNotEmpty()) Text(state.message, color = TillFailureTheme.colors.primaryText)
         state.deliveryLink?.let {
             Text("Local test delivery only. No email was sent. Open this invitation before safely changing to the invited account.", color = TillFailureTheme.colors.secondaryText)
-            TillFailureSecondaryButton("Open local test invitation", { onEvent(InvitationEvent.UseDelivery) })
+            TillFailureSecondaryButton("Open local test invitation", { onEvent(InvitationEvent.UseDelivery) }, enabled = !state.busy)
             TillFailureTextButton("Dismiss local link", { onEvent(InvitationEvent.DismissDelivery) })
         }
         Text("Development emulator invitations only", color = TillFailureTheme.colors.secondaryText)
@@ -98,3 +116,9 @@ fun InvitationScreen(state: InvitationState, gate: IdentityState, onEvent: (Invi
 }
 
 private fun expiry(millis: Long): String = kotlin.time.Instant.fromEpochMilliseconds(millis).toString().replace('T', ' ').replace("Z", " UTC")
+
+internal fun invitationStatus(summary: InvitationSummary, nowMillis: Long): String = when (summary.status) {
+    "accepted" -> "Accepted · recheck active clients"
+    "revoked" -> "Revoked invitation"
+    else -> if (summary.expiresAtMillis <= nowMillis) "Expired invitation" else "Pending acceptance"
+}

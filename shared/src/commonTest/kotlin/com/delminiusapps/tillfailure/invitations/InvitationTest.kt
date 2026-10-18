@@ -347,6 +347,7 @@ class InvitationTest {
         delivery.updateIdentity(gate(status = GateStatus.TrainerHome).copy(verifiedRole = "trainer", verifiedWorkspaceId = "w"))
         delivery.onEvent(InvitationEvent.Email("fixture@example.invalid")); delivery.onEvent(InvitationEvent.Create)
         client.callbacks.last()(InvitationOutcome(reply = InvitationReply(invitationId = "c".repeat(64), tokenVersion = 1, deliveryToken = "d".repeat(43))))
+        client.callbacks.last()(InvitationOutcome(reply = InvitationReply(summaries = emptyList())))
         assertNotNull(delivery.currentState().deliveryLink)
         val (owner, model) = ownedModel(client)
         val original = unknownAcceptance(client, model)

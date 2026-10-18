@@ -19,11 +19,13 @@ sealed interface ClientsEvent {
     data object Retry : ClientsEvent
     data class Open(val clientId: String) : ClientsEvent
     data object Back : ClientsEvent
+    data class Invitations(val compose: Boolean) : ClientsEvent
 }
 sealed interface ClientsEffect {
     data class OpenDetail(val clientId: String) : ClientsEffect
     data object Back : ClientsEffect
     data object AccessLost : ClientsEffect
+    data class Invitations(val compose: Boolean) : ClientsEffect
 }
 /** Destination-owned, online-only presentation. Cancellation and sequence checks fence late replies. */
 class ClientsViewModel(private val repository: ClientRepository) : ViewModel() {
@@ -55,6 +57,8 @@ class ClientsViewModel(private val repository: ClientRepository) : ViewModel() {
                 navigationPending = effects.trySend(ClientsEffect.OpenDetail(event.clientId)).isSuccess
             }
             ClientsEvent.Back -> if (!navigationPending) navigationPending = effects.trySend(ClientsEffect.Back).isSuccess
+            is ClientsEvent.Invitations -> if (!navigationPending && mutable.value.scope != null && target == null)
+                navigationPending = effects.trySend(ClientsEffect.Invitations(event.compose)).isSuccess
         }
     }
     private fun load(more: Boolean) {

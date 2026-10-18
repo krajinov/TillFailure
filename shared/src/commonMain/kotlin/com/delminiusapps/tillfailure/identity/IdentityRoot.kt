@@ -52,6 +52,7 @@ import com.delminiusapps.tillfailure.core.designsystem.TillFailureTheme
 import com.delminiusapps.tillfailure.invitations.InvitationViewModel
 import com.delminiusapps.tillfailure.invitations.InvitationScreen
 import com.delminiusapps.tillfailure.invitations.InvitationEffect
+import com.delminiusapps.tillfailure.invitations.TrainerInvitationPresentation
 import com.delminiusapps.tillfailure.invitations.InvitationState
 
 @Serializable
@@ -123,8 +124,20 @@ fun IdentityRoot(client: ProductIdentityClient?, onOpenDevelopmentCatalog: (() -
                         }
                     }
                     IdentityStateNavigation(state.copy(busy = state.busy || visibleInvitationState.busy),
-                        viewModel.effect, viewModel::onEvent, onOpenDevelopmentCatalog, onboardingClient = invitationClient, clients = viewModel.activeClient().clients) {
-                        InvitationScreen(visibleInvitationState, state, invitations::onEvent)
+                        viewModel.effect, viewModel::onEvent, onOpenDevelopmentCatalog, onboardingClient = invitationClient, clients = viewModel.activeClient().clients) { presentation, back ->
+                        DisposableEffect(presentation, state.accountUid, state.verifiedWorkspaceId, state.authorityEpoch, state.status, invitationClient) {
+                            if (presentation != null && state.status == GateStatus.TrainerHome) {
+                                invitations.updateClient(invitationClient); invitations.updateIdentity(state)
+                                invitations.attachTrainer(presentation)
+                            }
+                            onDispose { if (presentation != null) invitations.detachTrainer(state.accountUid, state.verifiedWorkspaceId, state.authorityEpoch, presentation.visit) }
+                        }
+                        val presentationState = if (presentation != null && visibleInvitationState.trainerVisit != presentation.visit)
+                            InvitationState() else visibleInvitationState
+                        InvitationScreen(presentationState, state, { event ->
+                            invitations.onPresentationEvent(state.accountUid, state.verifiedWorkspaceId, state.authorityEpoch,
+                                presentationState.confirmation?.idempotencyKey, event, presentation?.visit)
+                        }, onBack = back)
                     }
                 }
             }
@@ -142,7 +155,7 @@ private fun IdentityStateNavigation(
     onOpenDevelopmentCatalog: (() -> Unit)?,
     onboardingClient: com.delminiusapps.tillfailure.invitations.InvitationClient? = null,
     clients: ClientRepository? = null,
-    invitations: (@Composable () -> Unit)? = null,
+    invitations: (@Composable (TrainerInvitationPresentation?, (() -> Unit)?) -> Unit)? = null,
 ) {
     val backStack = rememberNavBackStack(identitySavedState, IdentityStateDestination(GateStatus.Loading))
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -187,7 +200,7 @@ fun IdentityScreen(
     state: IdentityState,
     onEvent: (IdentityEvent) -> Unit,
     onOpenDevelopmentCatalog: (() -> Unit)? = null,
-    invitations: (@Composable () -> Unit)? = null,
+    invitations: (@Composable (TrainerInvitationPresentation?, (() -> Unit)?) -> Unit)? = null,
     onboarding: (@Composable () -> Unit)? = null,
     clients: ClientRepository? = null,
 ) {
@@ -257,7 +270,7 @@ fun IdentityScreen(
             }
         }
         onboarding?.invoke()
-        invitations?.invoke()
+        invitations?.invoke(null, null)
         if (state.status == GateStatus.Loading) CircularProgressIndicator()
         if (state.status == GateStatus.SignedOut || state.status == GateStatus.InvalidCredentials) {
             OutlinedTextField(

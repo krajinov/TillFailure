@@ -29,6 +29,6 @@ fun InvitationVisualFixture(stage: String, fontScale: Float = 1f) {
         message = "Visual fixture only; no account access or invitations are created.",
     )
     CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale.coerceIn(1f, 2f))) {
-        TillFailureTheme { IdentityScreen(gate, {}, invitations = { InvitationScreen(fixture, gate, {}) }) }
+        TillFailureTheme { IdentityScreen(gate, {}, invitations = { _, _ -> InvitationScreen(fixture, gate, {}) }) }
     }
 }
