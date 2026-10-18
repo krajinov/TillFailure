@@ -20,13 +20,14 @@ import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 
 @Composable
-internal fun ClientsRoute(repository: ClientRepository, scope: ClientScope, clientId: String?, onOpen: (String) -> Unit, onBack: () -> Unit, onAccessLost: () -> Unit) {
+internal fun ClientsRoute(repository: ClientRepository, scope: ClientScope, clientId: String?, onOpen: (String) -> Unit, onBack: () -> Unit, onAccessLost: () -> Unit, onInvitations: (Boolean) -> Unit = {}) {
     val vm: ClientsViewModel = koinViewModel(parameters = { parametersOf(repository) })
     val state by vm.state.collectAsStateWithLifecycle()
     val owner = LocalLifecycleOwner.current
     val open by rememberUpdatedState(onOpen)
     val back by rememberUpdatedState(onBack)
     val lost by rememberUpdatedState(onAccessLost)
+    val invitations by rememberUpdatedState(onInvitations)
     DisposableEffect(vm, scope, clientId, owner) {
         vm.bind(scope, clientId)
         val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) vm.clear() }
@@ -36,7 +37,7 @@ internal fun ClientsRoute(repository: ClientRepository, scope: ClientScope, clie
     LaunchedEffect(vm, owner, scope, clientId) {
         owner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             vm.bind(scope, clientId)
-            launch { vm.effect.collect { when (it) { is ClientsEffect.OpenDetail -> open(it.clientId); ClientsEffect.Back -> back(); ClientsEffect.AccessLost -> lost() } } }
+            launch { vm.effect.collect { when (it) { is ClientsEffect.OpenDetail -> open(it.clientId); ClientsEffect.Back -> back(); ClientsEffect.AccessLost -> lost(); is ClientsEffect.Invitations -> invitations(it.compose) } } }
         }
     }
     ClientsScreen(if (state.scope == scope) state else ClientsState(loading = true), clientId != null, vm::onEvent)
@@ -53,6 +54,11 @@ internal fun ClientsScreen(state: ClientsState, isDetail: Boolean, onEvent: (Cli
             TillFailureSecondaryButton(if (state.error == "invalid-cursor") "Refresh roster" else "Retry", { onEvent(if (state.error == "invalid-cursor") ClientsEvent.Refresh else ClientsEvent.Retry) })
         }
         if (!isDetail) {
+            item {
+                TillFailurePrimaryButton("Invite client", { onEvent(ClientsEvent.Invitations(true)) })
+                TillFailureSecondaryButton("Invitations and recovery", { onEvent(ClientsEvent.Invitations(false)) })
+                Text("Active assigned clients", style = MaterialTheme.typography.titleMedium, color = TillFailureTheme.colors.primaryText)
+            }
             items(state.items, key = { it.clientId }) { client ->
                 TillFailureCard {
                     Column(Modifier.fillMaxWidth().padding(TillFailureSpacing.lg), verticalArrangement = Arrangement.spacedBy(TillFailureSpacing.sm)) {

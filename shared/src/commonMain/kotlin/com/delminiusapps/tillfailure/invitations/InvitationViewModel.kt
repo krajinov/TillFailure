@@ -8,6 +8,11 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.serialization.Serializable
+
+@Serializable enum class InvitationEntry { Invite, Manage }
+data class TrainerInvitationPresentation(val entry: InvitationEntry, val visit: Long)
+enum class TrainerInvitationPage { Form, List, Result }
 
 data class InvitationState(
     val accountUid: String? = null,
@@ -16,6 +21,8 @@ data class InvitationState(
     val busy: Boolean = false, val message: String = "", val workspaceName: String? = null, val expiresAtMillis: Long? = null,
     val summaries: List<InvitationSummary> = emptyList(), val confirmation: InvitationRequest? = null,
     val deliveryLink: String? = null, val pending: PendingInvitationCommand? = null,
+    val trainerPage: TrainerInvitationPage = TrainerInvitationPage.Form,
+    val listLoaded: Boolean = false, val listFailed: Boolean = false, val trainerVisit: Long? = null,
 ) { override fun toString(): String = "InvitationState(busy=$busy)" }
 
 sealed interface InvitationEvent {
@@ -34,6 +41,7 @@ sealed interface InvitationEvent {
     data object DismissDelivery : InvitationEvent
     data object UseDelivery : InvitationEvent
     data object PopulateEntry : InvitationEvent
+    data object ShowForm : InvitationEvent
 }
 
 sealed interface InvitationEffect { data class RecheckMembership(val uid: String) : InvitationEffect }
@@ -49,7 +57,43 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
     private var pendingObserver: FirebaseCancellation? = null
     private var memoryRevision = -1L
     private var disposed = false
+    private val trainerVisit get() = mutable.value.trainerVisit
     fun currentState(): InvitationState = mutable.value
+
+    /** An old composition cannot edit or confirm a newer account, scope or dialog. */
+    fun onPresentationEvent(uid: String?, workspaceId: String?, epoch: Long, confirmationKey: String?, event: InvitationEvent, visit: Long? = null) {
+        if (disposed || uid != identity.accountUid || workspaceId != identity.verifiedWorkspaceId || epoch != identity.authorityEpoch) return
+        if (visit != trainerVisit) return
+        if (event in setOf(InvitationEvent.Confirm, InvitationEvent.Cancel) &&
+            (confirmationKey == null || confirmationKey != mutable.value.confirmation?.idempotencyKey)) return
+        onEvent(event)
+    }
+
+    /** The existing root owner outlives destinations; only its transient trainer surface leaves. */
+    fun enterTrainer(entry: InvitationEntry) {
+        if (disposed || !canTrain()) return
+        mutable.value = mutable.value.copy(trainerPage = if (entry == InvitationEntry.Invite) TrainerInvitationPage.Form else TrainerInvitationPage.List)
+        if (entry == InvitationEntry.Manage) onEvent(InvitationEvent.ListInvitations)
+    }
+
+    fun attachTrainer(presentation: TrainerInvitationPresentation) {
+        if (disposed || !canTrain() || trainerVisit == presentation.visit) return
+        leaveTrainer(identity.accountUid, identity.verifiedWorkspaceId, identity.authorityEpoch)
+        mutable.value = mutable.value.copy(trainerVisit = presentation.visit)
+        enterTrainer(presentation.entry)
+    }
+
+    fun detachTrainer(uid: String?, workspaceId: String?, epoch: Long, visit: Long) {
+        if (trainerVisit == visit) leaveTrainer(uid, workspaceId, epoch)
+    }
+
+    fun leaveTrainer(uid: String?, workspaceId: String?, epoch: Long) {
+        if (disposed || identity.accountUid != uid || identity.verifiedWorkspaceId != workspaceId || identity.authorityEpoch != epoch) return
+        generation++; operation?.cancel(); operation = null
+        mutable.value = InvitationState(accountUid = uid, workspaceId = workspaceId, authorityEpoch = epoch,
+            hasLink = client.memory.linkFor(uid) != null)
+        refreshPending() // Never discard a prepared command or its process-only acceptance entry.
+    }
 
     fun updateClient(next: InvitationClient) {
         if (disposed) return
@@ -95,7 +139,7 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
             "Protected command recovery is unavailable. Sign-out stays blocked." else mutable.value.message)
         // A recreated root receives only a ledger change, never the old root's reply. It may
         // request the ordinary server gate, which independently decides current authority.
-        if (previous != null && read.isSuccess && read.getOrNull() == null && !mutable.value.busy && uid != null)
+        if (previous?.action == "accept" && read.isSuccess && read.getOrNull() == null && !mutable.value.busy && uid != null)
             effects.trySend(InvitationEffect.RecheckMembership(uid))
     }
 
@@ -104,7 +148,8 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
         val s = mutable.value
         if (s.busy && event !is InvitationEvent.Entry && event !is InvitationEvent.Email) return
         when (event) {
-            is InvitationEvent.Email -> if (s.pending == null) mutable.value = s.copy(email = event.value.take(254))
+            is InvitationEvent.Email -> if (canTrain() && s.trainerPage == TrainerInvitationPage.Form && s.pending == null)
+                mutable.value = s.copy(email = event.value.take(254))
             is InvitationEvent.Entry -> mutable.value = s.copy(entry = event.value.take(512))
             InvitationEvent.Open -> {
                 if (!retainEntry(s.entry.trim())) return
@@ -114,9 +159,13 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
                 if (canUseInvitation() && s.pending == null) preview()
             }
             InvitationEvent.Preview -> if (s.pending == null) preview()
-            InvitationEvent.ListInvitations -> if (canTrain() && s.pending == null)
+            InvitationEvent.ListInvitations -> if (canTrain() && s.pending == null && s.confirmation == null) {
+                mutable.value = s.copy(trainerPage = TrainerInvitationPage.List)
                 execute(InvitationRequest("list", workspaceId = identity.verifiedWorkspaceId))
-            InvitationEvent.Create -> if (canTrain() && s.pending == null) {
+            }
+            InvitationEvent.ShowForm -> if (canTrain() && s.pending == null && s.confirmation == null)
+                mutable.value = s.copy(trainerPage = TrainerInvitationPage.Form, deliveryLink = null, message = "")
+            InvitationEvent.Create -> if (canTrain() && s.pending == null && s.confirmation == null && s.trainerPage == TrainerInvitationPage.Form) {
                 val email = s.email.trim().lowercase()
                 if (!Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$").matches(email)) {
                     mutable.value = s.copy(message = "Enter a valid client email."); return
@@ -124,7 +173,7 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
                 execute(InvitationRequest("create", workspaceId = identity.verifiedWorkspaceId,
                     email = email, idempotencyKey = client.newCommandKey()))
             }
-            InvitationEvent.Accept -> if (canUseInvitation() && s.workspaceName != null && s.pending == null) {
+            InvitationEvent.Accept -> if (canUseInvitation() && s.workspaceName != null && s.pending == null && s.confirmation == null) {
                 client.memory.linkFor(identity.accountUid)?.let { link -> mutable.value = s.copy(confirmation = InvitationRequest("accept",
                     invitationId = link.invitationId, token = link.token, expectedVersion = link.version,
                     idempotencyKey = client.newCommandKey())) }
@@ -186,7 +235,8 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
         client.memory.linkFor(identity.accountUid)?.let { execute(InvitationRequest("preview", invitationId = it.invitationId, token = it.token, expectedVersion = it.version)) }
     }
     private fun confirmation(summary: InvitationSummary, action: String) {
-        if (!canTrain() || mutable.value.pending != null || summary.status != "pending") return
+        if (!canTrain() || mutable.value.pending != null || mutable.value.confirmation != null ||
+            summary.status != "pending" || summary !in mutable.value.summaries) return
         mutable.value = mutable.value.copy(confirmation = InvitationRequest(action,
             workspaceId = identity.verifiedWorkspaceId, invitationId = summary.invitationId,
             expectedVersion = summary.tokenVersion, idempotencyKey = client.newCommandKey()))
@@ -197,24 +247,34 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
         if (!recovery && request.action in setOf("create", "list", "resend", "revoke") && !canTrain()) return
         if (!recovery && request.action in setOf("preview", "accept") && !canUseInvitation()) return
         val captured = ++generation
-        mutable.value = mutable.value.copy(busy = true, message = "Contacting the invitation service…", deliveryLink = null)
+        val listing = request.action == "list"
+        mutable.value = mutable.value.copy(busy = true, message = "Contacting the invitation service…",
+            deliveryLink = if (listing) mutable.value.deliveryLink else null,
+            summaries = if (listing) emptyList() else mutable.value.summaries,
+            listLoaded = if (listing) false else mutable.value.listLoaded, listFailed = false)
         operation = client.execute(uid, request) { outcome ->
             if (disposed || generation != captured || identity.accountUid != uid) return@execute
             val reply = outcome.reply
+            val refreshSummaries = reply != null && outcome.error == null &&
+                request.action in setOf("create", "resend", "revoke") && canTrain()
             if (outcome.error != null) {
-                mutable.value = mutable.value.copy(busy = false, workspaceName = null, message = message(outcome.error, outcome.ambiguous))
+                mutable.value = mutable.value.copy(busy = false, workspaceName = null, listFailed = listing,
+                    message = if (listing) {
+                        if (outcome.error in setOf("unauthorized", "unauthenticated")) "Invitation management requires current workspace-owner access. Recheck access."
+                        else "Invitation summaries are unavailable. Refresh while connected."
+                    } else message(outcome.error, outcome.ambiguous))
             } else if (reply == null) {
-                mutable.value = mutable.value.copy(busy = false, message = "Invitation service unavailable. Retry while connected.")
+                mutable.value = mutable.value.copy(busy = false, listFailed = listing, message = "Invitation service unavailable. Retry while connected.")
             } else {
                 val link = if (reply.deliveryToken != null && reply.invitationId != null && reply.tokenVersion != null)
                     InvitationLink(reply.invitationId, reply.tokenVersion, reply.deliveryToken).entry() else null
-                mutable.value = mutable.value.copy(busy = false, email = if (request.action == "create") "" else mutable.value.email,
+                mutable.value = mutable.value.copy(busy = refreshSummaries, email = if (request.action == "create") "" else mutable.value.email,
                     workspaceName = if (request.action == "preview") reply.workspaceName else null,
                     expiresAtMillis = if (request.action == "preview") reply.expiresAtMillis else null,
-                    summaries = reply.summaries ?: mutable.value.summaries.map {
-                        if (it.invitationId == reply.invitationId) it.copy(status = reply.status ?: it.status,
-                            tokenVersion = reply.tokenVersion ?: it.tokenVersion, expiresAtMillis = reply.expiresAtMillis ?: it.expiresAtMillis) else it
-                    }, deliveryLink = link, message = when (request.action) {
+                    summaries = reply.summaries ?: mutable.value.summaries,
+                    listLoaded = listing || mutable.value.listLoaded, listFailed = false,
+                    trainerPage = when (request.action) { "create", "resend" -> TrainerInvitationPage.Result; "revoke" -> TrainerInvitationPage.List; else -> mutable.value.trainerPage },
+                    deliveryLink = if (listing) mutable.value.deliveryLink else link, message = when (request.action) {
                         "accept" -> "Invitation accepted. Rechecking membership online…"
                         "preview" -> "Invitation verified online. Confirm to join this workspace."
                         "list" -> if (reply.summaries.isNullOrEmpty()) "No invitations yet." else "Invitations refreshed."
@@ -229,9 +289,17 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
                 }
             }
             refreshPending()
+            // A receipt does not supply the current list or an authorized roster row.
+            if (refreshSummaries) {
+                if (mutable.value.pending == null) execute(InvitationRequest("list", workspaceId = identity.verifiedWorkspaceId))
+                else mutable.value = mutable.value.copy(busy = false)
+            }
         }
     }
-    override fun onCleared() { disposed = true; generation++; operation?.cancel(); pendingObserver?.cancel(); effects.close() }
+    override fun onCleared() {
+        disposed = true; generation++; operation?.cancel(); pendingObserver?.cancel()
+        mutable.value = InvitationState(); effects.close()
+    }
 }
 
 private fun message(error: String, ambiguous: Boolean): String = if (error == "storage-unavailable")
