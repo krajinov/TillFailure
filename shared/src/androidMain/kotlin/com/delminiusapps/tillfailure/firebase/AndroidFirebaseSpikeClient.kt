@@ -1,5 +1,6 @@
 package com.delminiusapps.tillfailure.firebase
 
+import com.delminiusapps.tillfailure.clients.*
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
@@ -21,6 +22,7 @@ import com.google.firebase.firestore.Source
 import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import com.delminiusapps.tillfailure.identity.MembershipDiscoveryResult
 import com.delminiusapps.tillfailure.identity.ProductIdentityClient
 import com.delminiusapps.tillfailure.identity.CleanDepartureOwnership
@@ -54,6 +56,8 @@ class AndroidFirebaseSpikeClient(
     private val invitationChanges = InvitationChanges()
     internal var beforeInvitationTransportForTest: ((() -> Unit) -> Unit)? = null
     internal var beforeInvitationCompletionForTest: ((() -> Unit) -> Unit)? = null
+    internal var beforeClientsTokenIssuanceForTest: (() -> Unit)? = null
+    internal var afterClientsTokenIssuedForTest: (() -> Unit)? = null
     override val invitations: InvitationClient = object : InvitationClient {
         override fun workspacePreference(uid: String) = synchronized(callbackLock) { invitationLedger.workspacePreference(uid) }
         override fun saveWorkspacePreference(uid: String, workspaceId: String) = synchronized(callbackLock) {
@@ -139,6 +143,61 @@ class AndroidFirebaseSpikeClient(
                 beforeInvitationTransportForTest?.invoke(transport) ?: transport()
             }.addOnFailureListener { settle(InvitationOutcome(error = "unavailable", ambiguous = true)) }
             return FirebaseCancellation { cancelled.set(true) }
+        }
+    }
+    override val clients: ClientRepository = object : ClientRepository {
+        override fun read(scope: ClientScope, request: ClientRequest, callback: (ClientResult) -> Unit): FirebaseCancellation {
+            val cancelled = AtomicBoolean(false)
+            val connection = AtomicReference<HttpURLConnection?>()
+            val uid = scope.uid
+            val issuedEpoch = synchronized(callbackLock) { invitationAuthEpoch }
+            fun allowed() = synchronized(callbackLock) {
+                !cancelled.get() && !terminated.get() && !accountFrozen && auth.currentUser?.uid == uid &&
+                    issuedEpoch == invitationAuthEpoch && fence.accepts(0L)
+            }
+            beforeClientsTokenIssuanceForTest?.invoke()
+            // Freeze/retirement and token issuance share the existing native admission lock.
+            val task = synchronized(callbackLock) {
+                if (!allowed() || configuration.projectId != "demo-tillfailure-m3" || !ClientJson.valid(request) || request.workspaceId != scope.workspaceId) null
+                else auth.currentUser!!.getIdToken(true).also { afterClientsTokenIssuedForTest?.invoke() }
+            }
+            if (task == null) {
+                callback(ClientResult(error = "unavailable")); return FirebaseCancellation {}
+            }
+            fun deliver(result: ClientResult) = synchronized(callbackLock) { if (allowed()) callback(result) }
+            task.addOnSuccessListener { identity ->
+                Thread {
+                    val result = runCatching {
+                        check(allowed() && identity.token != null)
+                        val c = URL("http://${configuration.host}:${configuration.functionsPort}/demo-tillfailure-m3/europe-west1/clientsEmulator").openConnection() as HttpURLConnection
+                        synchronized(callbackLock) {
+                            check(allowed())
+                            connection.set(c)
+                        }
+                        try {
+                            c.requestMethod = "POST"; c.instanceFollowRedirects = false
+                            c.connectTimeout = 10_000; c.readTimeout = 10_000; c.doOutput = true
+                            c.setRequestProperty("Content-Type", "application/json")
+                            c.setRequestProperty("Authorization", "Bearer ${identity.token}")
+                            c.outputStream.use { it.write(("{\"data\":" + ClientJson.request(request) + "}").toByteArray(Charsets.UTF_8)) }
+                            val status = c.responseCode
+                            val bytes = (if (status == 200) c.inputStream else c.errorStream).use { input ->
+                                val output = java.io.ByteArrayOutputStream(); val buffer = ByteArray(8192)
+                                while (true) { val count = input.read(buffer); if (count < 0) break
+                                    check(output.size() + count <= 64 * 1024); output.write(buffer, 0, count) }
+                                output.toByteArray()
+                            }
+                            check(bytes.size <= 64 * 1024)
+                            ClientJson.callable(request, status, bytes.toString(Charsets.UTF_8))
+                        } finally { c.disconnect(); connection.compareAndSet(c, null) }
+                    }.getOrDefault(ClientResult(error = "unavailable"))
+                    Handler(Looper.getMainLooper()).post { deliver(result) }
+                }.start()
+            }.addOnFailureListener { deliver(ClientResult(error = "unavailable")) }
+            return FirebaseCancellation {
+                val active = synchronized(callbackLock) { cancelled.set(true); connection.getAndSet(null) }
+                active?.disconnect()
+            }
         }
     }
     private val terminated = AtomicBoolean(false)

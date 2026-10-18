@@ -1,5 +1,7 @@
 package com.delminiusapps.tillfailure.di
 
+import com.delminiusapps.tillfailure.clients.ClientRepository
+import com.delminiusapps.tillfailure.clients.ClientsViewModel
 import com.delminiusapps.tillfailure.foundation.details.FoundationDetailsViewModel
 import com.delminiusapps.tillfailure.foundation.home.FoundationHomeViewModel
 import com.delminiusapps.tillfailure.foundation.scoping.FoundationScopeProbe
@@ -12,6 +14,8 @@ import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
 
 private val foundationModule = module {
+    viewModel { (repository: ClientRepository) ->
+        ClientsViewModel(repository) }
     singleOf(::FoundationScopeProbe)
     viewModel { (client: com.delminiusapps.tillfailure.invitations.InvitationClient) ->
         com.delminiusapps.tillfailure.onboarding.OnboardingViewModel(client) }

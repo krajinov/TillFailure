@@ -1,5 +1,6 @@
 package com.delminiusapps.tillfailure.identity
 
+import com.delminiusapps.tillfailure.clients.ClientRepository
 import com.delminiusapps.tillfailure.firebase.FirebaseAuthSession
 import com.delminiusapps.tillfailure.firebase.FirebaseCancellation
 import com.delminiusapps.tillfailure.firebase.FirebaseDocumentResult
@@ -14,6 +15,7 @@ data class MembershipDiscoveryResult(
 
 /** Narrow product surface. All reads used for authorization must be server sourced. */
 interface ProductIdentityClient {
+    val clients: ClientRepository? get() = null
     /** Connectivity is a recheck trigger, never evidence of authority. Delivered on the UI thread. */
     fun observeConnectivity(callback: (Boolean) -> Unit): FirebaseCancellation = FirebaseCancellation {}
     val invitations: com.delminiusapps.tillfailure.invitations.InvitationClient? get() = null
