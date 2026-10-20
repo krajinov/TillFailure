@@ -18,6 +18,7 @@ struct iOSApp: App {
         OnboardingHarness.runIfRequested()
         ClientsHarness.runIfRequested()
         ClientInvitationsHarness.runIfRequested()
+        BasicProfileHarness.runIfRequested()
         RecoveryHardeningHarness.runIfRequested()
         InvitationHarness.runIfRequested()
         InvitationLifecycleHarness.runIfRequested()

@@ -8,6 +8,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.delminiusapps.tillfailure.profile.*
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import com.delminiusapps.tillfailure.invitations.InvitationEntry
 import com.delminiusapps.tillfailure.invitations.TrainerInvitationPresentation
@@ -25,7 +30,7 @@ import kotlinx.serialization.modules.*
 @Serializable internal data class ShellOwner(val uid: String?, val workspace: String?, val trainer: String?, val role: String?, val epoch: Long)
 @Serializable internal data class ShellDestination(val page: ShellPage, val clientId: String? = null, val owner: ShellOwner? = null,
     val invitationEntry: InvitationEntry? = null, val refreshVersion: Long = 0) : NavKey
-@Serializable internal enum class ShellPage { Home, Profile, Invitations, Clients, ClientDetails }
+@Serializable internal enum class ShellPage { Home, Profile, Invitations, Clients, ClientDetails, EditProfile }
 private val shellSavedState = SavedStateConfiguration {
     serializersModule = SerializersModule { polymorphic(NavKey::class) { subclass(ShellDestination::class, ShellDestination.serializer()) } }
 }
@@ -33,7 +38,7 @@ private val shellSavedState = SavedStateConfiguration {
 /** No catalog fixtures or future tabs. The caller supplies a current, server-verified root. */
 @Composable
 internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
-    invitations: (@Composable (TrainerInvitationPresentation?, (() -> Unit)?) -> Unit)?, onboardingRecovery: (@Composable () -> Unit)?, clients: ClientRepository?) {
+    invitations: (@Composable (TrainerInvitationPresentation?, (() -> Unit)?) -> Unit)?, onboardingRecovery: (@Composable () -> Unit)?, clients: ClientRepository?, profile: ProfileViewModel? = null) {
     val owner = ShellOwner(state.accountUid, state.verifiedWorkspaceId, state.accountUid.takeIf { state.verifiedRole == "trainer" }, state.verifiedRole, state.authorityEpoch)
     val stack = rememberNavBackStack(shellSavedState, ShellDestination(ShellPage.Home, owner = owner))
     LaunchedEffect(owner, stack.lastOrNull()) {
@@ -41,15 +46,40 @@ internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
             stack.clear(); stack.add(ShellDestination(ShellPage.Home, owner = owner))
         }
     }
+    val profileState = profile?.state?.collectAsStateWithLifecycle()?.value
+    val currentOwner by rememberUpdatedState(owner)
+    LaunchedEffect(profile, owner) {
+        profile?.effect?.collect { result ->
+            val top = stack.lastOrNull() as? ShellDestination
+            if (acceptProfileNavigation(profile, result, currentOwner, top)) {
+                if (result.exit == ProfileExit.Back) stack.removeLastOrNull()
+                else openShellPage(stack, currentOwner, if (result.exit == ProfileExit.Home) ShellPage.Home else ShellPage.Profile, top)
+                result.snapshot?.let { onEvent(IdentityEvent.ProfileRefreshed(result.scope, it)) }
+            }
+        }
+    }
     val selectedDestination = stack.lastOrNull() as? ShellDestination
     val selected = selectedDestination?.page ?: ShellPage.Home
+    fun leaveProfile(exit: ProfileExit) {
+        val p = profileState ?: return
+        if (p.scope == ProfileScope(owner.uid, owner.workspace, owner.epoch) && p.visit == selectedDestination?.refreshVersion)
+            profile?.onEvent(p.scope!!, p.visit, p.promptId, ProfileEvent.Leave(exit))
+    }
     fun open(page: ShellPage, source: ShellDestination? = selectedDestination) {
-        openShellPage(stack, owner, page, source)
+        if (source?.page == ShellPage.EditProfile && stack.lastOrNull() == source)
+            leaveProfile(if (page == ShellPage.Home) ProfileExit.Home else ProfileExit.Profile)
+        else openShellPage(stack, owner, page, source)
+    }
+    @Composable fun recovery() {
+        val p = profileState ?: return
+        if (p.scope == ProfileScope(owner.uid, owner.workspace, owner.epoch))
+            ProfileScreen(p, { profile?.onEvent(p.scope!!, p.visit, p.promptId, it) }, { onEvent(IdentityEvent.Retry) }, recoveryOnly = true)
     }
     Column(Modifier.fillMaxSize().background(TillFailureTheme.colors.background).safeDrawingPadding().imePadding()) {
         NavDisplay(backStack = stack, onBack = {
             if (stack.lastOrNull() == selectedDestination) {
-                if (selectedDestination?.page == ShellPage.Invitations) backFromInvitations(stack, selectedDestination)
+                if (selectedDestination?.page == ShellPage.EditProfile) leaveProfile(ProfileExit.Back)
+                else if (selectedDestination?.page == ShellPage.Invitations) backFromInvitations(stack, selectedDestination)
                 else if (stack.size > 1) stack.removeLastOrNull()
             }
         }, modifier = Modifier.weight(1f), entryDecorators = listOf(rememberViewModelStoreNavEntryDecorator()), entryProvider = entryProvider {
@@ -79,17 +109,28 @@ internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
                             if (state.verifiedRole == "trainer") TillFailurePrimaryButton("Clients", { open(ShellPage.Clients, destination) })
                             if (state.verifiedRole == "trainer") TillFailurePrimaryButton("Client invitations", { open(ShellPage.Invitations, destination) })
                             TillFailureSecondaryButton("Profile and access", { open(ShellPage.Profile, destination) })
-                            onboardingRecovery?.invoke()
+                            onboardingRecovery?.invoke(); recovery()
                         }
                         ShellPage.Profile -> {
                             Text("Profile and access", style = MaterialTheme.typography.headlineMedium, color = TillFailureTheme.colors.primaryText)
                             Text("Workspace: ${state.verifiedWorkspaceId}\nRole: ${state.verifiedRole}", color = TillFailureTheme.colors.secondaryText)
                             if (state.verifiedRole == "client") Text("${state.displayName}\n${state.locale}\n${state.timeZoneId}", color = TillFailureTheme.colors.primaryText)
+                            if (state.verifiedRole == "client" && profile != null)
+                                TillFailurePrimaryButton("Edit basic profile", { openBasicProfile(stack, owner, destination) })
                             TillFailureSecondaryButton("Recheck access", { onEvent(IdentityEvent.Retry) }, enabled = !state.busy)
                             TillFailureSecondaryButton("Choose workspace", { onEvent(IdentityEvent.ChangeWorkspace) }, enabled = !state.busy)
                             if (state.canSignOut) TillFailureSecondaryButton("Sign out", { onEvent(IdentityEvent.SignOut) }, enabled = !state.busy)
                             TillFailureSecondaryButton("Invitations and recovery", { open(ShellPage.Invitations, destination) })
-                            onboardingRecovery?.invoke()
+                            onboardingRecovery?.invoke(); recovery()
+                        }
+                        ShellPage.EditProfile -> {
+                            val expected = ProfileScope(owner.uid, owner.workspace, owner.epoch)
+                            LaunchedEffect(profile, destination, profileState?.scope) {
+                                if (profileState?.scope == expected) profile?.attach(destination.refreshVersion)
+                            }
+                            DisposableEffect(profile, destination) { onDispose { profile?.detach(expected, destination.refreshVersion) } }
+                            if (profileState?.scope == expected && profileState.visit == destination.refreshVersion)
+                                ProfileScreen(profileState, { profile?.onEvent(expected, destination.refreshVersion, profileState.promptId, it) }, { onEvent(IdentityEvent.Retry) })
                         }
                         ShellPage.Clients, ShellPage.ClientDetails -> Unit
                         ShellPage.Invitations -> {
@@ -101,7 +142,7 @@ internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
             }
         })
         val pages = if (state.verifiedRole == "trainer") listOf(ShellPage.Home, ShellPage.Clients, ShellPage.Profile) else listOf(ShellPage.Home, ShellPage.Profile)
-        TillFailureBottomNavigation(pages.map { page -> TillFailureNavigationItem(page.name, if (page == ShellPage.Home) "⌂" else "○", selected == page || page == ShellPage.Clients && selected in setOf(ShellPage.ClientDetails, ShellPage.Invitations)) }, { open(pages[it]) })
+        TillFailureBottomNavigation(pages.map { page -> TillFailureNavigationItem(page.name, if (page == ShellPage.Home) "⌂" else "○", selected == page || page == ShellPage.Profile && selected == ShellPage.EditProfile || page == ShellPage.Clients && selected in setOf(ShellPage.ClientDetails, ShellPage.Invitations)) }, { open(pages[it]) })
     }
 }
 
@@ -140,3 +181,16 @@ internal fun backFromInvitations(stack: MutableList<NavKey>, destination: ShellD
         stack[stack.lastIndex] = clients.copy(refreshVersion = clients.refreshVersion + 1)
     }
 }
+
+/** Advance the underlying Profile key too, so reopened editors never reuse an old visit. */
+internal fun openBasicProfile(stack: MutableList<NavKey>, owner: ShellOwner, source: ShellDestination) {
+    if (owner.role != "client" || source.owner != owner || source.page != ShellPage.Profile || stack.lastOrNull() != source) return
+    val visit = stack.filterIsInstance<ShellDestination>().maxOf { it.refreshVersion } + 1
+    stack[stack.lastIndex] = source.copy(refreshVersion = visit)
+    stack.add(ShellDestination(ShellPage.EditProfile, owner = owner, refreshVersion = visit))
+}
+
+internal fun acceptProfileNavigation(model: ProfileViewModel, result: ProfileNavigation, owner: ShellOwner,
+    top: ShellDestination?): Boolean =
+    result.scope == ProfileScope(owner.uid, owner.workspace, owner.epoch) &&
+        top?.page == ShellPage.EditProfile && top.refreshVersion == result.visit && model.consumeNavigation(result)

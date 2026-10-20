@@ -105,7 +105,11 @@ class AndroidFirebaseSpikeClient(
                     val outcome = runCatching {
                         val valid = synchronized(callbackLock) { !terminated.get() && auth.currentUser?.uid == uid && issuedEpoch == invitationAuthEpoch }
                         check(valid && identity.token != null)
-                        val callable = if (request.action == "complete-onboarding") "onboardingEmulator" else "invitationEmulator"
+                        val callable = when (request.action) {
+                            "complete-onboarding" -> "onboardingEmulator"
+                            "profile-get", "update-profile" -> "basicProfileEmulator"
+                            else -> "invitationEmulator"
+                        }
                         val endpoint = URL("http://${configuration.host}:${configuration.functionsPort}/demo-tillfailure-m3/europe-west1/$callable")
                         val connection = endpoint.openConnection() as HttpURLConnection
                         try {
