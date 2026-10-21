@@ -1,5 +1,7 @@
 package com.delminiusapps.tillfailure.identity
 
+import com.delminiusapps.tillfailure.profile.BasicProfile
+import com.delminiusapps.tillfailure.profile.ProfileScope
 import androidx.lifecycle.ViewModel
 import com.delminiusapps.tillfailure.firebase.FirebaseCancellation
 import com.delminiusapps.tillfailure.firebase.FirebaseDataOrigin
@@ -54,6 +56,8 @@ sealed interface IdentityEvent {
     data object Suspend : IdentityEvent
     data object Foreground : IdentityEvent
     data class Connectivity(val connected: Boolean) : IdentityEvent
+    data class ProfileRefreshed(val scope: ProfileScope,
+        val profile: BasicProfile) : IdentityEvent
     data object RetryCleanup : IdentityEvent
 }
 
@@ -249,6 +253,10 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
                 } else if (mutableState.value.status == GateStatus.ConnectToVerify) {
                     onEvent(IdentityEvent.SignIn)
                 }
+            }
+            is IdentityEvent.ProfileRefreshed -> {
+                val next = refreshedProfilePresentation(mutableState.value, event.scope, event.profile)
+                if (next != mutableState.value) setState(next)
             }
             IdentityEvent.SignOut -> {
                 val uid = observedUid ?: return
@@ -607,4 +615,13 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
         cancelSessionAndOperations()
         effectChannel.close()
     }
+}
+
+/** Own presentation only; an authorized read updates no role, workspace, authority or server data. */
+internal fun refreshedProfilePresentation(state: IdentityState, scope: ProfileScope,
+    profile: BasicProfile): IdentityState {
+    if (state.status != GateStatus.ClientHome || state.verifiedRole != "client" || state.busy ||
+        state.accountUid != scope.uid || state.verifiedWorkspaceId != scope.workspace || state.authorityEpoch != scope.epoch ||
+        !profile.valid() || profile.revision < state.accountProfileRevision) return state
+    return state.copy(displayName = profile.displayName, locale = profile.locale, timeZoneId = profile.timeZoneId, accountProfileRevision = profile.revision)
 }

@@ -54,6 +54,9 @@ import com.delminiusapps.tillfailure.invitations.InvitationScreen
 import com.delminiusapps.tillfailure.invitations.InvitationEffect
 import com.delminiusapps.tillfailure.invitations.TrainerInvitationPresentation
 import com.delminiusapps.tillfailure.invitations.InvitationState
+import com.delminiusapps.tillfailure.profile.ProfileViewModel
+import com.delminiusapps.tillfailure.profile.ProfileScope
+import com.delminiusapps.tillfailure.profile.ProfileScreen
 
 @Serializable
 private sealed interface IdentityDestination : NavKey
@@ -104,6 +107,13 @@ fun IdentityRoot(client: ProductIdentityClient?, onOpenDevelopmentCatalog: (() -
                     IdentityStateNavigation(state, viewModel.effect, viewModel::onEvent, onOpenDevelopmentCatalog, clients = viewModel.activeClient().clients)
                 } else {
                     val invitations: InvitationViewModel = koinViewModel(parameters = { parametersOf(invitationClient) })
+                    val profile: ProfileViewModel = koinViewModel(parameters = { parametersOf(invitationClient) })
+                    LaunchedEffect(profile, invitationClient, state) { profile.update(invitationClient, state) }
+                    DisposableEffect(profile, lifecycle) {
+                        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) profile.suspendPresentation() }
+                        lifecycle.addObserver(observer)
+                        onDispose { lifecycle.removeObserver(observer); profile.suspendPresentation() }
+                    }
                     val invitationState by invitations.state.collectAsStateWithLifecycle()
                     // Identity effects run after composition. Never render an old UID's state in
                     // that intervening frame, including its transient local-delivery token.
@@ -124,7 +134,7 @@ fun IdentityRoot(client: ProductIdentityClient?, onOpenDevelopmentCatalog: (() -
                         }
                     }
                     IdentityStateNavigation(state.copy(busy = state.busy || visibleInvitationState.busy),
-                        viewModel.effect, viewModel::onEvent, onOpenDevelopmentCatalog, onboardingClient = invitationClient, clients = viewModel.activeClient().clients) { presentation, back ->
+                        viewModel.effect, viewModel::onEvent, onOpenDevelopmentCatalog, onboardingClient = invitationClient, clients = viewModel.activeClient().clients, profile = profile) { presentation, back ->
                         DisposableEffect(presentation, state.accountUid, state.verifiedWorkspaceId, state.authorityEpoch, state.status, invitationClient) {
                             if (presentation != null && state.status == GateStatus.TrainerHome) {
                                 invitations.updateClient(invitationClient); invitations.updateIdentity(state)
@@ -155,6 +165,7 @@ private fun IdentityStateNavigation(
     onOpenDevelopmentCatalog: (() -> Unit)?,
     onboardingClient: com.delminiusapps.tillfailure.invitations.InvitationClient? = null,
     clients: ClientRepository? = null,
+    profile: ProfileViewModel? = null,
     invitations: (@Composable (TrainerInvitationPresentation?, (() -> Unit)?) -> Unit)? = null,
 ) {
     val backStack = rememberNavBackStack(identitySavedState, IdentityStateDestination(GateStatus.Loading))
@@ -189,7 +200,7 @@ private fun IdentityStateNavigation(
             entry<IdentityStateDestination> {
                 // Current server gate always wins over restored keys and buffered effects.
                 IdentityScreen(state, onEvent, onOpenDevelopmentCatalog, invitations, clients = clients,
-                    onboarding = onboardingClient?.let { service -> { OnboardingRoute(state, service) { onEvent(IdentityEvent.Retry) } } })
+                    profile = profile, onboarding = onboardingClient?.let { service -> { OnboardingRoute(state, service) { onEvent(IdentityEvent.Retry) } } })
             }
         },
     )
@@ -203,10 +214,11 @@ fun IdentityScreen(
     invitations: (@Composable (TrainerInvitationPresentation?, (() -> Unit)?) -> Unit)? = null,
     onboarding: (@Composable () -> Unit)? = null,
     clients: ClientRepository? = null,
+    profile: ProfileViewModel? = null,
 ) {
     if (state.status in setOf(GateStatus.ClientHome, GateStatus.TrainerHome)) {
         key(state.accountUid, state.verifiedWorkspaceId, state.verifiedRole, state.authorityEpoch) {
-            RoleShell(state, onEvent, invitations, onboarding, clients)
+            RoleShell(state, onEvent, invitations, onboarding, clients, profile)
         }
         return
     }
@@ -270,6 +282,11 @@ fun IdentityScreen(
             }
         }
         onboarding?.invoke()
+        profile?.let { model ->
+            val profileState by model.state.collectAsStateWithLifecycle()
+            if (profileState.scope == ProfileScope(state.accountUid, state.verifiedWorkspaceId, state.authorityEpoch))
+                ProfileScreen(profileState, { model.onEvent(profileState.scope!!, null, profileState.promptId, it) }, { onEvent(IdentityEvent.Retry) }, recoveryOnly = true)
+        }
         invitations?.invoke(null, null)
         if (state.status == GateStatus.Loading) CircularProgressIndicator()
         if (state.status == GateStatus.SignedOut || state.status == GateStatus.InvalidCredentials) {

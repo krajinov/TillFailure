@@ -22,3 +22,9 @@ do not silently select another port because native harnesses use these values.
 
 `test:emulators` starts and stops the suite through the locally locked Firebase
 CLI and cannot select a deployed project. No command in this package deploys.
+
+## Milestone 5 PR 3 basic-profile emulator
+
+`basicProfileEmulator` exposes strict `profile-get` and registered `update-profile` operations on own global basics for a freshly verified active completed client. It refuses non-demo/non-loopback environments. Caller-bound receipts atomically acknowledge an update or definitively reject a stale revision; generic errors cannot settle critical work. Direct mobile account writes and trainer global-account reads remain denied. Production operations and deployment are disabled.
+
+`functions/scripts/seed-m5-pr3.mjs` creates only absent synthetic Android/iOS trainer/client fixtures through existing guarded provisioning, invitation acceptance and onboarding; it requires `TF_M5_PR3_PASSWORD` from temporary environment input. Never reset another dataset or native partition to rerun. The PR 3 report records separate native held-response stages/resumes, actual interaction evidence, ports and retained gaps.

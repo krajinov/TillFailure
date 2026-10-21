@@ -1,3 +1,4 @@
+import { basicProfileOperation } from "./basic-profile.js";
 import { clientOperation, clientFailure } from "./clients.js";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { setGlobalOptions } from "firebase-functions/v2";
@@ -87,6 +88,16 @@ export const clientsEmulator = onCall(async request => {
     return await clientOperation(emulatorFirestore(), request.auth?.uid, request.data);
   } catch (error) {
     const failure = clientFailure(error);
+    throw new HttpsError(failure.code, failure.reason);
+  }
+});
+
+export const basicProfileEmulator = onCall(async request => {
+  try {
+    requireProvisioningEmulators();
+    return await basicProfileOperation(emulatorFirestore(), request.auth?.uid, request.data);
+  } catch (error) {
+    const failure = onboardingFailure(error);
     throw new HttpsError(failure.code, failure.reason);
   }
 });

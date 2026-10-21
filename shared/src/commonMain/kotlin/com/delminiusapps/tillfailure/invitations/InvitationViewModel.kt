@@ -135,7 +135,7 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
         val read = runCatching { uid?.let(client::pending) }
         read.getOrNull()?.takeIf { it.action == "accept" && it.uid == uid }?.let { client.memory.protectAcceptance(it) }
         val previous = mutable.value.pending
-        mutable.value = mutable.value.copy(pending = read.getOrNull()?.takeUnless { it.action == "complete-onboarding" }, message = if (read.isFailure)
+        mutable.value = mutable.value.copy(pending = read.getOrNull()?.takeUnless { it.action in setOf("complete-onboarding", "update-profile") }, message = if (read.isFailure)
             "Protected command recovery is unavailable. Sign-out stays blocked." else mutable.value.message)
         // A recreated root receives only a ledger change, never the old root's reply. It may
         // request the ordinary server gate, which independently decides current authority.

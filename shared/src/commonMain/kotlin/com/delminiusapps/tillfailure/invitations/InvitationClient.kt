@@ -3,6 +3,8 @@ package com.delminiusapps.tillfailure.invitations
 import com.delminiusapps.tillfailure.firebase.FirebaseCancellation
 import com.delminiusapps.tillfailure.identity.DepartureOwnershipLock
 import com.delminiusapps.tillfailure.persistence.AccountPersistencePrototype
+import com.delminiusapps.tillfailure.profile.BasicProfile
+import com.delminiusapps.tillfailure.profile.ProfileUpdate
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -20,6 +22,7 @@ data class PendingInvitationCommand(
     val expectedVersion: Int? = null,
     val email: String? = null,
     val onboarding: com.delminiusapps.tillfailure.onboarding.OnboardingCompletion? = null,
+    val profileUpdate: ProfileUpdate? = null,
 )
 
 @Serializable
@@ -32,11 +35,16 @@ data class InvitationRequest(
     val expectedVersion: Int? = null,
     val idempotencyKey: String? = null,
     val onboarding: com.delminiusapps.tillfailure.onboarding.OnboardingCompletion? = null,
+    val profileUpdate: ProfileUpdate? = null,
 ) {
+    // Preserve the existing Swift bridge constructor while extending the protected protocol.
+    constructor(action: String, workspaceId: String?, invitationId: String?, email: String?, token: String?,
+        expectedVersion: Int?, idempotencyKey: String?, onboarding: com.delminiusapps.tillfailure.onboarding.OnboardingCompletion?) :
+        this(action, workspaceId, invitationId, email, token, expectedVersion, idempotencyKey, onboarding, null)
     // Deliberately exclude bearer material from diagnostic interpolation.
     override fun toString(): String = "InvitationRequest(action=$action)"
     fun pending(uid: String): PendingInvitationCommand? = idempotencyKey?.let {
-        PendingInvitationCommand(uid, action, it, workspaceId, invitationId, expectedVersion, email, onboarding)
+        PendingInvitationCommand(uid, action, it, workspaceId, invitationId, expectedVersion, email, onboarding, profileUpdate)
     }
 }
 
@@ -53,6 +61,7 @@ data class InvitationReply(
     val replayed: Boolean? = null, val deliveryToken: String? = null,
     val summaries: List<InvitationSummary>? = null,
     val accountRevision: Int? = null, val onboardingRevision: Int? = null,
+    val profile: BasicProfile? = null, val profileCommandKey: String? = null,
 ) {
     override fun toString(): String = "InvitationReply(status=$status)"
 }
@@ -169,7 +178,7 @@ class InvitationLedger(private val store: AccountPersistencePrototype) {
     fun prepare(uid: String, request: InvitationRequest): Boolean = lock.locked { runCatching {
         val record = record(uid)
         if (recoveryState(uid) !in setOf(ProtectedRecoveryState.Clean, ProtectedRecoveryState.PendingCommand)) return@runCatching false
-        val command = request.pending(uid) ?: return@runCatching request.action in setOf("list", "preview") && record.pendingInvitationCommands.isEmpty()
+        val command = request.pending(uid) ?: return@runCatching request.action in setOf("list", "preview", "profile-get") && record.pendingInvitationCommands.isEmpty()
         if (!validPendingCommand(uid, command)) return@runCatching false
         if (record.pendingInvitationCommands.isNotEmpty() && record.pendingInvitationCommands != listOf(command)) return@runCatching false
         store.write(record.copy(pendingInvitationCommands = listOf(command)))
@@ -193,12 +202,14 @@ class InvitationLedger(private val store: AccountPersistencePrototype) {
 internal fun validPendingCommand(uid: String, p: PendingInvitationCommand): Boolean {
     fun segment(v: String?) = v != null && com.delminiusapps.tillfailure.identity.isPathSafeAuthUid(v) && '.' !in v
     fun invitation() = p.invitationId != null && Regex("^[a-f0-9]{64}$").matches(p.invitationId)
-    if (p.uid != uid || !segment(p.idempotencyKey)) return false
+    if (p.uid != uid || !segment(p.idempotencyKey) || p.action != "update-profile" && p.profileUpdate != null) return false
     return when (p.action) {
         "create" -> segment(p.workspaceId) && p.invitationId == null && p.expectedVersion == null && p.onboarding == null &&
             p.email != null && p.email.length <= 254 && Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$").matches(p.email)
         "accept" -> p.workspaceId == null && invitation() && p.expectedVersion in 1..Int.MAX_VALUE && p.email == null && p.onboarding == null
         "resend", "revoke" -> segment(p.workspaceId) && invitation() && p.expectedVersion in 1..Int.MAX_VALUE && p.email == null && p.onboarding == null
+        "update-profile" -> segment(p.workspaceId) && p.invitationId == null && p.expectedVersion == null && p.email == null &&
+            p.onboarding == null && p.profileUpdate?.valid() == true
         "complete-onboarding" -> segment(p.workspaceId) && p.invitationId == null && p.expectedVersion == null && p.email == null && p.onboarding?.let {
             it.acknowledged && it.expectedAccountRevision in 0..Int.MAX_VALUE - 2 && it.expectedOnboardingRevision in 0..Int.MAX_VALUE - 2 &&
                 com.delminiusapps.tillfailure.onboarding.validOnboardingBasics(it.displayName, it.locale, it.timeZoneId)
@@ -236,6 +247,27 @@ object InvitationJson {
     }
         .getOrDefault(InvitationOutcome(error = "unavailable", ambiguous = true))
     fun validReply(request: InvitationRequest, reply: InvitationReply): Boolean {
+        if (request.action in setOf("profile-get", "update-profile")) {
+            val workspace = request.workspaceId ?: return false
+            if (!com.delminiusapps.tillfailure.identity.isPathSafeAuthUid(workspace) || '.' in workspace ||
+                request.invitationId != null || request.email != null || request.token != null || request.expectedVersion != null || request.onboarding != null) return false
+            if (request.action == "profile-get" && (request.idempotencyKey != null || request.profileUpdate != null)) return false
+            if (request.action == "update-profile" && (request.idempotencyKey == null ||
+                    !com.delminiusapps.tillfailure.identity.isPathSafeAuthUid(request.idempotencyKey) || '.' in request.idempotencyKey)) return false
+            if (reply.workspaceId != request.workspaceId || reply.invitationId != null || reply.workspaceName != null ||
+                reply.tokenVersion != null || reply.expiresAtMillis != null || reply.deliveryToken != null ||
+                reply.summaries != null || reply.onboardingRevision != null) return false
+            if (request.action == "profile-get") return reply.status == "profile" && reply.profile?.valid() == true &&
+                reply.replayed == null && reply.accountRevision == null && reply.profileCommandKey == null
+            val p = request.profileUpdate ?: return false
+            return p.valid() && reply.profile == null && reply.replayed != null && reply.profileCommandKey == request.idempotencyKey &&
+                reply.accountRevision != null && reply.accountRevision in 1..Int.MAX_VALUE - 1 && when (reply.status) {
+                    "profile-updated" -> reply.accountRevision == p.expectedRevision + 1
+                    "profile-conflict" -> reply.accountRevision > p.expectedRevision
+                    else -> false
+                }
+        }
+        if (reply.profile != null || reply.profileCommandKey != null) return false
         if (request.action == "complete-onboarding") {
             val p = request.onboarding ?: return false
             return reply.workspaceId == request.workspaceId && reply.status == "complete" && reply.replayed != null &&
