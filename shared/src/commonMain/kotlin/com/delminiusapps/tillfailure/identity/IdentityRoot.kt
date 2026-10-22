@@ -267,7 +267,7 @@ fun IdentityScreen(
                     else -> when (state.recoveryCause) {
                         GateStatus.AccessLost, GateStatus.AccountDisabled, GateStatus.SessionExpired -> "Locked recovery: access is no longer verified. The original command remains protected. Retry under this account; a receipt cannot restore workspace access."
                         GateStatus.ReconciliationRequired -> "Locked recovery: reconciliation needs review. The original command remains protected."
-                        else -> "Locked recovery: connect and retry the original command. An unresolved result keeps sign-out blocked. Permanent resolution requires an approved policy; discard is unavailable."
+                        else -> "Locked recovery: the original command remains protected. Retry needs current business access. Confirm Resolve to determine its outcome. Identity, binding or storage limits may still block sign-out."
                     }
                 }
                 GateStatus.DepartureBlocked -> "Sign-out is blocked by pending work or an unavailable cleanup check. Retry while connected."

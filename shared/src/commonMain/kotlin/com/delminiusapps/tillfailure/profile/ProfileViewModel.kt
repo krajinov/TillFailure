@@ -97,7 +97,7 @@ class ProfileViewModel(private var client: InvitationClient) : ViewModel() {
         val s = mutable.value
         if (event == ProfileEvent.RetryOriginal) {
             if (s.busy || identity.status in setOf(GateStatus.SwitchingOut, GateStatus.CleanupRequired)) return
-            val p = s.pending?.takeIf { it.uid == owner.uid && it.action == "update-profile" } ?: return
+            val p = s.pending?.takeIf { it.uid == owner.uid && it.action == "update-profile" && !it.resolutionStarted } ?: return
             execute(InvitationRequest(p.action, workspaceId = p.workspaceId, idempotencyKey = p.idempotencyKey, profileUpdate = p.profileUpdate))
             return
         }

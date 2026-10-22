@@ -54,18 +54,22 @@ class AndroidFirebaseSpikeClient(
     private var invitationAuthListener: FirebaseAuth.AuthStateListener? = null
     private var invitationInFlight = false
     private val invitationChanges = InvitationChanges()
+    internal var beforeCommandRetirementForTest: (() -> Unit)? = null
     internal var beforeInvitationTransportForTest: ((() -> Unit) -> Unit)? = null
     internal var beforeInvitationCompletionForTest: ((() -> Unit) -> Unit)? = null
     internal var beforeClientsTokenIssuanceForTest: (() -> Unit)? = null
     internal var afterClientsTokenIssuedForTest: (() -> Unit)? = null
     override val invitations: InvitationClient = object : InvitationClient {
+        override fun lastSettled(uid: String) = synchronized(callbackLock) {
+            invitationLedger.lastSettled(uid).also { memory.consume(uid, null, it) }
+        }
         override fun workspacePreference(uid: String) = synchronized(callbackLock) { invitationLedger.workspacePreference(uid) }
         override fun saveWorkspacePreference(uid: String, workspaceId: String) = synchronized(callbackLock) {
             if (!terminated.get() && !accountFrozen && auth.currentUser?.uid == uid) invitationLedger.saveWorkspacePreference(uid, workspaceId)
         }
-        override fun recoveryState(uid: String) = invitationLedger.recoveryState(uid)
+        override fun recoveryState(uid: String) = synchronized(callbackLock) { invitationLedger.recoveryState(uid) }
         override val memory get() = PendingInvitationLinks.memory
-        override fun newCommandKey(): String = UUID.randomUUID().toString()
+        override fun newCommandKey(): String = resolutionCommandKey(UUID.randomUUID().toString())
         override fun pending(uid: String): PendingInvitationCommand? = synchronized(callbackLock) { invitationLedger.pending(uid) }
         override fun observePending(uid: String, callback: () -> Unit) = invitationChanges.observe(uid, callback)
         override fun execute(uid: String, request: InvitationRequest, callback: (InvitationOutcome) -> Unit): FirebaseCancellation {
@@ -91,8 +95,9 @@ class AndroidFirebaseSpikeClient(
             fun settle(outcome: InvitationOutcome) = synchronized(callbackLock) {
                 invitationInFlight = false
                 if (!terminated.get() && auth.currentUser?.uid == uid && issuedEpoch == invitationAuthEpoch && fence.accepts(0L)) {
+                    invitationLedger.beforeRetirementForTest = beforeCommandRetirementForTest
                     val settled = invitationLedger.settle(uid, request, outcome)
-                    memory.consume(uid, settled.reply)
+                    memory.consume(uid, settled.reply, runCatching { invitationLedger.lastSettled(uid) }.getOrNull())
                     invitationChanges.notify(uid)
                     if (!cancelled.get()) callback(settled)
                 }
@@ -106,6 +111,7 @@ class AndroidFirebaseSpikeClient(
                         val valid = synchronized(callbackLock) { !terminated.get() && auth.currentUser?.uid == uid && issuedEpoch == invitationAuthEpoch }
                         check(valid && identity.token != null)
                         val callable = when (request.action) {
+                            "resolve-command" -> "commandResolutionEmulator"
                             "complete-onboarding" -> "onboardingEmulator"
                             "profile-get", "update-profile" -> "basicProfileEmulator"
                             else -> "invitationEmulator"

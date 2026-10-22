@@ -1,3 +1,4 @@
+import { requireCommandGeneration } from "./command-identity.js";
 import { FieldValue, Firestore } from "firebase-admin/firestore";
 import { commandId, stableHash } from "./hashing.js";
 
@@ -250,6 +251,7 @@ export async function transitionMembership(db: Firestore, input: MembershipTrans
   const membershipRef = db.doc(`workspaces/${input.workspaceId}/memberships/${input.uid}`);
   const discoveryRef = db.doc(`users/${input.uid}/membershipRefs/${input.workspaceId}`);
   return db.runTransaction(async (transaction) => {
+    await requireCommandGeneration(transaction, db, input.idempotencyKey);
     const documents = await transaction.getAll(receiptRef, accountRef, entitlementRef, workspaceRef, membershipRef);
     const receipt = documents[0]!;
     const account = documents[1]!;
@@ -351,6 +353,7 @@ export async function transitionWorkspace(db: Firestore, input: WorkspaceTransit
   const receiptRef = db.doc(`lifecycleCommands/${commandId(input.callerUid, input.idempotencyKey)}`);
   const workspaceRef = db.doc(`workspaces/${input.workspaceId}`);
   return db.runTransaction(async (transaction) => {
+    await requireCommandGeneration(transaction, db, input.idempotencyKey);
     const documents = await transaction.getAll(receiptRef, workspaceRef);
     const receipt = documents[0]!;
     const workspace = documents[1]!;
@@ -456,6 +459,7 @@ export async function transitionAccountLifecycle(db: Firestore, input: AccountLi
   const accountRef = db.doc(`users/${input.uid}`);
   const entitlementRef = db.doc(`users/${input.uid}/authorizations/systemCatalog`);
   return db.runTransaction(async (transaction) => {
+    await requireCommandGeneration(transaction, db, input.idempotencyKey);
     const documents = await transaction.getAll(receiptRef, accountRef, entitlementRef);
     const receipt = documents[0]!;
     const account = documents[1]!;

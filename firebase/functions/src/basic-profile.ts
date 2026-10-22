@@ -1,3 +1,4 @@
+import { requireCommandGeneration } from "./command-identity.js";
 import { Firestore, Timestamp } from "firebase-admin/firestore";
 import { verifiedEmulatorIdentity } from "./invitations.js";
 import { validBasics, ONBOARDING_FIXTURE_POLICY } from "./onboarding.js";
@@ -28,6 +29,7 @@ export async function basicProfileOperation(db: Firestore, callerUid: string | u
   const user = await verifiedEmulatorIdentity(uid);
   const requestHash = read ? undefined : stableHash({ ...d, callerUid: uid, policyVersion: 1 });
   return db.runTransaction(async tx => {
+    if (key) await requireCommandGeneration(tx, db, key);
     const accountRef = db.doc(`users/${uid}`);
     const receiptRef = key ? db.doc(`lifecycleCommands/${commandId(uid, key)}`) : undefined;
     const [a, w, m, c, directory] = await tx.getAll(accountRef, db.doc(`workspaces/${wid}`),

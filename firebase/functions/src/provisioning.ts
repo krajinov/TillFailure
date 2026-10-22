@@ -1,3 +1,4 @@
+import { requireCommandGeneration } from "./command-identity.js";
 import { FieldValue, Firestore } from "firebase-admin/firestore";
 import { projectMembershipCounters } from "./catalog.js";
 import { SPIKE_PROJECT_ID } from "./environment.js";
@@ -117,6 +118,7 @@ export async function provisionTrainer(
   const membershipRef = workspaceRef.collection("memberships").doc(uid);
   const profileRef = workspaceRef.collection("trainerProfiles").doc(uid);
   return db.runTransaction(async transaction => {
+    await requireCommandGeneration(transaction, db, input.idempotencyKey);
     const documents = await transaction.getAll(
       receiptRef, auditRef, accountRef, entitlementRef, workspaceRef, membershipRef, profileRef, discoveryRef
     );

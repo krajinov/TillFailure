@@ -1,3 +1,4 @@
+import { requireCommandGeneration } from "./command-identity.js";
 import { verifiedEmulatorIdentity } from "./invitations.js";
 import { Firestore, Timestamp } from "firebase-admin/firestore";
 import { commandId, stableHash } from "./hashing.js";
@@ -38,6 +39,7 @@ export async function completeOnboarding(db: Firestore, callerUid: string | unde
   const user = await verifiedEmulatorIdentity(uid);
   const requestHash = stableHash({ ...d, callerUid: uid, policyVersion: 1 });
   return db.runTransaction(async tx => {
+    await requireCommandGeneration(tx, db, key);
     const accountRef = db.doc(`users/${uid}`), profileRef = db.doc(`workspaces/${wid}/clientProfiles/${uid}`);
     const receiptRef = db.doc(`lifecycleCommands/${commandId(uid, key)}`);
     const [a, w, m, c, directory, receipt] = await tx.getAll(accountRef, db.doc(`workspaces/${wid}`),

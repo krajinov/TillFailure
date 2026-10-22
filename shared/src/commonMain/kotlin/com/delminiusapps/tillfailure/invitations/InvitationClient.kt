@@ -23,7 +23,9 @@ data class PendingInvitationCommand(
     val email: String? = null,
     val onboarding: com.delminiusapps.tillfailure.onboarding.OnboardingCompletion? = null,
     val profileUpdate: ProfileUpdate? = null,
-)
+    val acceptanceTokenDigest: String? = null,
+    val resolutionStarted: Boolean = false,
+) { override fun toString() = "PendingInvitationCommand(redacted)" }
 
 @Serializable
 data class InvitationRequest(
@@ -36,15 +38,20 @@ data class InvitationRequest(
     val idempotencyKey: String? = null,
     val onboarding: com.delminiusapps.tillfailure.onboarding.OnboardingCompletion? = null,
     val profileUpdate: ProfileUpdate? = null,
+    val resolution: PendingInvitationCommand? = null,
 ) {
     // Preserve the existing Swift bridge constructor while extending the protected protocol.
     constructor(action: String, workspaceId: String?, invitationId: String?, email: String?, token: String?,
         expectedVersion: Int?, idempotencyKey: String?, onboarding: com.delminiusapps.tillfailure.onboarding.OnboardingCompletion?) :
         this(action, workspaceId, invitationId, email, token, expectedVersion, idempotencyKey, onboarding, null)
+    constructor(action: String, workspaceId: String?, invitationId: String?, email: String?, token: String?,
+        expectedVersion: Int?, idempotencyKey: String?, onboarding: com.delminiusapps.tillfailure.onboarding.OnboardingCompletion?, profileUpdate: ProfileUpdate?) :
+        this(action, workspaceId, invitationId, email, token, expectedVersion, idempotencyKey, onboarding, profileUpdate, null)
     // Deliberately exclude bearer material from diagnostic interpolation.
     override fun toString(): String = "InvitationRequest(action=$action)"
-    fun pending(uid: String): PendingInvitationCommand? = idempotencyKey?.let {
-        PendingInvitationCommand(uid, action, it, workspaceId, invitationId, expectedVersion, email, onboarding, profileUpdate)
+    fun pending(uid: String): PendingInvitationCommand? = if (action == "resolve-command") resolution?.takeIf { it.uid == uid } else idempotencyKey?.let {
+        PendingInvitationCommand(uid, action, it, workspaceId, invitationId, expectedVersion, email, onboarding, profileUpdate,
+            if (action == "accept" && it.startsWith("or1-") && token != null) commandDigest(token) else null)
     }
 }
 
@@ -61,6 +68,7 @@ data class InvitationReply(
     val replayed: Boolean? = null, val deliveryToken: String? = null,
     val summaries: List<InvitationSummary>? = null,
     val accountRevision: Int? = null, val onboardingRevision: Int? = null,
+    val terminalOutcome: CommandResolutionReply? = null,
     val profile: BasicProfile? = null, val profileCommandKey: String? = null,
 ) {
     override fun toString(): String = "InvitationReply(status=$status)"
@@ -77,6 +85,7 @@ interface InvitationClient {
     val memory: InvitationMemory
     fun pending(uid: String): PendingInvitationCommand?
     fun execute(uid: String, request: InvitationRequest, callback: (InvitationOutcome) -> Unit): FirebaseCancellation
+    fun lastSettled(uid: String): CommandTerminalProof? = null
     fun workspacePreference(uid: String): String? = null
     fun saveWorkspacePreference(uid: String, workspaceId: String) {}
     fun newCommandKey(): String
@@ -126,8 +135,13 @@ class InvitationMemory {
         retained = null; acceptance = null; linkRevision++
         true
     }
-    fun consume(uid: String, reply: InvitationReply?) {
+    fun consume(uid: String, reply: InvitationReply?, proof: CommandTerminalProof? = null) {
         lock.locked {
+            if (proof != null) {
+                val pending = acceptance
+                if (proof.command.uid == uid && proof.valid() && pending?.uid == uid && CommandResolution.matches(pending, proof.command)) clear(uid)
+                return@locked
+            }
             if (reply?.status != "accepted") return@locked
             val pending = acceptance
             if (pending != null && (pending.uid != uid || reply.invitationId != pending.invitationId || reply.tokenVersion != pending.expectedVersion)) return@locked
@@ -153,11 +167,19 @@ class InvitationLink(val invitationId: String, val version: Int, val token: Stri
 
 /** Called within the native issuance/callback lock. Unreadable partitions fail closed. */
 class InvitationLedger(private val store: AccountPersistencePrototype) {
+    internal var beforeRetirementForTest: (() -> Unit)? = null
     private val lock = DepartureOwnershipLock()
     private fun record(uid: String): com.delminiusapps.tillfailure.persistence.AccountPersistenceEnvelope {
         val record = store.read(uid) ?: error("Missing protected registry")
         require(record.schemaVersion == 1 && record.uid == uid)
         require(record.pendingInvitationCommands.size <= 1 && record.pendingInvitationCommands.all { validPendingCommand(uid, it) })
+        require(record.pendingTerminalProof?.let { it.valid() && record.pendingInvitationCommands.singleOrNull()?.let { p -> CommandResolution.matches(p,it.command) } == true } != false)
+        require(record.lastSettledCommand?.let { it.command.uid == uid && it.valid() } != false)
+        if (record.pendingTerminalProof != null) {
+            val retired = record.copy(pendingInvitationCommands=emptyList(), pendingTerminalProof=null, lastSettledCommand=record.pendingTerminalProof)
+            store.write(retired)
+            return retired
+        }
         return record
     }
     fun recoveryState(uid: String): ProtectedRecoveryState = lock.locked { try {
@@ -174,14 +196,22 @@ class InvitationLedger(private val store: AccountPersistencePrototype) {
         val record = record(uid)
         if (record.switchMarker == null) store.write(record.copy(preferredWorkspaceId = workspaceId))
     }
+    fun lastSettled(uid: String): CommandTerminalProof? = lock.locked { record(uid).lastSettledCommand }
     fun pending(uid: String): PendingInvitationCommand? = lock.locked { record(uid).pendingInvitationCommands.singleOrNull() }
     fun prepare(uid: String, request: InvitationRequest): Boolean = lock.locked { runCatching {
         val record = record(uid)
         if (recoveryState(uid) !in setOf(ProtectedRecoveryState.Clean, ProtectedRecoveryState.PendingCommand)) return@runCatching false
         val command = request.pending(uid) ?: return@runCatching request.action in setOf("list", "preview", "profile-get") && record.pendingInvitationCommands.isEmpty()
         if (!validPendingCommand(uid, command)) return@runCatching false
-        if (record.pendingInvitationCommands.isNotEmpty() && record.pendingInvitationCommands != listOf(command)) return@runCatching false
-        store.write(record.copy(pendingInvitationCommands = listOf(command)))
+        val old = record.pendingInvitationCommands.singleOrNull()
+        if (old == null && record.lastSettledCommand?.command?.idempotencyKey == command.idempotencyKey) return@runCatching false
+        if (request.action == "resolve-command") {
+            if (old == null || !CommandResolution.matches(old,command) || !CommandResolution.bound(command)) return@runCatching false
+            store.write(record.copy(pendingInvitationCommands=listOf(old.copy(resolutionStarted=true))))
+        } else {
+            if (old?.resolutionStarted == true || old != null && !CommandResolution.matches(old,command)) return@runCatching false
+            store.write(record.copy(pendingInvitationCommands = listOf(old ?: command)))
+        }
         true
     }.getOrDefault(false) }
     fun settle(uid: String, request: InvitationRequest, outcome: InvitationOutcome): InvitationOutcome = lock.locked { runCatching {
@@ -192,8 +222,16 @@ class InvitationLedger(private val store: AccountPersistencePrototype) {
         if (outcome.ambiguous || outcome.error != null || outcome.reply == null || !InvitationJson.validReply(request, outcome.reply))
             return@runCatching InvitationOutcome(error = outcome.error ?: "unavailable", ambiguous = true)
         val record = record(uid)
-        if (record.pendingInvitationCommands != listOf(command)) return@runCatching InvitationOutcome(error = "unavailable", ambiguous = true)
-        store.write(record.copy(pendingInvitationCommands = emptyList()))
+        val old = record.pendingInvitationCommands.singleOrNull() ?: return@runCatching InvitationOutcome(error="unavailable",ambiguous=true)
+        if (!CommandResolution.matches(old,command)) return@runCatching InvitationOutcome(error="unavailable",ambiguous=true)
+        val proofCommand = if (command.action == "accept" && command.acceptanceTokenDigest == null && request.token != null)
+            command.copy(acceptanceTokenDigest=commandDigest(request.token)) else command
+        val proof = if (request.action == "resolve-command") CommandTerminalProof(proofCommand,"resolution-v1", resolution=outcome.reply.terminalOutcome)
+            else CommandTerminalProof(proofCommand,"normal-v1",acknowledgment=outcome.reply.copy(deliveryToken=null))
+        if (!proof.valid()) return@runCatching InvitationOutcome(error="unavailable",ambiguous=true)
+        store.write(record.copy(pendingTerminalProof=proof))
+        beforeRetirementForTest?.invoke()
+        store.write(record.copy(pendingInvitationCommands=emptyList(),pendingTerminalProof=null,lastSettledCommand=proof))
         outcome
     }.getOrDefault(InvitationOutcome(error = "storage-unavailable", ambiguous = true)) }
 }
@@ -202,6 +240,8 @@ class InvitationLedger(private val store: AccountPersistencePrototype) {
 internal fun validPendingCommand(uid: String, p: PendingInvitationCommand): Boolean {
     fun segment(v: String?) = v != null && com.delminiusapps.tillfailure.identity.isPathSafeAuthUid(v) && '.' !in v
     fun invitation() = p.invitationId != null && Regex("^[a-f0-9]{64}$").matches(p.invitationId)
+    if (p.action == "accept" && p.idempotencyKey.startsWith("or1-") && p.acceptanceTokenDigest == null) return false
+    if (p.acceptanceTokenDigest != null && (p.action != "accept" || !Regex("^[a-f0-9]{64}$").matches(p.acceptanceTokenDigest))) return false
     if (p.uid != uid || !segment(p.idempotencyKey) || p.action != "update-profile" && p.profileUpdate != null) return false
     return when (p.action) {
         "create" -> segment(p.workspaceId) && p.invitationId == null && p.expectedVersion == null && p.onboarding == null &&
@@ -220,7 +260,7 @@ internal fun validPendingCommand(uid: String, p: PendingInvitationCommand): Bool
 
 object InvitationJson {
     val format = Json { explicitNulls = false }
-    fun request(value: InvitationRequest): String = format.encodeToString(InvitationRequest.serializer(), value)
+    fun request(value: InvitationRequest): String = if (value.action == "resolve-command") CommandResolution.request(value.resolution ?: error("binding-required")) else format.encodeToString(InvitationRequest.serializer(), value)
     fun callable(request: InvitationRequest, httpStatus: Int, body: String): InvitationOutcome = runCatching {
         val envelope = format.parseToJsonElement(body) as? JsonObject ?: error("envelope")
         if (httpStatus == 200 && envelope.keys == setOf("result")) {
@@ -241,12 +281,15 @@ object InvitationJson {
         InvitationOutcome(error = safeError(error), ambiguous = ambiguous || error == "idempotency-key-reused" || safeError(error) == "unavailable")
     else if (ambiguous) InvitationOutcome(error = "unavailable", ambiguous = true)
     else runCatching {
-        val reply = format.decodeFromString(InvitationReply.serializer(), json ?: "")
+        val reply = if (request.action == "resolve-command") InvitationReply(terminalOutcome=CommandResolution.parse(request.resolution ?: error("binding-required"),json) ?: error("outcome-invalid"))
+            else format.decodeFromString(InvitationReply.serializer(), json ?: "")
         require(validReply(request, reply))
         InvitationOutcome(reply = reply)
     }
         .getOrDefault(InvitationOutcome(error = "unavailable", ambiguous = true))
     fun validReply(request: InvitationRequest, reply: InvitationReply): Boolean {
+        if (request.action == "resolve-command") return request.resolution?.let { p -> reply.terminalOutcome?.let { CommandResolution.valid(p,it) } } == true && reply.copy(terminalOutcome=null) == InvitationReply()
+        if (reply.terminalOutcome != null || request.resolution != null) return false
         if (request.action in setOf("profile-get", "update-profile")) {
             val workspace = request.workspaceId ?: return false
             if (!com.delminiusapps.tillfailure.identity.isPathSafeAuthUid(workspace) || '.' in workspace ||
@@ -302,7 +345,7 @@ object InvitationJson {
             else -> false
         }
     }
-    fun safeError(value: String): String = if (value in setOf("unauthenticated", "unauthorized", "unverified-email", "wrong-account-email",
+    fun safeError(value: String): String = if (value in setOf("identity-required", "outcome-unavailable", "rate-limited", "unauthenticated", "unauthorized", "unverified-email", "wrong-account-email",
         "expired", "rotated", "revoked", "already-used", "idempotency-key-reused", "membership-conflict", "rate-limited",
         "already-complete", "revision-conflict", "fixture-account-required", "record-invalid", "counter-inconsistent", "input-invalid", "email-invalid", "token-invalid",
         "membership-bound-violated", "workspace-roster-bound-violated", "invitation-unavailable")) value else "unavailable"
