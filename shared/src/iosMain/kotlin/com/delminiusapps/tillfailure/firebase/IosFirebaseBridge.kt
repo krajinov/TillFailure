@@ -74,10 +74,13 @@ class NativeClientOutcome(val json: String?, val error: String?)
 class NativeInvitationOutcome(val json: String?, val error: String?, val ambiguous: Boolean)
 
 interface NativeIdentityBridge : NativeFirebaseBridge {
+    fun beforeCommandRetirement() {}
     fun callClients(uid: String, json: String, callback: (NativeClientOutcome) -> Unit): String
     val invitationChanges: InvitationChanges
     /** Shared native issuance/freeze lock, including all protected read-modify-write operations. */
     fun withWritableAccount(uid: String, operation: () -> Boolean): Boolean
+    /** Terminal-proof retirement may run while departure is frozen, but shares its ownership lock. */
+    fun withRecoveryLock(operation: () -> Unit)
     fun observeConnectivity(callback: (Boolean) -> Unit): String
     fun hasInvitationInFlight(): Boolean
     /** prepare executes under the native issuance lock before the SDK call, after writable/UID checks. */
@@ -108,18 +111,26 @@ class IosProductIdentityClient(
     private val bridge = bridge.activeBridge()
     private val spike = IosFirebaseSpikeClient(bridge)
     private val recoveryStore = IosAtomicFilePersistence(recoveryBridge)
-    private val invitationLedger = InvitationLedger(recoveryStore)
+    private val invitationLedger = InvitationLedger(recoveryStore).apply { beforeRetirementForTest = { bridge.beforeCommandRetirement() } }
+    private fun <T> protectedRead(read: () -> T): T {
+        var result: Result<T>? = null
+        bridge.withRecoveryLock { result = runCatching(read) }
+        return requireNotNull(result).getOrThrow()
+    }
     override val invitations: InvitationClient = object : InvitationClient {
-        override fun workspacePreference(uid: String) = invitationLedger.workspacePreference(uid)
+        override fun lastSettled(uid: String) = protectedRead {
+            invitationLedger.lastSettled(uid).also { memory.consume(uid, null, it) }
+        }
+        override fun workspacePreference(uid: String) = protectedRead { invitationLedger.workspacePreference(uid) }
         override fun saveWorkspacePreference(uid: String, workspaceId: String) {
             bridge.withWritableAccount(uid) {
                 runCatching { invitationLedger.saveWorkspacePreference(uid, workspaceId); true }.getOrDefault(false)
             }
         }
-        override fun recoveryState(uid: String) = invitationLedger.recoveryState(uid)
+        override fun recoveryState(uid: String) = protectedRead { invitationLedger.recoveryState(uid) }
         override val memory get() = PendingInvitationLinks.memory
-        override fun newCommandKey(): String = NSUUID().UUIDString
-        override fun pending(uid: String): PendingInvitationCommand? = invitationLedger.pending(uid)
+        override fun newCommandKey(): String = resolutionCommandKey(NSUUID().UUIDString)
+        override fun pending(uid: String): PendingInvitationCommand? = protectedRead { invitationLedger.pending(uid) }
         override fun observePending(uid: String, callback: () -> Unit) = bridge.invitationChanges.observe(uid, callback)
         override fun execute(uid: String, request: InvitationRequest, callback: (InvitationOutcome) -> Unit): FirebaseCancellation {
             var cancelled = false
@@ -128,7 +139,7 @@ class IosProductIdentityClient(
                     memory.protectAcceptance(request.pending(uid)!!, request.token))).also { if (it) bridge.invitationChanges.notify(uid) }
             }) { result ->
                 val settled = invitationLedger.settle(uid, request, InvitationJson.outcome(request, result.json, result.error, result.ambiguous))
-                memory.consume(uid, settled.reply)
+                memory.consume(uid, settled.reply, runCatching { invitationLedger.lastSettled(uid) }.getOrNull())
                 bridge.invitationChanges.notify(uid)
                 if (!cancelled) callback(settled)
             }

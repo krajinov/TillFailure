@@ -246,6 +246,13 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
         return try issue()
     }
 
+    func withRecoveryLock(operation: () -> Void) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !terminated else { return }
+        operation()
+    }
+
     func withWritableAccount(uid: String, operation: () -> KotlinBoolean) -> Bool {
         issueIfWritable {
             guard auth.currentUser?.uid == uid else { return false }
@@ -554,6 +561,14 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
         return token
     }
 
+    #if DEBUG
+    var debugBeforeCommandRetirement: (() -> Void)?
+    #endif
+    func beforeCommandRetirement() {
+        #if DEBUG
+        debugBeforeCommandRetirement?()
+        #endif
+    }
     func callInvitation(uid: String, json: String, prepare: @escaping () -> KotlinBoolean,
                         callback: @escaping (NativeInvitationOutcome) -> Void) -> String {
         let token = UUID().uuidString
@@ -577,7 +592,7 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
         invitationInFlight = true
         let transport = {
           let action = payload["action"] as? String ?? ""
-          let endpoint = action == "complete-onboarding" ? "onboardingEmulator" :
+          let endpoint = payload["protocolVersion"] != nil ? "commandResolutionEmulator" : action == "complete-onboarding" ? "onboardingEmulator" :
               (["profile-get", "update-profile"].contains(action) ? "basicProfileEmulator" : "invitationEmulator")
           functions.httpsCallable(endpoint).call(payload) { [weak self] result, error in
             DispatchQueue.main.async {

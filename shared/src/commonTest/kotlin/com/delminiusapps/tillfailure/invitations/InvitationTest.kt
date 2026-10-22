@@ -173,7 +173,7 @@ class InvitationTest {
                 assertFalse(ledger.prepare("A", request.copy(idempotencyKey = "replacement")))
                 assertTrue(ledger.prepare("A", request))
             }
-            val reply = InvitationReply(invitationId = link.invitationId, workspaceId = "w",
+            val reply = InvitationReply(invitationId = if (action == "create") CommandResolution.id(request.pending("A")!!) else link.invitationId, workspaceId = "w",
                 status = when(action) { "accept" -> "accepted"; "revoke" -> "revoked"; else -> "pending" },
                 tokenVersion = if (action == "resend") 2 else 1, expiresAtMillis = 9, replayed = true)
             val verified = InvitationJson.outcome(request, InvitationJson.format.encodeToString(InvitationReply.serializer(), reply), null, false)

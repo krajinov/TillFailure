@@ -3,6 +3,8 @@ package com.delminiusapps.tillfailure.persistence
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import com.delminiusapps.tillfailure.invitations.PendingInvitationCommand
+import com.delminiusapps.tillfailure.invitations.CommandTerminalProof
+import com.delminiusapps.tillfailure.invitations.CommandResolution
 
 const val RECOVERY_ENCRYPTION_VERSION = 1
 const val RECOVERY_KEY_IDENTIFIER = "tillfailure.recovery.v1"
@@ -80,6 +82,8 @@ data class AccountPersistenceEnvelope(
     val switchMarker: AccountSwitchMarker? = null,
     val preferredWorkspaceId: String? = null,
     val pendingInvitationCommands: List<PendingInvitationCommand> = emptyList(),
+    val pendingTerminalProof: CommandTerminalProof? = null,
+    val lastSettledCommand: CommandTerminalProof? = null,
 ) {
     init {
         require(schemaVersion == 1)
@@ -95,6 +99,8 @@ data class AccountPersistenceEnvelope(
         require(mutationJournal.all { it.uid == uid })
         require(pendingUploads.all { it.uid == uid })
         require(switchMarker?.departingUid == null || switchMarker.departingUid == uid)
+        require(pendingTerminalProof?.let { it.command.uid == uid && it.valid() && pendingInvitationCommands.singleOrNull()?.let { p -> CommandResolution.matches(p,it.command) } == true } != false)
+        require(lastSettledCommand?.let { it.command.uid == uid && it.valid() } != false)
         require(pendingInvitationCommands.size <= 1 && pendingInvitationCommands.all { it.uid == uid })
     }
 }

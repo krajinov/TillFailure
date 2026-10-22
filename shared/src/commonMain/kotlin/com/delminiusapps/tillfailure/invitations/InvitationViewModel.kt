@@ -21,6 +21,9 @@ data class InvitationState(
     val busy: Boolean = false, val message: String = "", val workspaceName: String? = null, val expiresAtMillis: Long? = null,
     val summaries: List<InvitationSummary> = emptyList(), val confirmation: InvitationRequest? = null,
     val deliveryLink: String? = null, val pending: PendingInvitationCommand? = null,
+    val resolutionPrompt: PendingInvitationCommand? = null,
+    val resolutionPromptId: Long = 0,
+    val resolutionEligibility: String = "identity-required",
     val trainerPage: TrainerInvitationPage = TrainerInvitationPage.Form,
     val listLoaded: Boolean = false, val listFailed: Boolean = false, val trainerVisit: Long? = null,
 ) { override fun toString(): String = "InvitationState(busy=$busy)" }
@@ -38,6 +41,9 @@ sealed interface InvitationEvent {
     data object Confirm : InvitationEvent
     data object Cancel : InvitationEvent
     data object RetryCommand : InvitationEvent
+    data object Resolve : InvitationEvent
+    data class ConfirmResolution(val command: PendingInvitationCommand, val promptId: Long) : InvitationEvent
+    data class CancelResolution(val promptId: Long) : InvitationEvent
     data object DismissDelivery : InvitationEvent
     data object UseDelivery : InvitationEvent
     data object PopulateEntry : InvitationEvent
@@ -56,6 +62,7 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
     private var operation: FirebaseCancellation? = null
     private var pendingObserver: FirebaseCancellation? = null
     private var memoryRevision = -1L
+    private var resolutionSequence = 0L
     private var disposed = false
     private val trainerVisit get() = mutable.value.trainerVisit
     fun currentState(): InvitationState = mutable.value
@@ -135,8 +142,23 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
         val read = runCatching { uid?.let(client::pending) }
         read.getOrNull()?.takeIf { it.action == "accept" && it.uid == uid }?.let { client.memory.protectAcceptance(it) }
         val previous = mutable.value.pending
-        mutable.value = mutable.value.copy(pending = read.getOrNull()?.takeUnless { it.action in setOf("complete-onboarding", "update-profile") }, message = if (read.isFailure)
+        mutable.value = mutable.value.copy(pending = read.getOrNull(), message = if (read.isFailure)
             "Protected command recovery is unavailable. Sign-out stays blocked." else mutable.value.message)
+        if (read.isSuccess && read.getOrNull() == null && uid != null) {
+            val proof = runCatching { client.lastSettled(uid) }.getOrNull()
+            if (proof?.source == "resolution-v1") mutable.value=mutable.value.copy(message=if (proof.resolution?.outcome == "applied")
+                "The original request completed. Recheck access separately." else "The original request was not applied. It cannot execute later.")
+        }
+        val pending = read.getOrNull()
+        val identityBlocked = setOf(GateStatus.AccountDisabled,GateStatus.UnverifiedEmail,GateStatus.AnonymousSession,GateStatus.SessionExpired,GateStatus.SignedOut,GateStatus.CleanupRequired,GateStatus.SwitchingOut,GateStatus.Loading,GateStatus.IdentityUnsupported,GateStatus.UnsupportedSchema,GateStatus.Unconfigured,GateStatus.ReconciliationRequired,GateStatus.NoAccount,GateStatus.InvalidCredentials)
+        val identityReady = uid != null && identity.status !in identityBlocked && identity.recoveryCause !in identityBlocked
+        val linked = pending?.action == "accept" && client.memory.linkFor(uid)?.let { it.invitationId == pending.invitationId && it.version == pending.expectedVersion } == true
+        mutable.value=mutable.value.copy(resolutionEligibility=when {
+            read.isFailure -> "storage-failure"
+            !identityReady -> "identity-required"
+            pending != null && (CommandResolution.bound(pending) || linked) -> "ready"
+            else -> "binding-required"
+        })
         // A recreated root receives only a ledger change, never the old root's reply. It may
         // request the ordinary server gate, which independently decides current authority.
         if (previous?.action == "accept" && read.isSuccess && read.getOrNull() == null && !mutable.value.busy && uid != null)
@@ -156,6 +178,7 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
                 memoryRevision = client.memory.revision
                 mutable.value = s.copy(entry = "", hasLink = true, workspaceName = null, expiresAtMillis = null, confirmation = null, deliveryLink = null,
                     message = "Sign in with the invited account and verify its email, then preview the invitation.")
+                refreshPending()
                 if (canUseInvitation() && s.pending == null) preview()
             }
             InvitationEvent.Preview -> if (s.pending == null) preview()
@@ -194,15 +217,34 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
                 }
             }
             InvitationEvent.PopulateEntry -> client.memory.linkFor(identity.accountUid)?.let { mutable.value = s.copy(entry = it.entry()) }
-            InvitationEvent.RetryCommand -> {
+            InvitationEvent.Resolve -> {
                 val pending = s.pending ?: return
                 if (pending.uid != identity.accountUid) return
+                if (s.resolutionEligibility != "ready") {
+                    mutable.value = s.copy(message="Verify the original global identity before resolving."); return
+                }
+                val binding = if (pending.action == "accept" && pending.acceptanceTokenDigest == null) {
+                    val link = client.memory.linkFor(pending.uid)?.takeIf { it.invitationId == pending.invitationId && it.version == pending.expectedVersion }
+                    if (link == null) { mutable.value=s.copy(message="Original invitation binding required. Reopen the original link; nothing was discarded."); return }
+                    pending.copy(acceptanceTokenDigest=commandDigest(link.token))
+                } else pending
+                if (CommandResolution.bound(binding)) mutable.value=s.copy(resolutionPrompt=binding,resolutionPromptId=++resolutionSequence)
+            }
+            is InvitationEvent.ConfirmResolution -> {
+                val prompt = s.resolutionPrompt ?: return
+                if (s.resolutionPromptId != event.promptId || prompt != event.command || s.pending?.let { CommandResolution.matches(it,prompt) } != true) return
+                mutable.value=s.copy(resolutionPrompt=null)
+                execute(InvitationRequest("resolve-command",resolution=prompt),recovery=true)
+            }
+            is InvitationEvent.CancelResolution -> if (event.promptId == s.resolutionPromptId) mutable.value=s.copy(resolutionPrompt=null)
+            InvitationEvent.RetryCommand -> {
+                val pending = s.pending ?: return
+                if (pending.uid != identity.accountUid || pending.resolutionStarted) return
                 val link = client.memory.linkFor(identity.accountUid)
                 if (pending.action == "accept" && (link == null || link.invitationId != pending.invitationId || link.version != pending.expectedVersion)) {
                     mutable.value = s.copy(message = "Reopen the original invitation to resolve the pending acceptance."); return
                 }
-                execute(InvitationRequest(pending.action, pending.workspaceId, pending.invitationId, pending.email,
-                    if (pending.action == "accept") link?.token else null, pending.expectedVersion, pending.idempotencyKey), recovery = true)
+                execute(CommandResolution.original(pending).copy(token=if (pending.action == "accept") link?.token else null), recovery=true)
             }
         }
     }
@@ -275,6 +317,7 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
                     listLoaded = listing || mutable.value.listLoaded, listFailed = false,
                     trainerPage = when (request.action) { "create", "resend" -> TrainerInvitationPage.Result; "revoke" -> TrainerInvitationPage.List; else -> mutable.value.trainerPage },
                     deliveryLink = if (listing) mutable.value.deliveryLink else link, message = when (request.action) {
+                        "resolve-command" -> if (reply.terminalOutcome?.outcome == "applied") "The original request completed. Recheck access separately." else "The original request was not applied. This command cannot execute later."
                         "accept" -> "Invitation accepted. Rechecking membership online…"
                         "preview" -> "Invitation verified online. Confirm to join this workspace."
                         "list" -> if (reply.summaries.isNullOrEmpty()) "No invitations yet." else "Invitations refreshed."
@@ -304,12 +347,15 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
 
 private fun message(error: String, ambiguous: Boolean): String = if (error == "storage-unavailable")
     "Protected storage could not confirm settlement. The original command remains locked; no cleanup or repair was performed."
+else if (error == "identity-required") "Verify the original global identity before resolving; no repair was performed."
+else if (error == "outcome-unavailable") "Outcome unavailable. The original command remains protected; binding or receipt history may be unavailable."
 else if (error in setOf("unauthorized", "unauthenticated"))
     "Access was lost. The original command remains protected; a receipt cannot grant access. Recheck this account."
 else if (error in setOf("record-invalid", "counter-inconsistent", "idempotency-key-reused", "revision-conflict"))
     "The original command needs trusted reconciliation. It remains locked; discard and automatic repair have no approved policy."
+else if (error == "rate-limited") "Request limit reached. Retry can recover an existing outcome; a new fence may remain unavailable."
 else if (ambiguous)
-    "The outcome is unknown. Retry the same command while connected. Sign-out stays blocked."
+    "The outcome is unknown. The original command stays protected. Retry Resolve if resolution has started; sign-out remains blocked."
 else when (error) {
     "expired" -> "This invitation expired. Ask the trainer to resend it."
     "rotated" -> "This link was replaced. Open the latest invitation."

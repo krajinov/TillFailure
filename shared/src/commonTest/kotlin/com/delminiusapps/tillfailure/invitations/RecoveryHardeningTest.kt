@@ -20,7 +20,7 @@ class RecoveryHardeningTest {
         override fun delete(uid: String) = error("Recovery must not delete")
     }
     private val request = InvitationRequest("create", workspaceId = "w", email = "client@example.invalid", idempotencyKey = "original")
-    private val receipt = InvitationOutcome(reply = InvitationReply(invitationId = "a".repeat(64), workspaceId = "w", status = "pending",
+    private val receipt = InvitationOutcome(reply = InvitationReply(invitationId = CommandResolution.id(request.pending("A")!!), workspaceId = "w", status = "pending",
         tokenVersion = 1, expiresAtMillis = 1000, replayed = true))
 
     @Test fun absentReceiptAndRepeatedAuthorityOrServiceFailuresRetainOriginalAcrossRecreation() {

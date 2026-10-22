@@ -1,6 +1,6 @@
 # Milestone 5 prerequisite: own-command outcome resolution
 
-Status: **protocol and initial compatibility scope approved by Josip on 2026-10-21; emulator-only prerequisite implementation authorized.** Revocation execution/UI, production, deployment, destructive discard, identity repair and privileged overrides remain excluded.
+Status: **protocol and initial compatibility scope approved by Josip on 2026-10-21; emulator prerequisite implemented for review.** See the [implementation report](milestone-5-command-resolution-report.md) for evidence and remaining gates. Revocation execution/UI, production, deployment, destructive discard, identity repair and privileged overrides remain excluded.
 
 The approval includes all six current protected variants, own minimal outcomes after workspace authority loss, covered absent-command fencing, durable proof before retirement, explicit Resolve confirmation and the documented legacy/identity/storage limits. References to proposed mechanics below describe this approved contract; the future seventh revocation variant remains unimplemented and separately gated.
 Inspection date: **2026-10-21**, Europe/Sarajevo.
@@ -13,7 +13,7 @@ Add one **own-command resolver** that, for an authenticated eligible account and
 Separate two permissions:
 
 - **Business execution/replay:** retains each operation's current account/workspace/membership/ownership/assignment and input authorization. A previously successful command cannot restore a role or authorize a later mutation.
-- **Own outcome resolution:** proposed permission to receive only the terminal decision for the caller's exact key/kind/payload, or foreclose its future execution, without current workspace membership. It grants no workspace, roster, client/profile/history or general receipt-read access.
+- **Own outcome resolution:** approved permission to receive only the terminal decision for the caller's exact key/kind/payload, or foreclose its future execution, without current workspace membership. It grants no workspace, roster, client/profile/history or general receipt-read access.
 
 Implement and prove this as a **separate emulator-only prerequisite slice before revocation UI/backend enablement**. Cover all six currently protected mutation variants, then require the proposed seventh (membership revocation) to use the same contract. Reuse `lifecycleCommands`, `InvitationLedger`, the encrypted UID envelope, native freeze/issuance locks and clean-departure coordinator. There is no new recovery queue, database, account-switch mechanism or privileged support resolver.
 
@@ -54,7 +54,7 @@ Request: one allowlisted command kind, original key, supported binding-format ve
 
 For new acceptance preparation, persist `acceptanceTokenDigest=SHA-256(original bearer)` as lowercase 64-character hex and binding version in the **same encrypted pending slot before any issuance**, alongside existing metadata. This matches the existing server's digest encoding. It is a one-way commitment to a high-entropy token, not a bearer accepted by the business endpoint; raw tokens remain process-only. Resolution sends the digest, not the bearer. Ordinary acceptance still needs the original bearer. Hashing and canonicalization must match each existing writer exactly, including invitation email lowercasing, absent versus null fields, integer bounds, nested keys, Unicode and the policy-version inputs for onboarding/profile. Freeze these formats with backend/Kotlin/Swift boundary test vectors; do not change historical hashes to a new generic formula. Proposed revocation gets an explicit format before implementation.
 
-The server computes the request hash from the validated descriptor; it does not trust an asserted `neverCommitted` flag or accept a client hash as proof of absence. The client independently derives the expected hash from its protected original command. For a missing record, the server cannot prove there was an earlier network submission: the bounded permission is to foreclose **only this caller's key**. A caller can at worst consume an unused own key, never perform business work or consume someone else's identity. The product exposes this only for its protected pending command, with explicit resolve intent. This property, rather than a claim to authenticate local storage remotely, is part of the proposed authority decision.
+The server computes the request hash from the validated descriptor; it does not trust an asserted `neverCommitted` flag or accept a client hash as proof of absence. The client independently derives the expected hash from its protected original command. For a missing record, the server cannot prove there was an earlier network submission: the bounded permission is to foreclose **only this caller's key**. A caller can at worst consume an unused own key, never perform business work or consume someone else's identity. The product exposes this only for its protected pending command, with explicit resolve intent. This property, rather than a claim to authenticate local storage remotely, is part of the approved authority decision.
 
 ### Minimal terminal response
 
@@ -78,7 +78,7 @@ Malformed requests can receive a fixed input error. Wrong identity receives fixe
 
 ### Records and invariant
 
-Reuse the **same** `lifecycleCommands/C` path used by every covered business command. Keep existing schema-1 positive/profile-conflict receipts immutable. Add a proposed terminal record with an intentionally distinct schema:
+Reuse the **same** `lifecycleCommands/C` path used by every covered business command. Keep existing schema-1 positive/profile-conflict receipts immutable. Add the approved terminal record with an intentionally distinct schema:
 
 `{schemaVersion:2, commandKind:"own-command-fence", protocolVersion:1, callerUid, originalCommandKind, requestHashVersion, requestHash, outcome:"not-applied-fenced", decidedAt}`.
 
@@ -196,12 +196,12 @@ Roll out server guard/adapters and retention protections first, then resolver-ca
 | Clean departure / no restoration | Unresolved/failed storage still blocks departure. Durably resolved commands permit only the existing proven-clean cleanup sequence. No B account sees A's payload/proof/callback; no membership/profile/global account/role state is restored or written by resolution. |
 | Budget / outages / operations | Rate-limit and finite new-fence budget cases, response/request bounds, transaction deadline/exhaustion and interrupted export/import. No receipt TTL/key reuse, no partial business writes and no “not found means cancelled” branch. Preserve failed-run attribution and fixtures. |
 
-This document is a test/rollout plan, not new runtime evidence. No application build or suite was run for these documentation changes.
+This document is the approved contract and proof plan. Its original documentation revision ran no application checks; implementation evidence and qualifications are recorded in the [implementation report](milestone-5-command-resolution-report.md).
 
 ## Remaining decisions and explicit limits
 
-- **Approve the proposed permission and protocol:** active global identity may retrieve its own exact minimal outcome without workspace authority, and may atomically foreclose its own uncommitted key. This is distinct from approving revocation, privileged override or discarding unknown work. The fence and durable-proof protocol remain unapproved engineering proposals.
-- **Approve the bounded first compatibility scope:** six current variants, then revocation; new generation covers absence only with proven intact history; supported legacy receipts project, while missing legacy acceptance binding/history and missing/disabled global identity stay locked. If those cases must also resolve before revocation, expand their identity/migration design first; do not relabel them as solved.
+- **Approved permission and protocol (2026-10-21):** active global identity may retrieve its own exact minimal outcome without workspace authority, and may atomically foreclose its own uncommitted key. This is distinct from approving revocation, privileged override or discarding unknown work. Josip approved this exact permission, fence and durable-proof protocol on 2026-10-21.
+- **Approved initial compatibility scope (2026-10-21):** six current variants, then revocation; new generation covers absence only with proven intact history; supported legacy receipts project, while missing legacy acceptance binding/history and missing/disabled global identity stay locked. If those cases must also resolve before revocation, expand their identity/migration design first; do not relabel them as solved.
 - **Retain broader gates:** final production retention/key retirement, backup provenance, recovery for deleted/disabled identity, damaged keys/storage, legal/privacy/support/export/discard and operational overrides remain open. No retention duration, deletion, forced repair or account restoration is approved. Service unavailability can delay resolution; no online protocol can guarantee an outcome while its authority/storage service is unavailable.
 
-Implementation readiness: **own-command prerequisite implementation authorized; revocation remains gated on its review and verification.** The approval is recorded in the local planning commit; implementation evidence belongs in the prerequisite report. Until then current locked recovery remains a preserved safety behavior, not an accepted completed solution to membership-loss outcome recovery.
+Implementation readiness: **emulator prerequisite implemented for review; revocation remains gated on its review and verification.** The approval is recorded in the local planning commit; implementation evidence belongs in the prerequisite report. Remaining legacy, identity and storage locks stay explicit; the report does not claim full production or interaction acceptance.

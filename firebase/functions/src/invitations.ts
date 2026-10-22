@@ -1,3 +1,4 @@
+import { requireCommandGeneration } from "./command-identity.js";
 import { randomBytes, createHash, timingSafeEqual } from "node:crypto";
 import { getAuth, UserRecord } from "firebase-admin/auth";
 import { Firestore, Timestamp, Transaction, DocumentSnapshot } from "firebase-admin/firestore";
@@ -188,6 +189,7 @@ export async function invitationOperation(db: Firestore, callerUid: string | und
   // Request hashes contain token hashes only, never bearer material. Receipts contain safe results.
   const requestHash = stableHash({ ...request, token: request.token ? digest(request.token) : null, callerUid: user.uid });
   return db.runTransaction(async tx => {
+    if (request.idempotencyKey) await requireCommandGeneration(tx, db, request.idempotencyKey);
     const now = Timestamp.now();
     const wid = request.workspaceId ?? original?.workspaceId;
     if (!wid) fail("input-invalid");

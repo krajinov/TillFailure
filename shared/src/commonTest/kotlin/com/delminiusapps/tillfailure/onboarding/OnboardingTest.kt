@@ -16,6 +16,14 @@ class OnboardingTest {
     private fun request(key: String = "key") = InvitationRequest("complete-onboarding", workspaceId = "w", idempotencyKey = key, onboarding = payload)
     private fun success() = InvitationOutcome(reply = InvitationReply(workspaceId = "w", status = "complete", replayed = false, accountRevision = 1, onboardingRevision = 1))
 
+    @Test fun resolutionStartedSuppressesOriginalCompletionTransport() {
+        val client=Client();assertTrue(client.ledger.prepare("a",request()))
+        assertTrue(client.ledger.prepare("a",CommandResolution.resolveRequest(client.pending("a")!!)))
+        val model=OnboardingViewModel(client);model.updateIdentity(gate.copy(status=GateStatus.LockedRecovery))
+        model.onEvent(OnboardingEvent.Retry)
+        assertTrue(client.requests.isEmpty());assertTrue(client.pending("a")!!.resolutionStarted)
+    }
+
     @Test fun originalCompletionSurvivesAmbiguityRestartAndBlocksAnotherPayloadOrAccount() {
         val store = Store(); store.write(AccountPersistenceEnvelope(uid = "a")); store.write(AccountPersistenceEnvelope(uid = "b"))
         val ledger = InvitationLedger(store)

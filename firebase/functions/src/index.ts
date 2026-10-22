@@ -1,3 +1,5 @@
+import { resolveOwnCommand } from "./command-resolution.js";
+import { getAuth } from "firebase-admin/auth";
 import { basicProfileOperation } from "./basic-profile.js";
 import { clientOperation, clientFailure } from "./clients.js";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
@@ -99,5 +101,21 @@ export const basicProfileEmulator = onCall(async request => {
   } catch (error) {
     const failure = onboardingFailure(error);
     throw new HttpsError(failure.code, failure.reason);
+  }
+});
+
+export const commandResolutionEmulator = onCall(async request => {
+  try {
+    requireProvisioningEmulators();
+    const db = emulatorFirestore();
+    const header = request.rawRequest.get("authorization");
+    if (!header?.startsWith("Bearer ") || !request.auth) throw new Error("identity-required");
+    const token = await getAuth().verifyIdToken(header.slice(7), true).catch(() => { throw new Error("identity-required"); });
+    if (token.uid !== request.auth.uid || token.firebase.sign_in_provider === "anonymous") throw new Error("identity-required");
+    return await resolveOwnCommand(db, request.auth.uid, request.data);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "";
+    throw new HttpsError(reason === "rate-limited" ? "resource-exhausted" : reason === "identity-required" ? "permission-denied" : "failed-precondition",
+      reason === "rate-limited" || reason === "identity-required" ? reason : "outcome-unavailable");
   }
 });

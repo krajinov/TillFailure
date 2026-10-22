@@ -14,8 +14,8 @@ fun ProfileScreen(state: ProfileState, onEvent: (ProfileEvent) -> Unit, onRechec
     if (recoveryOnly && state.pending?.action != "update-profile") return
     Column(verticalArrangement = Arrangement.spacedBy(TillFailureSpacing.md)) {
         if (state.pending?.action == "update-profile") {
-            Text("A basic-profile command remains protected. Its original fields, revision and key will be retried. Sign-out and account changes stay blocked.", color = TillFailureTheme.colors.warning)
-            TillFailurePrimaryButton("Retry original profile save", { onEvent(ProfileEvent.RetryOriginal) }, enabled = !state.busy, loading = state.busy)
+            Text("A basic-profile command remains protected. Its original fields, revision and key stay protected. Sign-out and account changes stay blocked.", color = TillFailureTheme.colors.warning)
+            TillFailurePrimaryButton("Retry original profile save", { onEvent(ProfileEvent.RetryOriginal) }, enabled = !state.busy && state.pending?.resolutionStarted != true, loading = state.busy)
         }
         if (recoveryOnly) return@Column
         Text("Edit basic profile", style = MaterialTheme.typography.headlineLarge, color = TillFailureTheme.colors.primaryText)

@@ -108,6 +108,17 @@ class ProfileTest {
         c.store.fails = false; event(vm, ProfileEvent.RetryOriginal); c.replies.last()(InvitationOutcome(error = "unauthorized"))
         event(vm, ProfileEvent.Save); assertEquals(command, c.pending("client")); assertEquals(1, c.keys)
     }
+    @Test fun resolutionStartedSuppressesProfileRecoveryTransport() {
+        val c = Client()
+        c.ledger.prepare("client", InvitationRequest("update-profile", workspaceId="w", idempotencyKey="original", profileUpdate=ProfileUpdate("Original","en","UTC",1)))
+        val command = c.pending("client")!!
+        assertTrue(c.ledger.prepare("client", CommandResolution.resolveRequest(command)))
+        val vm = ProfileViewModel(c)
+        vm.update(c, gate.copy(status=GateStatus.LockedRecovery, verifiedWorkspaceId=null))
+        vm.onEvent(ProfileScope("client",null,7),null,0,ProfileEvent.RetryOriginal)
+        assertTrue(c.calls.isEmpty())
+        assertTrue(c.pending("client")!!.resolutionStarted)
+    }
     @Test fun disposedRootDropsFieldsAndCallbacks() {
         val c = Client(); val store = ViewModelStore()
         val vm = ViewModelProvider.create(store, viewModelFactory { initializer { ProfileViewModel(c) } })[ProfileViewModel::class]

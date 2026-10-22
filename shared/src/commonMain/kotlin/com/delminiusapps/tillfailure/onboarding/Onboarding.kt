@@ -145,7 +145,7 @@ class OnboardingViewModel(private val client: InvitationClient) : ViewModel() {
             }
             OnboardingEvent.Retry -> {
                 val p = s.pending ?: return
-                if (p.uid != identity.accountUid || identity.status in setOf(GateStatus.SwitchingOut, GateStatus.CleanupRequired)) return
+                if (p.uid != identity.accountUid || p.resolutionStarted || identity.status in setOf(GateStatus.SwitchingOut, GateStatus.CleanupRequired)) return
                 execute(InvitationRequest(p.action, workspaceId = p.workspaceId, idempotencyKey = p.idempotencyKey, onboarding = p.onboarding))
             }
         }
