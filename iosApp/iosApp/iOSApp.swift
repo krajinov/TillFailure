@@ -20,6 +20,7 @@ struct iOSApp: App {
         ClientInvitationsHarness.runIfRequested()
         BasicProfileHarness.runIfRequested()
         CommandResolutionHarness.runIfRequested()
+        ClientRevocationHarness.runIfRequested()
         RecoveryHardeningHarness.runIfRequested()
         InvitationHarness.runIfRequested()
         InvitationLifecycleHarness.runIfRequested()

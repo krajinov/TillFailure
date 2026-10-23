@@ -23,9 +23,16 @@ const base: PublishAssignmentRequest = {
   maxWrites: 200
 };
 
+async function seedAuthority(uid = "client") {
+  const b=db.batch();
+  b.set(db.doc("workspaces/ws"),{schemaVersion:1,status:"active",membershipRevision:1});
+  for(const [id,role] of [[uid,"client"],["trainer","trainer"]]) b.set(db.doc(`workspaces/ws/memberships/${id}`),{schemaVersion:1,workspaceId:"ws",userId:id,role,status:"active",catalogContributionActive:true,revision:1});
+  b.set(db.doc(`workspaces/ws/clientProfiles/${uid}`),{schemaVersion:1,workspaceId:"ws",userId:uid,trainerId:"trainer"});await b.commit();
+}
 describe("assigned-program publication", () => {
   beforeEach(async () => {
     for (const name of ["users", "workspaces", "assignmentCommands"]) await db.recursiveDelete(db.collection(name));
+    await seedAuthority();
   });
 
   it("publishes bounded content atomically and replays idempotently", async () => {
@@ -136,10 +143,10 @@ describe("assigned-program publication", () => {
     await assert.rejects(() => publishAssignment(db, { ...base, idempotencyKey: "budget-9", assignmentId: "asg-b9", replacesAssignmentId: "asg-one", replacesExpectedRevision: 1, maxWrites: 9 }), /write-budget-exceeded/);
     assert.equal((await db.doc("users/client/workspaces/ws/assignedPrograms/asg-b9").get()).exists, false);
     assert.equal((await db.doc("users/client/workspaces/ws/assignedPrograms/asg-one").get()).get("revision"), 1);
-    const exact = await publishAssignment(db, { ...base, idempotencyKey: "budget-10", assignmentId: "asg-b10", replacesAssignmentId: "asg-one", replacesExpectedRevision: 1, maxWrites: 10 });
-    assert.equal(exact.documentCount, 10);
+    const exact = await publishAssignment(db, { ...base, idempotencyKey: "budget-10", assignmentId: "asg-b10", replacesAssignmentId: "asg-one", replacesExpectedRevision: 1, maxWrites: 11 });
+    assert.equal(exact.documentCount, 11);
     await assert.rejects(() => publishAssignment(db, { ...base, idempotencyKey: "budget-7", assignmentId: "asg-b7", maxWrites: 7 }), /write-budget-exceeded/);
-    assert.equal((await publishAssignment(db, { ...base, idempotencyKey: "budget-8", assignmentId: "asg-b8", maxWrites: 8 })).documentCount, 8);
+    assert.equal((await publishAssignment(db, { ...base, idempotencyKey: "budget-8", assignmentId: "asg-b8", maxWrites: 9 })).documentCount, 9);
   });
 
   it("rejects stale, missing, and malformed replacement requests without partial state", async () => {
@@ -184,7 +191,8 @@ describe("assigned-program publication", () => {
   });
 
   it("rejects mismatched predecessor and index identities without partial state", async () => {
-    await publishAssignment(db, { ...base, idempotencyKey: "other-trainer", trainerId: "trainer-b", assignmentId: "asg-b" });
+    await publishAssignment(db, { ...base, idempotencyKey: "other-trainer", assignmentId: "asg-b" });
+    await db.doc("users/client/workspaces/ws/assignedPrograms/asg-b").update({trainerId:"trainer-b"});
     await assert.rejects(() => publishAssignment(db, { ...base, idempotencyKey: "cross-trainer", assignmentId: "asg-c", replacesAssignmentId: "asg-b", replacesExpectedRevision: 1 }), /predecessor-identity-mismatch/);
 
     await publishAssignment(db, { ...base, idempotencyKey: "tamper-seed", assignmentId: "asg-t" });
@@ -409,6 +417,7 @@ describe("assigned-program publication", () => {
     // still materialize at exactly their own document paths.
     const uid = "user.name+tag@example.com";
     const assignmentId = "asg.2027-01";
+    await seedAuthority(uid);
     const result = await publishAssignment(db, {
       ...base,
       idempotencyKey: "valid-punctuated",

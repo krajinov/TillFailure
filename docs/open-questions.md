@@ -90,3 +90,7 @@ Payments, invoices, subscriptions, session credits, group sessions, advanced ana
 ## Own-command prerequisite approval update (2026-10-21)
 
 Josip approved the dedicated resolution protocol and initial compatibility scope and authorized emulator-only prerequisite implementation. Earlier proposal/approval questions are superseded for this exact scope, including explicit Resolve confirmation. Revocation execution/UI remain gated on prerequisite review and verification. Legacy absence/binding, damaged storage, unavailable/disabled identity, production retention/privacy/support and deployment gates remain open; no destructive discard, identity repair or privileged override is approved.
+
+## PR 4 implementation status (2026-10-23)
+
+Josip separately authorized the narrow client workspace-membership revocation implementation after PR #13 merged. It is implemented for emulator review in the [PR 4 report](milestones/milestone-5-pr4-report.md); historical rows describing revocation execution/UI as unauthorized are superseded only within that exact approved boundary. The seventh protected variant reuses own-command resolution. Assignment-bearing clients, owner overrides, self-leave, archive/reactivation, same-pair return, history grants, private notes and broader privacy/identity/storage/retention/production decisions remain open. Native/touch evidence and missing platform gates retain their separate attribution.

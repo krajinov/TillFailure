@@ -23,6 +23,7 @@ class ClientRequest(val action: String, val workspaceId: String, val pageSize: I
 }
 data class ClientResult(val page: ClientPage? = null, val detail: ClientRecord? = null, val error: String? = null)
 interface ClientRepository {
+    val commands: com.delminiusapps.tillfailure.invitations.InvitationClient? get() = null
     fun read(scope: ClientScope, request: ClientRequest, callback: (ClientResult) -> Unit): FirebaseCancellation
 }
 

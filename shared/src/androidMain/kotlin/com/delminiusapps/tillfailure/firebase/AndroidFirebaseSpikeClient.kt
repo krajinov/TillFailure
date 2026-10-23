@@ -111,6 +111,7 @@ class AndroidFirebaseSpikeClient(
                         val valid = synchronized(callbackLock) { !terminated.get() && auth.currentUser?.uid == uid && issuedEpoch == invitationAuthEpoch }
                         check(valid && identity.token != null)
                         val callable = when (request.action) {
+                            "prepare-client-revocation", "revoke-client" -> "clientRevocationEmulator"
                             "resolve-command" -> "commandResolutionEmulator"
                             "complete-onboarding" -> "onboardingEmulator"
                             "profile-get", "update-profile" -> "basicProfileEmulator"
@@ -156,6 +157,7 @@ class AndroidFirebaseSpikeClient(
         }
     }
     override val clients: ClientRepository = object : ClientRepository {
+        override val commands get() = invitations
         override fun read(scope: ClientScope, request: ClientRequest, callback: (ClientResult) -> Unit): FirebaseCancellation {
             val cancelled = AtomicBoolean(false)
             val connection = AtomicReference<HttpURLConnection?>()

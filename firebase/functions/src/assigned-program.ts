@@ -103,7 +103,7 @@ export async function publishAssignment(db: Firestore, input: PublishAssignmentR
   const predecessorIndexRef = replaces ? db.doc(`workspaces/${input.workspaceId}/assignedPrograms/${input.replacesAssignmentId}`) : null;
   const workoutCount = input.workouts.length;
   const exerciseCount = input.workouts.reduce((sum, workout) => sum + workout.exercises.length, 0);
-  const documentCount = 1 + 1 + workoutCount + exerciseCount + input.plans.length + 1 + 1 + 1 + (replaces ? 2 : 0);
+  const documentCount = 1 + 1 + workoutCount + exerciseCount + input.plans.length + 1 + 1 + 1 + 1 + (replaces ? 2 : 0);
   if (documentCount > input.maxWrites) throw new Error("write-budget-exceeded");
   const snapshotWorkoutIds = new Set<string>();
   for (const workout of input.workouts) {
@@ -132,6 +132,23 @@ export async function publishAssignment(db: Firestore, input: PublishAssignmentR
       return { assignmentId: receipt.get("assignmentId") as string, revision: 1, documentCount: receipt.get("documentCount") as number, replayed: true };
     }
     if (existing.exists) throw new Error("assignment-id-reused");
+    // Publication and membership removal serialize on the workspace revision. Merely
+    // reading membership or probing an empty assignment query does not establish this fence.
+    const authority = await transaction.getAll(db.doc(`workspaces/${input.workspaceId}`),
+      db.doc(`workspaces/${input.workspaceId}/memberships/${input.uid}`),
+      db.doc(`workspaces/${input.workspaceId}/clientProfiles/${input.uid}`),
+      db.doc(`workspaces/${input.workspaceId}/memberships/${input.trainerId}`));
+    const [workspace, client, profile, trainer] = authority;
+    if (workspace!.get("schemaVersion") !== 1 || workspace!.get("status") !== "active" ||
+        !Number.isSafeInteger(workspace!.get("membershipRevision")) || workspace!.get("membershipRevision") < 1 || workspace!.get("membershipRevision") >= 2147483646 ||
+        input.callerUid !== input.trainerId || profile!.get("schemaVersion") !== 1 || profile!.get("workspaceId") !== input.workspaceId ||
+        profile!.get("userId") !== input.uid || profile!.get("trainerId") !== input.trainerId ||
+        [client,trainer].some((m,i) => m!.get("schemaVersion") !== 1 || m!.get("workspaceId") !== input.workspaceId ||
+          m!.get("userId") !== (i === 0 ? input.uid : input.trainerId) || m!.get("role") !== (i === 0 ? "client" : "trainer") ||
+          m!.get("status") !== "active" || m!.get("catalogContributionActive") !== true || !Number.isSafeInteger(m!.get("revision")) || m!.get("revision") < 1)) {
+      throw new Error("assignment-authority-unavailable");
+    }
+
     if (predecessorHeaderRef && predecessorIndexRef) {
       const predecessor = documents[2]!;
       const predecessorIndex = documents[3]!;
@@ -155,6 +172,7 @@ export async function publishAssignment(db: Firestore, input: PublishAssignmentR
         predecessorIndex.get("revision") !== expectedPredecessorRevision
       ) throw new Error("predecessor-index-inconsistent");
     }
+    transaction.update(workspace!.ref, { membershipRevision: workspace!.get("membershipRevision") + 1 });
     const identity = { schemaVersion: 1, workspaceId: input.workspaceId, clientId: input.uid, assignmentId: input.assignmentId };
     transaction.create(headerRef, {
       ...identity,

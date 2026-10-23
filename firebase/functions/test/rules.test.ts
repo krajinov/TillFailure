@@ -827,6 +827,21 @@ describe("Firestore and Storage rules", () => {
     assert.equal((await adminDb.doc(`lifecycleCommands/${commandId("admin", "missing-authorization-enable")}`).get()).exists, false);
   });
 
+  it("retains the existing trainer assignment-index predicate gap after client membership loss", async () => {
+    await seedEligibleAssignment();
+    const admin=emulatorFirestore();
+    await admin.doc("users/trainer").set({schemaVersion:1,accountStatus:"active"});
+    await admin.doc("workspaces/ws/memberships/trainer").set({schemaVersion:1,userId:"trainer",workspaceId:"ws",role:"trainer",status:"active"});
+    await admin.doc("workspaces/ws/assignedPrograms/asg").set({schemaVersion:1,workspaceId:"ws",assignmentId:"asg",clientId:"client",trainerId:"trainer",status:"archived",revision:2});
+    await admin.doc("workspaces/ws/memberships/client").update({status:"revoked"});
+    const trainer=verifiedContext("trainer").firestore(),client=verifiedContext("client").firestore();
+    await assertSucceeds(getDoc(doc(trainer,"workspaces/ws/assignedPrograms/asg")));
+    await assertFails(getDoc(doc(client,"users/client/workspaces/ws/assignedPrograms/asg")));
+    await assertFails(getDocs(collection(client,"users/client/workspaces/ws/assignedPrograms")));
+    await assertFails(updateDoc(doc(trainer,"workspaces/ws/memberships/client"),{status:"active"}));
+    await assertFails(setDoc(doc(trainer,"lifecycleCommands/forged"),{schemaVersion:1}));
+  });
+
   it("authorizes the documented assignment-header collection query and keeps cross-account denial", async () => {
     await seedEligibleAssignment();
     const collectionPath = "users/client/workspaces/ws/assignedPrograms";
@@ -841,6 +856,10 @@ describe("Firestore and Storage rules", () => {
     // The trusted assignment lifecycle is the only writer of this collection and always creates a
     // header whose identity equals its document path — the invariant the path-bound list relies on.
     const adminDb = emulatorFirestore();
+    await adminDb.doc("workspaces/ws").update({membershipRevision:1});
+    await adminDb.doc("workspaces/ws/memberships/client").update({revision:1,catalogContributionActive:true});
+    await adminDb.doc("workspaces/ws/memberships/trainer").set({schemaVersion:1,workspaceId:"ws",userId:"trainer",role:"trainer",status:"active",revision:1,catalogContributionActive:true});
+    await adminDb.doc("workspaces/ws/clientProfiles/client").set({schemaVersion:1,workspaceId:"ws",userId:"client",trainerId:"trainer"});
     await publishAssignment(adminDb, {
       callerUid: "trainer",
       idempotencyKey: "publish-trusted-header",

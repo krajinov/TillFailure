@@ -1,8 +1,11 @@
 # Milestone 5 prerequisite: own-command outcome resolution
 
-Status: **protocol and initial compatibility scope approved by Josip on 2026-10-21; emulator prerequisite implemented for review.** See the [implementation report](milestone-5-command-resolution-report.md) for evidence and remaining gates. Revocation execution/UI, production, deployment, destructive discard, identity repair and privileged overrides remain excluded.
+Status: **protocol and initial compatibility scope approved by Josip on 2026-10-21; emulator prerequisite implemented for review.** See the [implementation report](milestone-5-command-resolution-report.md) for evidence and remaining gates. The prerequisite approval excludes revocation execution/UI, production, deployment, destructive discard, identity repair and privileged overrides; separately authorized PR 4 status follows below.
 
-The approval includes all six current protected variants, own minimal outcomes after workspace authority loss, covered absent-command fencing, durable proof before retirement, explicit Resolve confirmation and the documented legacy/identity/storage limits. References to proposed mechanics below describe this approved contract; the future seventh revocation variant remains unimplemented and separately gated.
+The approval includes all six current protected variants, own minimal outcomes after workspace authority loss, covered absent-command fencing, durable proof before retirement, explicit Resolve confirmation and the documented legacy/identity/storage limits. References to proposed mechanics below describe this approved contract; the seventh revocation variant was separately gated at that prerequisite baseline.
+
+PR 4 subsequently adds `revoke-client` as the seventh protected variant using this same ledger/fence/proof contract; see its [implementation report](milestone-5-pr4-report.md). The six-variant descriptions below retain prerequisite scope and attribution.
+
 Inspection date: **2026-10-21**, Europe/Sarajevo.
 Baseline: `ce3bde2ed177c873c5b0f55c82949b8f70d18e5a`, branch `docs/milestone-5-pr4-revocation-plan`. The three existing uncommitted planning files were preserved and revised; this document is an additional untracked planning file. No application builds/tests were run.
 

@@ -1,3 +1,4 @@
+import { validRevocationBinding, revocationDecisionValid } from "./client-revocation.js";
 import { Firestore, Timestamp } from "firebase-admin/firestore";
 import { verifiedEmulatorIdentity, INVITATION_FIXTURE_POLICY } from "./invitations.js";
 import { validBasics, ONBOARDING_FIXTURE_POLICY } from "./onboarding.js";
@@ -20,6 +21,7 @@ export function resolutionBinding(uid: string, raw: unknown) {
     revoke: ["action", "workspaceId", "invitationId", "expectedVersion", "idempotencyKey"],
     accept: ["action", "invitationId", "expectedVersion", "idempotencyKey", "acceptanceTokenDigest"],
     "complete-onboarding": ["action", "workspaceId", "idempotencyKey", "onboarding"],
+    "revoke-client": ["action", "workspaceId", "idempotencyKey", "revocation"],
     "update-profile": ["action", "workspaceId", "idempotencyKey", "profileUpdate"] };
   if (!fields[d.action] || !exact(d, fields[d.action]!)) fail();
   const key = participantUid(strictPathIdentifier(d.idempotencyKey, "key"), "key");
@@ -47,8 +49,9 @@ export function resolutionBinding(uid: string, raw: unknown) {
     const p = d.profileUpdate;
     if (!exact(p, ["displayName", "locale", "timeZoneId", "expectedRevision"]) || !validBasics(p) || !integer(p.expectedRevision, 1) || p.expectedRevision >= ONBOARDING_FIXTURE_POLICY.maxRevision) fail();
   }
-  const kind = invitation ? `invitation-${d.action}` : d.action === "complete-onboarding" ? "onboarding-complete" : "profile-update";
-  const hashVersion = invitation ? "invitation-v1" : d.action === "complete-onboarding" ? "onboarding-v1" : "profile-v1";
+  if (d.action === "revoke-client" && !validRevocationBinding(d.revocation)) fail();
+  const kind = d.action === "revoke-client" ? "client-membership-revoke" : invitation ? `invitation-${d.action}` : d.action === "complete-onboarding" ? "onboarding-complete" : "profile-update";
+  const hashVersion = d.action === "revoke-client" ? "client-revocation-v1" : invitation ? "invitation-v1" : d.action === "complete-onboarding" ? "onboarding-v1" : "profile-v1";
   request = invitation ? { ...request, token: d.acceptanceTokenDigest ?? null, callerUid: uid } : { ...request, callerUid: uid, policyVersion: 1 };
   return { d, key, kind, hashVersion, hash: stableHash(request), id: commandId(uid, key) };
 }
@@ -61,13 +64,16 @@ function terminal(b: ReturnType<typeof resolutionBinding>, r: Data, uid: string)
     outcome = r.outcome; stamp = r.decidedAt;
   } else {
     const invite = b.kind.startsWith("invitation-");
-    if (!exact(r, ["schemaVersion", "commandKind", "callerUid", "workspaceId", "requestHash", "result", "committedAt", ...(invite ? ["invitationId"] : [])]) ||
+    if (!exact(r, ["schemaVersion", "commandKind", "callerUid", "workspaceId", "requestHash", "result", "committedAt", ...(invite ? ["invitationId"] : b.kind === "client-membership-revoke" ? ["clientUid"] : [])]) ||
         r.schemaVersion !== 1 || r.commandKind !== b.kind || r.callerUid !== uid || r.requestHash !== b.hash) fail();
     if (typeof r.workspaceId !== "string") fail();
     participantUid(strictPathIdentifier(r.workspaceId, "workspace"), "workspace");
     if (b.d.workspaceId !== undefined && r.workspaceId !== b.d.workspaceId) fail();
     const p = r.result;
-    if (invite) {
+    if (b.kind === "client-membership-revoke") {
+      if (r.clientUid !== b.d.revocation.clientUid || !revocationDecisionValid(p,r.workspaceId,b.d.revocation,b.key)) fail();
+      if (p.status === "revocation-conflict") outcome = "not-applied-conflict";
+    } else if (invite) {
       const id = b.d.action === "create" ? b.id : b.d.invitationId;
       const version = b.d.action === "create" ? 1 : b.d.expectedVersion + (b.d.action === "resend" ? 1 : 0);
       const status = b.d.action === "accept" ? "accepted" : b.d.action === "revoke" ? "revoked" : "pending";

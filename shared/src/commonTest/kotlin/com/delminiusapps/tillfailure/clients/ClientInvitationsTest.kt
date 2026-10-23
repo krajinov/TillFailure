@@ -37,6 +37,19 @@ class ClientInvitationsTest {
     @BeforeTest fun dispatcher() { Dispatchers.setMain(UnconfinedTestDispatcher()) }
     @AfterTest fun reset() { Dispatchers.resetMain() }
 
+    @Test fun exitingRevokedDetailCannotResetFreshRosterOrAnotherOwner() {
+        val owner=ShellOwner("A","w","A","trainer",1)
+        val home=ShellDestination(ShellPage.Home,owner=owner)
+        val roster=ShellDestination(ShellPage.Clients,owner=owner)
+        val detail=ShellDestination(ShellPage.ClientDetails,"C",owner)
+        val stack=mutableListOf<NavKey>(home,roster,detail)
+        assertTrue(ownsClientDestination(stack,owner,owner,detail))
+        stack.removeAt(stack.lastIndex);stack[stack.lastIndex]=roster.copy(refreshVersion=1)
+        assertFalse(ownsClientDestination(stack,owner,owner,detail))
+        assertFalse(ownsClientDestination(stack,owner,owner.copy(epoch=2),stack.last() as ShellDestination))
+        assertTrue(ownsClientDestination(stack,owner,owner,stack.last() as ShellDestination))
+    }
+
     @Test fun clientsInviteConfirmationAndReturnAreOwnedAndDuplicateSafe() = runTest {
         val stack = mutableListOf<NavKey>(ShellDestination(ShellPage.Home, owner = owner), ShellDestination(ShellPage.Clients, owner = owner))
         openClientInvitations(stack, owner, InvitationEntry.Invite)
