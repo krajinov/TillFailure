@@ -1,3 +1,4 @@
+import { clientRevocationOperation } from "./client-revocation.js";
 import { resolveOwnCommand } from "./command-resolution.js";
 import { getAuth } from "firebase-admin/auth";
 import { basicProfileOperation } from "./basic-profile.js";
@@ -117,5 +118,22 @@ export const commandResolutionEmulator = onCall(async request => {
     const reason = error instanceof Error ? error.message : "";
     throw new HttpsError(reason === "rate-limited" ? "resource-exhausted" : reason === "identity-required" ? "permission-denied" : "failed-precondition",
       reason === "rate-limited" || reason === "identity-required" ? reason : "outcome-unavailable");
+  }
+});
+
+export const clientRevocationEmulator = onCall(async request => {
+  try {
+    requireProvisioningEmulators();
+    const db=emulatorFirestore();
+    const header=request.rawRequest.get("authorization");
+    if (!header?.startsWith("Bearer ") || !request.auth) throw new Error("unauthorized");
+    const token=await getAuth().verifyIdToken(header.slice(7),true).catch(()=>{throw new Error("unauthorized");});
+    if (token.uid !== request.auth.uid || token.firebase.sign_in_provider === "anonymous") throw new Error("unauthorized");
+    return await clientRevocationOperation(db,request.auth.uid,request.data);
+  }
+  catch (error) {
+    const reason = error instanceof Error ? error.message : "";
+    throw new HttpsError(["unauthenticated","unauthorized","unverified-email"].includes(reason) ? "permission-denied" : "failed-precondition",
+      ["unauthenticated","unauthorized","unverified-email"].includes(reason) ? "unauthorized" : reason === "assignment-artifacts" ? reason : "revocation-unavailable");
   }
 });

@@ -34,6 +34,7 @@ data class IdentityState(
     val busy: Boolean = false,
     val canSignOut: Boolean = false,
     val verifiedWorkspaceId: String? = null,
+    val verifiedWorkspaceName: String? = null,
     val verifiedRole: String? = null,
     val accountUid: String? = null,
     val authorityEpoch: Long = 0,
@@ -105,7 +106,7 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
                     // The owner lock is held here. Publish only; never acquire native/storage locks.
                     val previous = mutableState.value.status
                     mutableState.value = mutableState.value.copy(status = GateStatus.SwitchingOut, busy = true,
-                        canSignOut = false, verifiedWorkspaceId = null, verifiedRole = null, workspaces = emptyList(),
+                        canSignOut = false, verifiedWorkspaceId = null, verifiedWorkspaceName = null, verifiedRole = null, workspaces = emptyList(),
                         displayName = "", locale = "", timeZoneId = "", authorityEpoch = revision)
                     if (previous != GateStatus.SwitchingOut) effectChannel.trySend(IdentityEffect.ReplaceRoot(GateStatus.SwitchingOut))
                 },
@@ -143,7 +144,7 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
                 cancelOperations()
                 setState(mutableState.value.copy(
                     status = if (mustBlock) GateStatus.CleanupRequired else GateStatus.SignedOut, busy = false,
-                    verifiedWorkspaceId = null, verifiedRole = null))
+                    verifiedWorkspaceId = null, verifiedWorkspaceName = null, verifiedRole = null))
             } else if (session.isAnonymous) {
                 if (uid == observedUid && mutableState.value.status == GateStatus.AnonymousSession) return@observeSession
                 cancelOperations()
@@ -157,7 +158,7 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
                     status = if (canPinForRecovery || !recoveryValid) GateStatus.AnonymousSession
                         else GateStatus.CleanupRequired,
                     email = "", password = "", busy = false,
-                    verifiedWorkspaceId = null, verifiedRole = null))
+                    verifiedWorkspaceId = null, verifiedWorkspaceName = null, verifiedRole = null))
             } else if (uid != observedUid || mutableState.value.status == GateStatus.AnonymousSession) {
                 if (!isPathSafeAuthUid(uid)) {
                     cancelOperations()
@@ -170,14 +171,14 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
                         status = if (canPinForRecovery || !RecoveryUidContract.isValid(uid))
                             GateStatus.IdentityUnsupported else GateStatus.CleanupRequired,
                         email = "", password = "", busy = false,
-                        verifiedWorkspaceId = null, verifiedRole = null))
+                        verifiedWorkspaceId = null, verifiedWorkspaceName = null, verifiedRole = null))
                     return@observeSession
                 }
                 if (!client.claimPinnedIdentity(uid)) {
                     observedUid = null
                     cancelOperations()
                     setState(mutableState.value.copy(status = GateStatus.CleanupRequired, busy = false,
-                        verifiedWorkspaceId = null, verifiedRole = null))
+                        verifiedWorkspaceId = null, verifiedWorkspaceName = null, verifiedRole = null))
                     return@observeSession
                 }
                 observedUid = uid
@@ -264,7 +265,7 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
                 if (!mutableState.value.canSignOut || mutableState.value.busy || mutableState.value.status in
                     setOf(GateStatus.Loading, GateStatus.SwitchingOut, GateStatus.CleanupRequired)) return
                 setState(mutableState.value.copy(status = GateStatus.SwitchingOut, busy = true,
-                    verifiedWorkspaceId = null, verifiedRole = null))
+                    verifiedWorkspaceId = null, verifiedWorkspaceName = null, verifiedRole = null))
                 // The process-level owner claims the single departure slot; a competing graph joins.
                 if (!port.ownership.lease(uid, ::onDepartureStarted)) return
                 CleanDepartureCoordinator(port).depart(uid, ::cancelSessionAndOperations) { outcome ->
@@ -305,7 +306,7 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
         val request = revision
         proofDepartureGeneration = client.departure?.ownership?.admissionGeneration() ?: 0L
         setState(mutableState.value.copy(status = GateStatus.Loading, busy = true,
-            password = "", verifiedWorkspaceId = null, verifiedRole = null, workspaces = emptyList(),
+            password = "", verifiedWorkspaceId = null, verifiedWorkspaceName = null, verifiedRole = null, workspaces = emptyList(),
             displayName = "", locale = "", timeZoneId = ""))
         if (!isPathSafeAuthUid(uid)) {
             setState(mutableState.value.copy(status = GateStatus.IdentityUnsupported, busy = false))
@@ -424,7 +425,7 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
         requestedWorkspace = wid
         if (selected.role == "trainer") {
             setState(mutableState.value.copy(status = GateStatus.TrainerHome, busy = false,
-                verifiedWorkspaceId = wid, verifiedRole = "trainer", workspaces = emptyList()))
+                verifiedWorkspaceId = wid, verifiedWorkspaceName = selected.name, verifiedRole = "trainer", workspaces = emptyList()))
             observeRevocation(uid, wid, request, workspaceProof, membershipProof)
             return
         }
@@ -437,7 +438,7 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
             val complete = result.document!!.fields["onboardingStatus"] == "complete"
             if (complete && accountRevision == 0) { finish(GateStatus.AccessLost); return@getDocument }
             setState(mutableState.value.copy(status = if (complete) GateStatus.ClientHome else GateStatus.Onboarding,
-                busy = false, verifiedWorkspaceId = wid, verifiedRole = "client", workspaces = emptyList(),
+                busy = false, verifiedWorkspaceId = wid, verifiedWorkspaceName = selected.name, verifiedRole = "client", workspaces = emptyList(),
                 accountProfileRevision = accountRevision, onboardingRevision = profileRevision,
                 displayName = accountFields["displayName"].orEmpty(), locale = accountFields["locale"].orEmpty(),
                 timeZoneId = accountFields["timeZoneId"].orEmpty()))
@@ -535,7 +536,7 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
 
     private fun finish(status: GateStatus) {
         setState(mutableState.value.copy(status = status, busy = false,
-            verifiedWorkspaceId = null, verifiedRole = null, workspaces = emptyList(),
+            verifiedWorkspaceId = null, verifiedWorkspaceName = null, verifiedRole = null, workspaces = emptyList(),
             displayName = "", locale = "", timeZoneId = ""))
     }
 
@@ -550,7 +551,7 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
             recovery == ProtectedRecoveryState.PendingCommand && !protectedStatus)
         val effective = if (locked) next.copy(status = GateStatus.LockedRecovery,
             recoveryCause = next.status.takeUnless { it == GateStatus.LockedRecovery },
-            verifiedWorkspaceId = null, verifiedRole = null, workspaces = emptyList(), displayName = "", locale = "", timeZoneId = "")
+            verifiedWorkspaceId = null, verifiedWorkspaceName = null, verifiedRole = null, workspaces = emptyList(), displayName = "", locale = "", timeZoneId = "")
             else next.copy(recoveryCause = null)
         val port = client.departure
         val canAttemptSignOut = uid != null && port != null &&
@@ -575,7 +576,7 @@ class IdentityViewModel(initialClient: ProductIdentityClient) : ViewModel() {
             observedUid = null
             restrictedSession = false
             setState(mutableState.value.copy(status = GateStatus.SwitchingOut, busy = true,
-                verifiedWorkspaceId = null, verifiedRole = null))
+                verifiedWorkspaceId = null, verifiedWorkspaceName = null, verifiedRole = null))
             if (port.isRetired()) client = port.replacement()
             recoverOnStartup()
         }

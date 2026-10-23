@@ -148,6 +148,7 @@ class IosProductIdentityClient(
         }
     }
     override val clients: ClientRepository = object : ClientRepository {
+        override val commands get() = invitations
         override fun read(scope: ClientScope, request: ClientRequest, callback: (ClientResult) -> Unit): FirebaseCancellation {
             if (!ClientJson.valid(request) || request.workspaceId != scope.workspaceId) {
                 callback(ClientResult(error = "unavailable")); return FirebaseCancellation {}

@@ -592,7 +592,7 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
         invitationInFlight = true
         let transport = {
           let action = payload["action"] as? String ?? ""
-          let endpoint = payload["protocolVersion"] != nil ? "commandResolutionEmulator" : action == "complete-onboarding" ? "onboardingEmulator" :
+          let endpoint = payload["protocolVersion"] != nil ? "commandResolutionEmulator" : ["prepare-client-revocation", "revoke-client"].contains(action) ? "clientRevocationEmulator" : action == "complete-onboarding" ? "onboardingEmulator" :
               (["profile-get", "update-profile"].contains(action) ? "basicProfileEmulator" : "invitationEmulator")
           functions.httpsCallable(endpoint).call(payload) { [weak self] result, error in
             DispatchQueue.main.async {

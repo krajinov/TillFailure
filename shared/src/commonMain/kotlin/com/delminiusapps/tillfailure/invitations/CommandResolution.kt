@@ -54,12 +54,13 @@ object CommandResolution {
         p.workspaceId?.let { put("workspaceId", it) }; p.invitationId?.let { put("invitationId",it) }
         p.expectedVersion?.let { put("expectedVersion",it) }; p.email?.let { put("email",it.lowercase()) }
         p.onboarding?.let { put("onboarding", InvitationJson.format.encodeToJsonElement(it)) }
+        p.revocation?.let { put("revocation", InvitationJson.format.encodeToJsonElement(it)) }
         p.profileUpdate?.let { put("profileUpdate", InvitationJson.format.encodeToJsonElement(it)) }
         if (p.action == "accept") put("acceptanceTokenDigest", p.acceptanceTokenDigest ?: error("binding-required"))
     }
     fun request(p: PendingInvitationCommand): String = buildJsonObject { put("protocolVersion",1); put("descriptor",descriptor(p)) }.toString()
-    fun kind(p: PendingInvitationCommand) = when(p.action) { "complete-onboarding" -> "onboarding-complete"; "update-profile" -> "profile-update"; else -> "invitation-${p.action}" }
-    fun version(p: PendingInvitationCommand) = when(p.action) { "complete-onboarding" -> "onboarding-v1"; "update-profile" -> "profile-v1"; else -> "invitation-v1" }
+    fun kind(p: PendingInvitationCommand) = when(p.action) { "revoke-client" -> "client-membership-revoke"; "complete-onboarding" -> "onboarding-complete"; "update-profile" -> "profile-update"; else -> "invitation-${p.action}" }
+    fun version(p: PendingInvitationCommand) = when(p.action) { "revoke-client" -> "client-revocation-v1"; "complete-onboarding" -> "onboarding-v1"; "update-profile" -> "profile-v1"; else -> "invitation-v1" }
     fun id(p: PendingInvitationCommand) = commandDigest(canonical(buildJsonObject { put("callerUid",p.uid); put("idempotencyKey",p.idempotencyKey) }))
     fun hash(p: PendingInvitationCommand): String {
         val data = descriptor(p).toMutableMap(); data.remove("acceptanceTokenDigest"); data["callerUid"] = JsonPrimitive(p.uid)
@@ -73,7 +74,7 @@ object CommandResolution {
     fun valid(p: PendingInvitationCommand, r: CommandResolutionReply): Boolean = bound(p) && r.protocolVersion == 1 &&
         r.commandKind == kind(p) && r.commandId == id(p) && r.requestHashVersion == version(p) && r.requestHash == hash(p) &&
         r.outcome in setOf("applied","not-applied-conflict","not-applied-fenced") &&
-        (r.outcome != "not-applied-conflict" || p.action == "update-profile") && r.decidedAtMillis in 0..8_640_000_000_000_000L
+        (r.outcome != "not-applied-conflict" || p.action in setOf("update-profile", "revoke-client")) && r.decidedAtMillis in 0..8_640_000_000_000_000L
     fun parse(p: PendingInvitationCommand, json: String?): CommandResolutionReply? = runCatching {
         val value = InvitationJson.format.parseToJsonElement(json ?: "") as? JsonObject ?: error("outcome-invalid")
         require(value.keys == setOf("protocolVersion", "commandKind", "commandId", "requestHashVersion", "requestHash", "outcome", "decidedAtMillis"))
@@ -86,7 +87,7 @@ object CommandResolution {
         InvitationJson.format.decodeFromJsonElement<CommandResolutionReply>(value).also { require(valid(p,it)) }
     }.getOrNull()
     fun original(p: PendingInvitationCommand) = InvitationRequest(p.action, workspaceId=p.workspaceId, invitationId=p.invitationId,
-        email=p.email, expectedVersion=p.expectedVersion, idempotencyKey=p.idempotencyKey, onboarding=p.onboarding, profileUpdate=p.profileUpdate)
+        email=p.email, expectedVersion=p.expectedVersion, idempotencyKey=p.idempotencyKey, onboarding=p.onboarding, profileUpdate=p.profileUpdate,revocation=p.revocation)
 }
 
 @Serializable

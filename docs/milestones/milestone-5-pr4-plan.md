@@ -1,6 +1,6 @@
 # Milestone 5 PR 4: trainer–client relationship revocation
 
-Status: **narrow product revocation policy approved by Josip on 2026-10-21; command-resolution protocol/initial compatibility scope approved and emulator-only prerequisite implementation authorized on 2026-10-21; revocation execution/UI remain unauthorized.**
+Status: **narrow product policy and PR 4 emulator implementation authorized by Josip; implementation under review.** PR #13 is merged. The [PR 4 implementation report](milestone-5-pr4-report.md) records the 2026-10-22–23 baseline, transaction/publication invariant, seventh command variant and verification. Production and broader lifecycle operations remain excluded. Historical planning-only authorization statements below describe the original planning tasks and are superseded only by the later explicit implementation request.
 Inspection date: **2026-10-21**, Europe/Sarajevo.
 
 ## Baseline and authorization

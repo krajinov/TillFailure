@@ -11,9 +11,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.delminiusapps.tillfailure.profile.*
-import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import com.delminiusapps.tillfailure.invitations.InvitationEntry
 import com.delminiusapps.tillfailure.invitations.TrainerInvitationPresentation
 import com.delminiusapps.tillfailure.clients.ClientRepository
@@ -58,8 +60,10 @@ internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
             }
         }
     }
+    var revocationNotice by remember(owner) { mutableStateOf(false) }
     val selectedDestination = stack.lastOrNull() as? ShellDestination
     val selected = selectedDestination?.page ?: ShellPage.Home
+    LaunchedEffect(owner,selectedDestination) { if (selectedDestination?.page != ShellPage.Clients) revocationNotice=false }
     fun leaveProfile(exit: ProfileExit) {
         val p = profileState ?: return
         if (p.scope == ProfileScope(owner.uid, owner.workspace, owner.epoch) && p.visit == selectedDestination?.refreshVersion)
@@ -82,7 +86,7 @@ internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
                 else if (selectedDestination?.page == ShellPage.Invitations) backFromInvitations(stack, selectedDestination)
                 else if (stack.size > 1) stack.removeLastOrNull()
             }
-        }, modifier = Modifier.weight(1f), entryDecorators = listOf(rememberViewModelStoreNavEntryDecorator()), entryProvider = entryProvider {
+        }, modifier = Modifier.weight(1f), entryDecorators = listOf(rememberSaveableStateHolderNavEntryDecorator(), rememberProductViewModelStoreDecorator()), entryProvider = entryProvider {
             entry<ShellDestination> { destination ->
                 if (destination.owner != owner) return@entry
                 if (destination.page in setOf(ShellPage.Clients, ShellPage.ClientDetails)) {
@@ -90,8 +94,15 @@ internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
                         ClientsRoute(clients,
                             ClientScope(state.accountUid, state.verifiedWorkspaceId, state.accountUid, state.authorityEpoch),
                             destination.clientId, { if (stack.lastOrNull() == destination) stack.add(ShellDestination(ShellPage.ClientDetails, it, owner, refreshVersion = destination.refreshVersion)) },
-                            { if (stack.lastOrNull() == destination && stack.size > 1) stack.removeLastOrNull() }, { onEvent(IdentityEvent.Retry) },
-                            { compose -> openClientInvitations(stack, owner, if (compose) InvitationEntry.Invite else InvitationEntry.Manage, destination) })
+                            { if (stack.lastOrNull() == destination && stack.size > 1) stack.removeLastOrNull() }, { if (ownsClientDestination(stack,owner,currentOwner,destination)) { onEvent(IdentityEvent.Retry) } },
+                            { compose -> openClientInvitations(stack, owner, if (compose) InvitationEntry.Invite else InvitationEntry.Manage, destination) }, onRevoked = {
+                                if (ownsClientDestination(stack,owner,currentOwner,destination) && stack.size > 1) {
+                                    revocationNotice=true
+                                    stack.removeLastOrNull()
+                                    val roster = stack.lastOrNull() as? ShellDestination
+                                    if (roster?.page == ShellPage.Clients) stack[stack.lastIndex] = roster.copy(refreshVersion = roster.refreshVersion + 1)
+                                }
+                            }, workspaceName = state.verifiedWorkspaceName ?: state.verifiedWorkspaceId, completedRevocation = revocationNotice)
                     }
                 } else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(TillFailureSpacing.xl),
                     verticalArrangement = Arrangement.spacedBy(TillFailureSpacing.lg)) {
@@ -194,3 +205,7 @@ internal fun acceptProfileNavigation(model: ProfileViewModel, result: ProfileNav
     top: ShellDestination?): Boolean =
     result.scope == ProfileScope(owner.uid, owner.workspace, owner.epoch) &&
         top?.page == ShellPage.EditProfile && top.refreshVersion == result.visit && model.consumeNavigation(result)
+
+/** An exiting entry may still receive a failed read; it cannot reset a newer root or destination. */
+internal fun ownsClientDestination(stack: List<NavKey>, owner: ShellOwner, currentOwner: ShellOwner, source: ShellDestination): Boolean =
+    currentOwner == owner && source.owner == owner && stack.lastOrNull() == source

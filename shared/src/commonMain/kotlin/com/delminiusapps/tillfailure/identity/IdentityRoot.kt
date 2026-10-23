@@ -35,7 +35,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
@@ -88,7 +87,7 @@ fun IdentityRoot(client: ProductIdentityClient?, onOpenDevelopmentCatalog: (() -
     val backStack = rememberNavBackStack(identitySavedState, IdentityGateDestination)
     NavDisplay(
         backStack = backStack,
-        entryDecorators = listOf(rememberViewModelStoreNavEntryDecorator()),
+        entryDecorators = listOf(androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator(), rememberProductViewModelStoreDecorator()),
         entryProvider = entryProvider {
             entry<IdentityGateDestination> {
                 val viewModel: IdentityViewModel = koinViewModel(parameters = { parametersOf(client) })
@@ -195,7 +194,7 @@ private fun IdentityStateNavigation(
     }
     NavDisplay(
         backStack = backStack,
-        entryDecorators = listOf(rememberViewModelStoreNavEntryDecorator()),
+        entryDecorators = listOf(androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator(), rememberProductViewModelStoreDecorator()),
         entryProvider = entryProvider {
             entry<IdentityStateDestination> {
                 // Current server gate always wins over restored keys and buffered effects.

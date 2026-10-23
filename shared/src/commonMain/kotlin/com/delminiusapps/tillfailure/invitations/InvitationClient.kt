@@ -5,6 +5,8 @@ import com.delminiusapps.tillfailure.identity.DepartureOwnershipLock
 import com.delminiusapps.tillfailure.persistence.AccountPersistencePrototype
 import com.delminiusapps.tillfailure.profile.BasicProfile
 import com.delminiusapps.tillfailure.profile.ProfileUpdate
+import com.delminiusapps.tillfailure.clients.ClientRevocation
+import com.delminiusapps.tillfailure.clients.ClientRevocationDecision
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -25,6 +27,7 @@ data class PendingInvitationCommand(
     val profileUpdate: ProfileUpdate? = null,
     val acceptanceTokenDigest: String? = null,
     val resolutionStarted: Boolean = false,
+    val revocation: ClientRevocation? = null,
 ) { override fun toString() = "PendingInvitationCommand(redacted)" }
 
 @Serializable
@@ -39,6 +42,7 @@ data class InvitationRequest(
     val onboarding: com.delminiusapps.tillfailure.onboarding.OnboardingCompletion? = null,
     val profileUpdate: ProfileUpdate? = null,
     val resolution: PendingInvitationCommand? = null,
+    val revocation: ClientRevocation? = null, val clientUid: String? = null,
 ) {
     // Preserve the existing Swift bridge constructor while extending the protected protocol.
     constructor(action: String, workspaceId: String?, invitationId: String?, email: String?, token: String?,
@@ -51,7 +55,7 @@ data class InvitationRequest(
     override fun toString(): String = "InvitationRequest(action=$action)"
     fun pending(uid: String): PendingInvitationCommand? = if (action == "resolve-command") resolution?.takeIf { it.uid == uid } else idempotencyKey?.let {
         PendingInvitationCommand(uid, action, it, workspaceId, invitationId, expectedVersion, email, onboarding, profileUpdate,
-            if (action == "accept" && it.startsWith("or1-") && token != null) commandDigest(token) else null)
+            if (action == "accept" && it.startsWith("or1-") && token != null) commandDigest(token) else null, revocation=revocation)
     }
 }
 
@@ -69,6 +73,7 @@ data class InvitationReply(
     val summaries: List<InvitationSummary>? = null,
     val accountRevision: Int? = null, val onboardingRevision: Int? = null,
     val terminalOutcome: CommandResolutionReply? = null,
+    val revocationPreparation: ClientRevocation? = null, val revocationDecision: ClientRevocationDecision? = null,
     val profile: BasicProfile? = null, val profileCommandKey: String? = null,
 ) {
     override fun toString(): String = "InvitationReply(status=$status)"
@@ -201,7 +206,7 @@ class InvitationLedger(private val store: AccountPersistencePrototype) {
     fun prepare(uid: String, request: InvitationRequest): Boolean = lock.locked { runCatching {
         val record = record(uid)
         if (recoveryState(uid) !in setOf(ProtectedRecoveryState.Clean, ProtectedRecoveryState.PendingCommand)) return@runCatching false
-        val command = request.pending(uid) ?: return@runCatching request.action in setOf("list", "preview", "profile-get") && record.pendingInvitationCommands.isEmpty()
+        val command = request.pending(uid) ?: return@runCatching request.action in setOf("list", "preview", "profile-get", "prepare-client-revocation") && record.pendingInvitationCommands.isEmpty()
         if (!validPendingCommand(uid, command)) return@runCatching false
         val old = record.pendingInvitationCommands.singleOrNull()
         if (old == null && record.lastSettledCommand?.command?.idempotencyKey == command.idempotencyKey) return@runCatching false
@@ -242,8 +247,10 @@ internal fun validPendingCommand(uid: String, p: PendingInvitationCommand): Bool
     fun invitation() = p.invitationId != null && Regex("^[a-f0-9]{64}$").matches(p.invitationId)
     if (p.action == "accept" && p.idempotencyKey.startsWith("or1-") && p.acceptanceTokenDigest == null) return false
     if (p.acceptanceTokenDigest != null && (p.action != "accept" || !Regex("^[a-f0-9]{64}$").matches(p.acceptanceTokenDigest))) return false
+    if (p.action != "revoke-client" && p.revocation != null) return false
     if (p.uid != uid || !segment(p.idempotencyKey) || p.action != "update-profile" && p.profileUpdate != null) return false
     return when (p.action) {
+        "revoke-client" -> segment(p.workspaceId) && p.invitationId == null && p.email == null && p.expectedVersion == null && p.onboarding == null && p.revocation?.valid() == true && p.revocation.clientUid != uid
         "create" -> segment(p.workspaceId) && p.invitationId == null && p.expectedVersion == null && p.onboarding == null &&
             p.email != null && p.email.length <= 254 && Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$").matches(p.email)
         "accept" -> p.workspaceId == null && invitation() && p.expectedVersion in 1..Int.MAX_VALUE && p.email == null && p.onboarding == null
@@ -282,6 +289,7 @@ object InvitationJson {
     else if (ambiguous) InvitationOutcome(error = "unavailable", ambiguous = true)
     else runCatching {
         val reply = if (request.action == "resolve-command") InvitationReply(terminalOutcome=CommandResolution.parse(request.resolution ?: error("binding-required"),json) ?: error("outcome-invalid"))
+            else if (request.action in setOf("prepare-client-revocation", "revoke-client")) com.delminiusapps.tillfailure.clients.ClientRevocationProtocol.parseReply(request,json)
             else format.decodeFromString(InvitationReply.serializer(), json ?: "")
         require(validReply(request, reply))
         InvitationOutcome(reply = reply)
@@ -290,6 +298,16 @@ object InvitationJson {
     fun validReply(request: InvitationRequest, reply: InvitationReply): Boolean {
         if (request.action == "resolve-command") return request.resolution?.let { p -> reply.terminalOutcome?.let { CommandResolution.valid(p,it) } } == true && reply.copy(terminalOutcome=null) == InvitationReply()
         if (reply.terminalOutcome != null || request.resolution != null) return false
+        if (request.action in setOf("prepare-client-revocation", "revoke-client")) {
+            val clean = reply.copy(revocationPreparation=null,revocationDecision=null,replayed=null) == InvitationReply()
+            if (!clean || request.workspaceId == null || !com.delminiusapps.tillfailure.identity.isPathSafeAuthUid(request.workspaceId) || '.' in request.workspaceId ||
+                request.invitationId != null || request.email != null || request.token != null || request.expectedVersion != null || request.onboarding != null || request.profileUpdate != null) return false
+            if (request.action == "prepare-client-revocation") return request.idempotencyKey == null && request.revocation == null && reply.replayed == null &&
+                reply.revocationDecision == null && reply.revocationPreparation?.let { it.valid() && it.clientUid == request.clientUid } == true
+            return request.clientUid == null && reply.revocationPreparation == null && reply.replayed != null && request.revocation?.let {
+                request.idempotencyKey?.let { key -> reply.revocationDecision?.valid(request.workspaceId,it,key) } } == true
+        }
+        if (reply.revocationPreparation != null || reply.revocationDecision != null || request.revocation != null || request.clientUid != null) return false
         if (request.action in setOf("profile-get", "update-profile")) {
             val workspace = request.workspaceId ?: return false
             if (!com.delminiusapps.tillfailure.identity.isPathSafeAuthUid(workspace) || '.' in workspace ||
@@ -348,5 +366,5 @@ object InvitationJson {
     fun safeError(value: String): String = if (value in setOf("identity-required", "outcome-unavailable", "rate-limited", "unauthenticated", "unauthorized", "unverified-email", "wrong-account-email",
         "expired", "rotated", "revoked", "already-used", "idempotency-key-reused", "membership-conflict", "rate-limited",
         "already-complete", "revision-conflict", "fixture-account-required", "record-invalid", "counter-inconsistent", "input-invalid", "email-invalid", "token-invalid",
-        "membership-bound-violated", "workspace-roster-bound-violated", "invitation-unavailable")) value else "unavailable"
+        "membership-bound-violated", "workspace-roster-bound-violated", "invitation-unavailable", "assignment-artifacts", "revocation-unavailable")) value else "unavailable"
 }

@@ -20,7 +20,7 @@ import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 
 @Composable
-internal fun ClientsRoute(repository: ClientRepository, scope: ClientScope, clientId: String?, onOpen: (String) -> Unit, onBack: () -> Unit, onAccessLost: () -> Unit, onInvitations: (Boolean) -> Unit = {}) {
+internal fun ClientsRoute(repository: ClientRepository, scope: ClientScope, clientId: String?, onOpen: (String) -> Unit, onBack: () -> Unit, onAccessLost: () -> Unit, onInvitations: (Boolean) -> Unit = {}, onRevoked: () -> Unit = onBack, workspaceName: String = "Selected workspace", completedRevocation: Boolean = false) {
     val vm: ClientsViewModel = koinViewModel(parameters = { parametersOf(repository) })
     val state by vm.state.collectAsStateWithLifecycle()
     val owner = LocalLifecycleOwner.current
@@ -37,20 +37,27 @@ internal fun ClientsRoute(repository: ClientRepository, scope: ClientScope, clie
     LaunchedEffect(vm, owner, scope, clientId) {
         owner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             vm.bind(scope, clientId)
-            launch { vm.effect.collect { when (it) { is ClientsEffect.OpenDetail -> open(it.clientId); ClientsEffect.Back -> back(); ClientsEffect.AccessLost -> lost(); is ClientsEffect.Invitations -> invitations(it.compose) } } }
+            launch { vm.effect.collect { when (it) { is ClientsEffect.Revoked -> if (vm.consumeRevocationEffect(it,scope,clientId)) onRevoked(); is ClientsEffect.OpenDetail -> open(it.clientId); ClientsEffect.Back -> back(); ClientsEffect.AccessLost -> lost(); is ClientsEffect.Invitations -> invitations(it.compose) } } }
         }
     }
-    ClientsScreen(if (state.scope == scope) state else ClientsState(loading = true), clientId != null, vm::onEvent)
+    ClientsScreen(if (state.scope == scope) state else ClientsState(loading = true), clientId != null, vm::onEvent, workspaceName, completedRevocation)
 }
 
 @Composable
-internal fun ClientsScreen(state: ClientsState, isDetail: Boolean, onEvent: (ClientsEvent) -> Unit) {
+internal fun ClientsScreen(state: ClientsState, isDetail: Boolean, onEvent: (ClientsEvent) -> Unit, workspaceName: String = "Selected workspace", completedRevocation: Boolean = false) {
+    state.revocationPrompt?.let { prompt ->
+        TillFailureConfirmationDialog(
+            title="Revoke client access to this workspace?",
+            message="${state.detail?.displayName ?: "Client reference: ${prompt.clientUid}"}\nWorkspace: $workspaceName\n\nAccess ends immediately. The account, other workspaces and records stay. No Undo or same-workspace re-invitation. Pending commands keep their original recovery path.",
+            confirmLabel="Revoke access",onConfirm={onEvent(ClientsEvent.ConfirmRevocation(prompt))},onDismiss={onEvent(ClientsEvent.CancelRevocation(prompt))})
+    }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(TillFailureSpacing.xl), verticalArrangement = Arrangement.spacedBy(TillFailureSpacing.lg)) {
         item { TillFailureSecondaryButton("Back", { onEvent(ClientsEvent.Back) }) }
         item { Text(if (isDetail) "Client details" else "Clients", Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineLarge, color = TillFailureTheme.colors.primaryText) }
+        if (!isDetail && completedRevocation) item { TillFailureSnackbar("Client access was revoked.") }
         if (state.loading) item { Text("Loading…", color = TillFailureTheme.colors.secondaryText) }
         if (state.error != null) item {
-            Text(when (state.error) { "invalid-cursor" -> "This page has expired. Refresh the roster."; "access-lost" -> "Access is no longer available."; else -> if (isDetail) "Client details are unavailable. Retry while connected." else if (state.paginationError) "The next page is unavailable. Your loaded clients are shown below." else "Clients are unavailable. Retry while connected." }, color = TillFailureTheme.colors.secondaryText)
+            Text(when (state.error) { "invalid-cursor" -> "This page has expired. Refresh the roster."; "access-lost" -> "Access is no longer available."; else -> if (isDetail) "Client details are unavailable. Retry while connected." else if (completedRevocation) "Revocation completed. Roster refresh is unavailable; retry the refresh." else if (state.paginationError) "The next page is unavailable. Your loaded clients are shown below." else "Clients are unavailable. Retry while connected." }, color = TillFailureTheme.colors.secondaryText)
             TillFailureSecondaryButton(if (state.error == "invalid-cursor") "Refresh roster" else "Retry", { onEvent(if (state.error == "invalid-cursor") ClientsEvent.Refresh else ClientsEvent.Retry) })
         }
         if (!isDetail) {
@@ -68,15 +75,20 @@ internal fun ClientsScreen(state: ClientsState, isDetail: Boolean, onEvent: (Cli
                 }
             }
             if (!state.loading && state.error == null && state.items.isEmpty()) item { Text("No assigned active clients.", color = TillFailureTheme.colors.secondaryText) }
-            if (state.nextCursor != null && state.error == null) item { TillFailurePrimaryButton("Load more", { onEvent(ClientsEvent.LoadMore) }, enabled = !state.loading) }
+            if (state.nextCursor != null && state.error == null) item { TillFailurePrimaryButton("Load more", { onEvent(ClientsEvent.LoadMore) }, enabled = !state.loading && !state.revocationBusy && state.revocationPrompt == null) }
         } else state.detail?.let { client -> item { ClientLabels(client) } }
-        item { TillFailureSecondaryButton("Refresh", { onEvent(ClientsEvent.Refresh) }, enabled = !state.loading) }
+        if (isDetail && state.revocationPreparation != null) item {
+            TillFailureSecondaryButton("Revoke client access to this workspace",{onEvent(ClientsEvent.Revoke)},enabled=!state.loading && !state.revocationBusy)
+        }
+        state.revocationMessage?.let { message -> item { Text(message,color=TillFailureTheme.colors.warning) } }
+        item { TillFailureSecondaryButton("Refresh", { onEvent(ClientsEvent.Refresh) }, enabled = !state.loading && !state.revocationBusy && state.revocationPrompt == null) }
     }
 }
 
 @Composable
 private fun ClientLabels(client: ClientRecord) {
     Text(client.displayName ?: "Name not provided yet", style = MaterialTheme.typography.titleLarge, color = TillFailureTheme.colors.primaryText)
+    if (client.displayName == null) Text("Client reference: ${client.clientId}", color = TillFailureTheme.colors.secondaryText)
     Text("Active relationship", color = TillFailureTheme.colors.secondaryText)
     Text(if (client.onboardingStatus == "complete") "Onboarding complete" else "Onboarding pending", color = TillFailureTheme.colors.secondaryText)
 }

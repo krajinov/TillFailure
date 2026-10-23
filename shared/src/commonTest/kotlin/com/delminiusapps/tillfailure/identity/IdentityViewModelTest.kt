@@ -19,6 +19,15 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class IdentityViewModelTest {
+    @Test fun verifiedWorkspaceNameIsTransientFreshDisplayAndClearsWithAuthority() {
+        val client=FakeIdentityClient()
+        client.documents["workspaces/w/memberships/alice"]=client.documents.getValue("workspaces/w/memberships/alice").copy(fields=client.documents.getValue("workspaces/w/memberships/alice").fields+("role" to "trainer"))
+        client.documents["workspaces/w"]=client.documents.getValue("workspaces/w").copy(fields=client.documents.getValue("workspaces/w").fields+("name" to "Exact selected workspace"))
+        val model=IdentityViewModel(client);client.emitSession("alice")
+        assertEquals(GateStatus.TrainerHome,model.state.value.status);assertEquals("Exact selected workspace",model.state.value.verifiedWorkspaceName)
+        model.onEvent(IdentityEvent.Connectivity(false));assertNull(model.state.value.verifiedWorkspaceName);assertNull(model.state.value.verifiedWorkspaceId)
+    }
+
     @Test fun pendingTrainerRequiresFreshServerRecheckBeforeMinimalHomeAndRevocationClosesIt() {
         val client = FakeIdentityClient()
         client.discoveryDocuments = emptyList()

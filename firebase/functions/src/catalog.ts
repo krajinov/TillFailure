@@ -203,7 +203,7 @@ interface ContributionChange {
   readonly status: "active" | "inactive";
 }
 
-function contributionChange(
+export function contributionChange(
   account: FirebaseFirestore.DocumentSnapshot,
   entitlement: FirebaseFirestore.DocumentSnapshot,
   oldContributes: boolean,
