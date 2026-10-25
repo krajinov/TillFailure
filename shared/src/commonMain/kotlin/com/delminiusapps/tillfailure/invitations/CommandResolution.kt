@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+
 package com.delminiusapps.tillfailure.invitations
 
 import kotlinx.serialization.Serializable
@@ -55,12 +57,13 @@ object CommandResolution {
         p.expectedVersion?.let { put("expectedVersion",it) }; p.email?.let { put("email",it.lowercase()) }
         p.onboarding?.let { put("onboarding", InvitationJson.format.encodeToJsonElement(it)) }
         p.revocation?.let { put("revocation", InvitationJson.format.encodeToJsonElement(it)) }
+        p.noteSave?.let { put("noteSave", InvitationJson.format.encodeToJsonElement(it)) }
         p.profileUpdate?.let { put("profileUpdate", InvitationJson.format.encodeToJsonElement(it)) }
         if (p.action == "accept") put("acceptanceTokenDigest", p.acceptanceTokenDigest ?: error("binding-required"))
     }
     fun request(p: PendingInvitationCommand): String = buildJsonObject { put("protocolVersion",1); put("descriptor",descriptor(p)) }.toString()
-    fun kind(p: PendingInvitationCommand) = when(p.action) { "revoke-client" -> "client-membership-revoke"; "complete-onboarding" -> "onboarding-complete"; "update-profile" -> "profile-update"; else -> "invitation-${p.action}" }
-    fun version(p: PendingInvitationCommand) = when(p.action) { "revoke-client" -> "client-revocation-v1"; "complete-onboarding" -> "onboarding-v1"; "update-profile" -> "profile-v1"; else -> "invitation-v1" }
+    fun kind(p: PendingInvitationCommand) = when(p.action) { "save-trainer-note" -> "trainer-note-save"; "revoke-client" -> "client-membership-revoke"; "complete-onboarding" -> "onboarding-complete"; "update-profile" -> "profile-update"; else -> "invitation-${p.action}" }
+    fun version(p: PendingInvitationCommand) = when(p.action) { "save-trainer-note" -> "trainer-note-v1"; "revoke-client" -> "client-revocation-v1"; "complete-onboarding" -> "onboarding-v1"; "update-profile" -> "profile-v1"; else -> "invitation-v1" }
     fun id(p: PendingInvitationCommand) = commandDigest(canonical(buildJsonObject { put("callerUid",p.uid); put("idempotencyKey",p.idempotencyKey) }))
     fun hash(p: PendingInvitationCommand): String {
         val data = descriptor(p).toMutableMap(); data.remove("acceptanceTokenDigest"); data["callerUid"] = JsonPrimitive(p.uid)
@@ -74,7 +77,7 @@ object CommandResolution {
     fun valid(p: PendingInvitationCommand, r: CommandResolutionReply): Boolean = bound(p) && r.protocolVersion == 1 &&
         r.commandKind == kind(p) && r.commandId == id(p) && r.requestHashVersion == version(p) && r.requestHash == hash(p) &&
         r.outcome in setOf("applied","not-applied-conflict","not-applied-fenced") &&
-        (r.outcome != "not-applied-conflict" || p.action in setOf("update-profile", "revoke-client")) && r.decidedAtMillis in 0..8_640_000_000_000_000L
+        (r.outcome != "not-applied-conflict" || p.action in setOf("update-profile", "revoke-client", "save-trainer-note")) && r.decidedAtMillis in 0..8_640_000_000_000_000L
     fun parse(p: PendingInvitationCommand, json: String?): CommandResolutionReply? = runCatching {
         val value = InvitationJson.format.parseToJsonElement(json ?: "") as? JsonObject ?: error("outcome-invalid")
         require(value.keys == setOf("protocolVersion", "commandKind", "commandId", "requestHashVersion", "requestHash", "outcome", "decidedAtMillis"))
@@ -87,21 +90,70 @@ object CommandResolution {
         InvitationJson.format.decodeFromJsonElement<CommandResolutionReply>(value).also { require(valid(p,it)) }
     }.getOrNull()
     fun original(p: PendingInvitationCommand) = InvitationRequest(p.action, workspaceId=p.workspaceId, invitationId=p.invitationId,
-        email=p.email, expectedVersion=p.expectedVersion, idempotencyKey=p.idempotencyKey, onboarding=p.onboarding, profileUpdate=p.profileUpdate,revocation=p.revocation)
+        email=p.email, expectedVersion=p.expectedVersion, idempotencyKey=p.idempotencyKey, onboarding=p.onboarding, profileUpdate=p.profileUpdate,revocation=p.revocation,noteSave=p.noteSave)
 }
 
 @Serializable
-data class CommandTerminalProof(val command: PendingInvitationCommand, val source: String,
-    val resolution: CommandResolutionReply? = null, val acknowledgment: InvitationReply? = null) {
+data class CommandTerminalProof(val command: PendingInvitationCommand? = null, val source: String,
+    val resolution: CommandResolutionReply? = null, val acknowledgment: InvitationReply? = null,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val marker: SettledCommandMarker? = null) {
     override fun toString() = "CommandTerminalProof(redacted)"
+    fun ownedBy(uid: String) = valid() && (command?.uid ?: marker?.uid) == uid
+    fun consumed(p: PendingInvitationCommand) = ownedBy(p.uid) &&
+        (command?.idempotencyKey == p.idempotencyKey || marker?.commandId == CommandResolution.id(p))
+    fun compacted(): CommandTerminalProof {
+        require(valid() && command != null && marker == null)
+        val outcome = resolution?.outcome ?: when {
+            acknowledgment?.noteDecision?.status == "note-conflict" || acknowledgment?.status == "profile-conflict" || acknowledgment?.revocationDecision?.status == "revocation-conflict" -> "not-applied-conflict"
+            else -> "applied"
+        }
+        return CommandTerminalProof(source="compacted-v1", marker=SettledCommandMarker(uid=command.uid,
+            commandKind=CommandResolution.kind(command), commandId=CommandResolution.id(command),
+            requestHashVersion=CommandResolution.version(command),requestHash=CommandResolution.hash(command),
+            source=source,outcome=outcome,decidedAtMillis=resolution?.decidedAtMillis)).also { require(it.valid()) }
+    }
+    fun retired(): CommandTerminalProof = if (command?.action == "save-trainer-note") compacted() else this
     fun valid(): Boolean = runCatching {
+        if (source == "compacted-v1") return@runCatching command == null && resolution == null && acknowledgment == null && marker?.valid() == true
+        require(marker == null)
+        val command = command ?: return@runCatching false
         require(validPendingCommand(command.uid,command))
         when(source) {
             "resolution-v1" -> acknowledgment == null && resolution?.let { CommandResolution.valid(command,it) } == true
-            "normal-v1" -> resolution == null && acknowledgment != null && acknowledgment.replayed != null && acknowledgment.deliveryToken == null &&
-                InvitationJson.validReply(CommandResolution.original(command), acknowledgment.copy(replayed=true)) &&
+            "normal-v1" -> resolution == null && acknowledgment != null && (acknowledgment.replayed != null || acknowledgment.noteDecision != null) && acknowledgment.deliveryToken == null &&
+                InvitationJson.validReply(CommandResolution.original(command), if(command.action=="save-trainer-note") acknowledgment else acknowledgment.copy(replayed=true)) &&
                 (command.action != "create" || acknowledgment.invitationId == CommandResolution.id(command))
             else -> false
         }
     }.getOrDefault(false)
+}
+
+/** Only produced locally after a full terminal proof was validated and durably written. */
+@Serializable
+data class SettledCommandMarker(
+    @kotlinx.serialization.Required val schemaVersion: Int = 1,
+    val uid: String, val commandKind: String, val commandId: String,
+    val requestHashVersion: String, val requestHash: String, val source: String,
+    val outcome: String, val decidedAtMillis: Long? = null,
+) {
+    override fun toString() = "SettledCommandMarker(redacted)"
+    fun valid(): Boolean {
+        val version = when(commandKind) {
+            "invitation-create", "invitation-resend", "invitation-revoke", "invitation-accept" -> "invitation-v1"
+            "onboarding-complete" -> "onboarding-v1"
+            "profile-update" -> "profile-v1"
+            "client-membership-revoke" -> "client-revocation-v1"
+            "trainer-note-save" -> "trainer-note-v1"
+            else -> return false
+        }
+        return schemaVersion == 1 && com.delminiusapps.tillfailure.persistence.RecoveryUidContract.isValid(uid) &&
+            requestHashVersion == version && listOf(commandId,requestHash).all { Regex("[a-f0-9]{64}").matches(it) } &&
+            outcome in setOf("applied","not-applied-conflict","not-applied-fenced") &&
+            (outcome != "not-applied-conflict" || commandKind in setOf("profile-update","client-membership-revoke","trainer-note-save")) &&
+            when(source) {
+                "resolution-v1" -> decidedAtMillis != null && decidedAtMillis in 0..8_640_000_000_000_000L
+                "normal-v1" -> decidedAtMillis == null && outcome != "not-applied-fenced"
+                else -> false
+            }
+    }
 }

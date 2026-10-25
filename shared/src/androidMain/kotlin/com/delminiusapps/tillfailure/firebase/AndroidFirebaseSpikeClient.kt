@@ -69,6 +69,7 @@ class AndroidFirebaseSpikeClient(
         }
         override fun recoveryState(uid: String) = synchronized(callbackLock) { invitationLedger.recoveryState(uid) }
         override val memory get() = PendingInvitationLinks.memory
+        override fun newNoteBindingNonce(): String = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it.toInt() and 255) }
         override fun newCommandKey(): String = resolutionCommandKey(UUID.randomUUID().toString())
         override fun pending(uid: String): PendingInvitationCommand? = synchronized(callbackLock) { invitationLedger.pending(uid) }
         override fun observePending(uid: String, callback: () -> Unit) = invitationChanges.observe(uid, callback)
@@ -111,6 +112,7 @@ class AndroidFirebaseSpikeClient(
                         val valid = synchronized(callbackLock) { !terminated.get() && auth.currentUser?.uid == uid && issuedEpoch == invitationAuthEpoch }
                         check(valid && identity.token != null)
                         val callable = when (request.action) {
+                            "note-get", "save-trainer-note" -> "trainerNotesEmulator"
                             "prepare-client-revocation", "revoke-client" -> "clientRevocationEmulator"
                             "resolve-command" -> "commandResolutionEmulator"
                             "complete-onboarding" -> "onboardingEmulator"

@@ -75,6 +75,7 @@ class NativeInvitationOutcome(val json: String?, val error: String?, val ambiguo
 
 interface NativeIdentityBridge : NativeFirebaseBridge {
     fun beforeCommandRetirement() {}
+    fun noteBindingNonce(): String = error("unavailable")
     fun callClients(uid: String, json: String, callback: (NativeClientOutcome) -> Unit): String
     val invitationChanges: InvitationChanges
     /** Shared native issuance/freeze lock, including all protected read-modify-write operations. */
@@ -129,6 +130,7 @@ class IosProductIdentityClient(
         }
         override fun recoveryState(uid: String) = protectedRead { invitationLedger.recoveryState(uid) }
         override val memory get() = PendingInvitationLinks.memory
+        override fun newNoteBindingNonce(): String = bridge.noteBindingNonce()
         override fun newCommandKey(): String = resolutionCommandKey(NSUUID().UUIDString)
         override fun pending(uid: String): PendingInvitationCommand? = protectedRead { invitationLedger.pending(uid) }
         override fun observePending(uid: String, callback: () -> Unit) = bridge.invitationChanges.observe(uid, callback)

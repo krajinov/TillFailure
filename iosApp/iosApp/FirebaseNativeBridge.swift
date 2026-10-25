@@ -7,6 +7,7 @@ import FirebaseFunctions
 import Foundation
 import Network
 import Shared
+import Security
 
 /// Process-wide ownership of the named `FirebaseApp` instances used by the spike bridge.
 ///
@@ -564,6 +565,11 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
     #if DEBUG
     var debugBeforeCommandRetirement: (() -> Void)?
     #endif
+    func noteBindingNonce() -> String {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else { return "" }
+        return bytes.map { String(format: "%02x", $0) }.joined()
+    }
     func beforeCommandRetirement() {
         #if DEBUG
         debugBeforeCommandRetirement?()
@@ -592,7 +598,7 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
         invitationInFlight = true
         let transport = {
           let action = payload["action"] as? String ?? ""
-          let endpoint = payload["protocolVersion"] != nil ? "commandResolutionEmulator" : ["prepare-client-revocation", "revoke-client"].contains(action) ? "clientRevocationEmulator" : action == "complete-onboarding" ? "onboardingEmulator" :
+          let endpoint = payload["protocolVersion"] != nil ? "commandResolutionEmulator" : ["note-get", "save-trainer-note"].contains(action) ? "trainerNotesEmulator" : ["prepare-client-revocation", "revoke-client"].contains(action) ? "clientRevocationEmulator" : action == "complete-onboarding" ? "onboardingEmulator" :
               (["profile-get", "update-profile"].contains(action) ? "basicProfileEmulator" : "invitationEmulator")
           functions.httpsCallable(endpoint).call(payload) { [weak self] result, error in
             DispatchQueue.main.async {

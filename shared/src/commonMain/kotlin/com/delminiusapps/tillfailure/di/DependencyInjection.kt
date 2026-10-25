@@ -14,6 +14,7 @@ import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
 
 private val foundationModule = module {
+    viewModel { (client: com.delminiusapps.tillfailure.invitations.InvitationClient) -> com.delminiusapps.tillfailure.clients.TrainerNoteViewModel(client) }
     viewModel { (client: com.delminiusapps.tillfailure.invitations.InvitationClient) ->
         com.delminiusapps.tillfailure.profile.ProfileViewModel(client) }
     viewModel { (repository: ClientRepository) ->

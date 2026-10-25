@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { after, before, beforeEach, describe, it } from "node:test";
 import { assertFails, assertSucceeds, initializeTestEnvironment, RulesTestEnvironment } from "@firebase/rules-unit-testing";
-import { collection, collectionGroup, doc, getDoc, getDocs, limit, orderBy, query, setDoc, updateDoc, where } from "firebase/firestore";
+import { collection, collectionGroup, doc, getDoc, getDocs, deleteDoc, limit, orderBy, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { deleteObject, ref, uploadString } from "firebase/storage";
 import { publishAssignment } from "../src/assigned-program.js";
 import { transitionAccountLifecycle, transitionMembership, transitionWorkspace } from "../src/catalog.js";
@@ -54,6 +54,17 @@ async function seedEligibleAssignment(): Promise<void> {
 }
 
 describe("Firestore and Storage rules", () => {
+  it("denies every direct private-note and receipt path including the author", async () => {
+    const admin=emulatorFirestore(), path="workspaces/ws/privateTrainerNotes/client";
+    await admin.doc(path).set({schemaVersion:1,authorTrainerId:"trainer",subjectClientId:"client",body:"Synthetic administration"});
+    for(const uid of ["trainer","client","other"]) {
+      const db=verifiedContext(uid).firestore();
+      await assertFails(getDoc(doc(db,path)));await assertFails(getDocs(collection(db,"workspaces/ws/privateTrainerNotes")));
+      await assertFails(getDocs(collectionGroup(db,"privateTrainerNotes")));
+      await assertFails(setDoc(doc(db,path),{body:"replacement"}));await assertFails(updateDoc(doc(db,path),{body:"changed"}));await assertFails(deleteDoc(doc(db,path)));
+      await assertFails(getDoc(doc(db,"lifecycleCommands/note")));await assertFails(getDoc(doc(db,"trainerNoteRequests/counter")));
+    }
+  });
   it("allows only own active client minimal onboarding profile gets; denies writes, list, malformed, cross-account and revoked reads", async () => {
     const admin = emulatorFirestore();
     await admin.doc("users/client").set({ schemaVersion: 1, accountStatus: "active" });

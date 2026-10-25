@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+
 package com.delminiusapps.tillfailure.invitations
 
 import com.delminiusapps.tillfailure.firebase.FirebaseCancellation
@@ -5,7 +7,7 @@ import com.delminiusapps.tillfailure.identity.DepartureOwnershipLock
 import com.delminiusapps.tillfailure.persistence.AccountPersistencePrototype
 import com.delminiusapps.tillfailure.profile.BasicProfile
 import com.delminiusapps.tillfailure.profile.ProfileUpdate
-import com.delminiusapps.tillfailure.clients.ClientRevocation
+import com.delminiusapps.tillfailure.clients.*
 import com.delminiusapps.tillfailure.clients.ClientRevocationDecision
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -28,6 +30,7 @@ data class PendingInvitationCommand(
     val acceptanceTokenDigest: String? = null,
     val resolutionStarted: Boolean = false,
     val revocation: ClientRevocation? = null,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val noteSave: NoteSave? = null,
 ) { override fun toString() = "PendingInvitationCommand(redacted)" }
 
 @Serializable
@@ -43,6 +46,7 @@ data class InvitationRequest(
     val profileUpdate: ProfileUpdate? = null,
     val resolution: PendingInvitationCommand? = null,
     val revocation: ClientRevocation? = null, val clientUid: String? = null,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val noteSave: NoteSave? = null,
 ) {
     // Preserve the existing Swift bridge constructor while extending the protected protocol.
     constructor(action: String, workspaceId: String?, invitationId: String?, email: String?, token: String?,
@@ -55,7 +59,7 @@ data class InvitationRequest(
     override fun toString(): String = "InvitationRequest(action=$action)"
     fun pending(uid: String): PendingInvitationCommand? = if (action == "resolve-command") resolution?.takeIf { it.uid == uid } else idempotencyKey?.let {
         PendingInvitationCommand(uid, action, it, workspaceId, invitationId, expectedVersion, email, onboarding, profileUpdate,
-            if (action == "accept" && it.startsWith("or1-") && token != null) commandDigest(token) else null, revocation=revocation)
+            if (action == "accept" && it.startsWith("or1-") && token != null) commandDigest(token) else null, revocation=revocation,noteSave=noteSave)
     }
 }
 
@@ -74,6 +78,8 @@ data class InvitationReply(
     val accountRevision: Int? = null, val onboardingRevision: Int? = null,
     val terminalOutcome: CommandResolutionReply? = null,
     val revocationPreparation: ClientRevocation? = null, val revocationDecision: ClientRevocationDecision? = null,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val noteRead: NoteRead? = null,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val noteDecision: NoteDecision? = null,
     val profile: BasicProfile? = null, val profileCommandKey: String? = null,
 ) {
     override fun toString(): String = "InvitationReply(status=$status)"
@@ -93,6 +99,7 @@ interface InvitationClient {
     fun lastSettled(uid: String): CommandTerminalProof? = null
     fun workspacePreference(uid: String): String? = null
     fun saveWorkspacePreference(uid: String, workspaceId: String) {}
+    fun newNoteBindingNonce(): String = error("unavailable")
     fun newCommandKey(): String
     fun observePending(uid: String, callback: () -> Unit): FirebaseCancellation = FirebaseCancellation {}
 }
@@ -144,7 +151,7 @@ class InvitationMemory {
         lock.locked {
             if (proof != null) {
                 val pending = acceptance
-                if (proof.command.uid == uid && proof.valid() && pending?.uid == uid && CommandResolution.matches(pending, proof.command)) clear(uid)
+                if (proof.ownedBy(uid) && pending?.uid == uid && proof.command?.let { CommandResolution.matches(pending, it) } == true) clear(uid)
                 return@locked
             }
             if (reply?.status != "accepted") return@locked
@@ -178,10 +185,10 @@ class InvitationLedger(private val store: AccountPersistencePrototype) {
         val record = store.read(uid) ?: error("Missing protected registry")
         require(record.schemaVersion == 1 && record.uid == uid)
         require(record.pendingInvitationCommands.size <= 1 && record.pendingInvitationCommands.all { validPendingCommand(uid, it) })
-        require(record.pendingTerminalProof?.let { it.valid() && record.pendingInvitationCommands.singleOrNull()?.let { p -> CommandResolution.matches(p,it.command) } == true } != false)
-        require(record.lastSettledCommand?.let { it.command.uid == uid && it.valid() } != false)
+        require(record.pendingTerminalProof?.let { it.valid() && record.pendingInvitationCommands.singleOrNull()?.let { p -> it.command?.let { c -> CommandResolution.matches(p,c) } == true } == true } != false)
+        require(record.lastSettledCommand?.let { it.ownedBy(uid) && record.pendingInvitationCommands.none(it::consumed) } != false)
         if (record.pendingTerminalProof != null) {
-            val retired = record.copy(pendingInvitationCommands=emptyList(), pendingTerminalProof=null, lastSettledCommand=record.pendingTerminalProof)
+            val retired = record.copy(pendingInvitationCommands=emptyList(), pendingTerminalProof=null, lastSettledCommand=record.pendingTerminalProof.retired())
             store.write(retired)
             return retired
         }
@@ -206,10 +213,10 @@ class InvitationLedger(private val store: AccountPersistencePrototype) {
     fun prepare(uid: String, request: InvitationRequest): Boolean = lock.locked { runCatching {
         val record = record(uid)
         if (recoveryState(uid) !in setOf(ProtectedRecoveryState.Clean, ProtectedRecoveryState.PendingCommand)) return@runCatching false
-        val command = request.pending(uid) ?: return@runCatching request.action in setOf("list", "preview", "profile-get", "prepare-client-revocation") && record.pendingInvitationCommands.isEmpty()
+        val command = request.pending(uid) ?: return@runCatching request.action in setOf("list", "preview", "profile-get", "prepare-client-revocation", "note-get") && record.pendingInvitationCommands.isEmpty()
         if (!validPendingCommand(uid, command)) return@runCatching false
         val old = record.pendingInvitationCommands.singleOrNull()
-        if (old == null && record.lastSettledCommand?.command?.idempotencyKey == command.idempotencyKey) return@runCatching false
+        if (old == null && record.lastSettledCommand?.consumed(command) == true) return@runCatching false
         if (request.action == "resolve-command") {
             if (old == null || !CommandResolution.matches(old,command) || !CommandResolution.bound(command)) return@runCatching false
             store.write(record.copy(pendingInvitationCommands=listOf(old.copy(resolutionStarted=true))))
@@ -236,7 +243,7 @@ class InvitationLedger(private val store: AccountPersistencePrototype) {
         if (!proof.valid()) return@runCatching InvitationOutcome(error="unavailable",ambiguous=true)
         store.write(record.copy(pendingTerminalProof=proof))
         beforeRetirementForTest?.invoke()
-        store.write(record.copy(pendingInvitationCommands=emptyList(),pendingTerminalProof=null,lastSettledCommand=proof))
+        store.write(record.copy(pendingInvitationCommands=emptyList(),pendingTerminalProof=null,lastSettledCommand=proof.retired()))
         outcome
     }.getOrDefault(InvitationOutcome(error = "storage-unavailable", ambiguous = true)) }
 }
@@ -247,9 +254,11 @@ internal fun validPendingCommand(uid: String, p: PendingInvitationCommand): Bool
     fun invitation() = p.invitationId != null && Regex("^[a-f0-9]{64}$").matches(p.invitationId)
     if (p.action == "accept" && p.idempotencyKey.startsWith("or1-") && p.acceptanceTokenDigest == null) return false
     if (p.acceptanceTokenDigest != null && (p.action != "accept" || !Regex("^[a-f0-9]{64}$").matches(p.acceptanceTokenDigest))) return false
+    if (p.action != "save-trainer-note" && p.noteSave != null) return false
     if (p.action != "revoke-client" && p.revocation != null) return false
     if (p.uid != uid || !segment(p.idempotencyKey) || p.action != "update-profile" && p.profileUpdate != null) return false
     return when (p.action) {
+        "save-trainer-note" -> segment(p.workspaceId) && p.invitationId == null && p.email == null && p.expectedVersion == null && p.onboarding == null && p.profileUpdate == null && p.revocation == null && p.noteSave?.valid() == true && p.noteSave.clientUid != uid && CommandResolution.request(p).length <= 8192 && InvitationJson.request(CommandResolution.original(p)).encodeToByteArray().size <= 32750
         "revoke-client" -> segment(p.workspaceId) && p.invitationId == null && p.email == null && p.expectedVersion == null && p.onboarding == null && p.revocation?.valid() == true && p.revocation.clientUid != uid
         "create" -> segment(p.workspaceId) && p.invitationId == null && p.expectedVersion == null && p.onboarding == null &&
             p.email != null && p.email.length <= 254 && Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$").matches(p.email)
@@ -289,6 +298,7 @@ object InvitationJson {
     else if (ambiguous) InvitationOutcome(error = "unavailable", ambiguous = true)
     else runCatching {
         val reply = if (request.action == "resolve-command") InvitationReply(terminalOutcome=CommandResolution.parse(request.resolution ?: error("binding-required"),json) ?: error("outcome-invalid"))
+            else if (request.action in setOf("note-get","save-trainer-note")) TrainerNoteProtocol.parse(request,json)
             else if (request.action in setOf("prepare-client-revocation", "revoke-client")) com.delminiusapps.tillfailure.clients.ClientRevocationProtocol.parseReply(request,json)
             else format.decodeFromString(InvitationReply.serializer(), json ?: "")
         require(validReply(request, reply))
@@ -296,6 +306,8 @@ object InvitationJson {
     }
         .getOrDefault(InvitationOutcome(error = "unavailable", ambiguous = true))
     fun validReply(request: InvitationRequest, reply: InvitationReply): Boolean {
+        if (request.action in setOf("note-get","save-trainer-note")) return TrainerNoteProtocol.valid(request,reply)
+        if (request.noteSave != null || reply.noteRead != null || reply.noteDecision != null) return false
         if (request.action == "resolve-command") return request.resolution?.let { p -> reply.terminalOutcome?.let { CommandResolution.valid(p,it) } } == true && reply.copy(terminalOutcome=null) == InvitationReply()
         if (reply.terminalOutcome != null || request.resolution != null) return false
         if (request.action in setOf("prepare-client-revocation", "revoke-client")) {

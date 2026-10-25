@@ -18,6 +18,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.delminiusapps.tillfailure.profile.*
 import com.delminiusapps.tillfailure.invitations.InvitationEntry
 import com.delminiusapps.tillfailure.invitations.TrainerInvitationPresentation
+import com.delminiusapps.tillfailure.clients.*
 import com.delminiusapps.tillfailure.clients.ClientRepository
 import com.delminiusapps.tillfailure.clients.ClientsRoute
 import com.delminiusapps.tillfailure.clients.ClientScope
@@ -32,7 +33,7 @@ import kotlinx.serialization.modules.*
 @Serializable internal data class ShellOwner(val uid: String?, val workspace: String?, val trainer: String?, val role: String?, val epoch: Long)
 @Serializable internal data class ShellDestination(val page: ShellPage, val clientId: String? = null, val owner: ShellOwner? = null,
     val invitationEntry: InvitationEntry? = null, val refreshVersion: Long = 0) : NavKey
-@Serializable internal enum class ShellPage { Home, Profile, Invitations, Clients, ClientDetails, EditProfile }
+@Serializable internal enum class ShellPage { Home, Profile, Invitations, Clients, ClientDetails, EditProfile, TrainerNote }
 private val shellSavedState = SavedStateConfiguration {
     serializersModule = SerializersModule { polymorphic(NavKey::class) { subclass(ShellDestination::class, ShellDestination.serializer()) } }
 }
@@ -48,6 +49,7 @@ internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
             stack.clear(); stack.add(ShellDestination(ShellPage.Home, owner = owner))
         }
     }
+    var noteLeave by remember(owner) { mutableStateOf<Pair<ShellDestination,(String?)->Unit>?>(null) }
     val profileState = profile?.state?.collectAsStateWithLifecycle()?.value
     val currentOwner by rememberUpdatedState(owner)
     LaunchedEffect(profile, owner) {
@@ -70,6 +72,9 @@ internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
             profile?.onEvent(p.scope!!, p.visit, p.promptId, ProfileEvent.Leave(exit))
     }
     fun open(page: ShellPage, source: ShellDestination? = selectedDestination) {
+        if(source?.page == ShellPage.TrainerNote && stack.lastOrNull()==source) {
+            noteLeave?.takeIf { it.first==source }?.second?.invoke(page.name);return
+        }
         if (source?.page == ShellPage.EditProfile && stack.lastOrNull() == source)
             leaveProfile(if (page == ShellPage.Home) ProfileExit.Home else ProfileExit.Profile)
         else openShellPage(stack, owner, page, source)
@@ -82,14 +87,23 @@ internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
     Column(Modifier.fillMaxSize().background(TillFailureTheme.colors.background).safeDrawingPadding().imePadding()) {
         NavDisplay(backStack = stack, onBack = {
             if (stack.lastOrNull() == selectedDestination) {
-                if (selectedDestination?.page == ShellPage.EditProfile) leaveProfile(ProfileExit.Back)
+                if (selectedDestination?.page == ShellPage.TrainerNote) noteLeave?.takeIf { it.first==selectedDestination }?.second?.invoke(null)
+                else if (selectedDestination?.page == ShellPage.EditProfile) leaveProfile(ProfileExit.Back)
                 else if (selectedDestination?.page == ShellPage.Invitations) backFromInvitations(stack, selectedDestination)
                 else if (stack.size > 1) stack.removeLastOrNull()
             }
         }, modifier = Modifier.weight(1f), entryDecorators = listOf(rememberSaveableStateHolderNavEntryDecorator(), rememberProductViewModelStoreDecorator()), entryProvider = entryProvider {
             entry<ShellDestination> { destination ->
                 if (destination.owner != owner) return@entry
-                if (destination.page in setOf(ShellPage.Clients, ShellPage.ClientDetails)) {
+                if(destination.page == ShellPage.TrainerNote) {
+                    val commands=clients?.commands
+                    if(state.verifiedRole=="trainer" && commands!=null && owner.uid!=null && owner.workspace!=null && destination.clientId!=null)
+                        TrainerNoteRoute(commands,NoteOwner(ClientScope(owner.uid,owner.workspace,owner.uid,owner.epoch),destination.clientId,destination.refreshVersion),
+                            { ownsClientDestination(stack,owner,currentOwner,destination) },
+                            { callback,install -> if(install && stack.lastOrNull()==destination) noteLeave=destination to callback else if(noteLeave?.second===callback) noteLeave=null },
+                            { page -> if(ownsClientDestination(stack,owner,currentOwner,destination)) { if(page==null && stack.size>1) stack.removeLastOrNull() else page?.let { openShellPage(stack,owner,ShellPage.valueOf(it),destination) } } },
+                            { if(ownsClientDestination(stack,owner,currentOwner,destination)) openClientInvitations(stack,owner,InvitationEntry.Manage,destination) })
+                } else if (destination.page in setOf(ShellPage.Clients, ShellPage.ClientDetails)) {
                     if (state.verifiedRole == "trainer" && clients != null && state.accountUid != null && state.verifiedWorkspaceId != null) {
                         ClientsRoute(clients,
                             ClientScope(state.accountUid, state.verifiedWorkspaceId, state.accountUid, state.authorityEpoch),
@@ -102,7 +116,12 @@ internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
                                     val roster = stack.lastOrNull() as? ShellDestination
                                     if (roster?.page == ShellPage.Clients) stack[stack.lastIndex] = roster.copy(refreshVersion = roster.refreshVersion + 1)
                                 }
-                            }, workspaceName = state.verifiedWorkspaceName ?: state.verifiedWorkspaceId, completedRevocation = revocationNotice)
+                            }, workspaceName = state.verifiedWorkspaceName ?: state.verifiedWorkspaceId, completedRevocation = revocationNotice,onNotes={ target ->
+                                if(ownsClientDestination(stack,owner,currentOwner,destination)) {
+                                    val visit=stack.filterIsInstance<ShellDestination>().maxOf { it.refreshVersion }+1
+                                    stack.add(ShellDestination(ShellPage.TrainerNote,target,owner,refreshVersion=visit))
+                                }
+                            })
                     }
                 } else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(TillFailureSpacing.xl),
                     verticalArrangement = Arrangement.spacedBy(TillFailureSpacing.lg)) {
@@ -143,7 +162,7 @@ internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
                             if (profileState?.scope == expected && profileState.visit == destination.refreshVersion)
                                 ProfileScreen(profileState, { profile?.onEvent(expected, destination.refreshVersion, profileState.promptId, it) }, { onEvent(IdentityEvent.Retry) })
                         }
-                        ShellPage.Clients, ShellPage.ClientDetails -> Unit
+                        ShellPage.Clients, ShellPage.ClientDetails, ShellPage.TrainerNote -> Unit
                         ShellPage.Invitations -> {
                             invitations?.invoke(destination.invitationEntry?.let { TrainerInvitationPresentation(it, destination.refreshVersion) }) { backFromInvitations(stack, destination) }
                             onboardingRecovery?.invoke()
@@ -153,7 +172,7 @@ internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
             }
         })
         val pages = if (state.verifiedRole == "trainer") listOf(ShellPage.Home, ShellPage.Clients, ShellPage.Profile) else listOf(ShellPage.Home, ShellPage.Profile)
-        TillFailureBottomNavigation(pages.map { page -> TillFailureNavigationItem(page.name, if (page == ShellPage.Home) "⌂" else "○", selected == page || page == ShellPage.Profile && selected == ShellPage.EditProfile || page == ShellPage.Clients && selected in setOf(ShellPage.ClientDetails, ShellPage.Invitations)) }, { open(pages[it]) })
+        TillFailureBottomNavigation(pages.map { page -> TillFailureNavigationItem(page.name, if (page == ShellPage.Home) "⌂" else "○", selected == page || page == ShellPage.Profile && selected == ShellPage.EditProfile || page == ShellPage.Clients && selected in setOf(ShellPage.ClientDetails, ShellPage.Invitations, ShellPage.TrainerNote)) }, { open(pages[it]) })
     }
 }
 
