@@ -99,8 +99,8 @@ data class AccountPersistenceEnvelope(
         require(mutationJournal.all { it.uid == uid })
         require(pendingUploads.all { it.uid == uid })
         require(switchMarker?.departingUid == null || switchMarker.departingUid == uid)
-        require(pendingTerminalProof?.let { it.command.uid == uid && it.valid() && pendingInvitationCommands.singleOrNull()?.let { p -> CommandResolution.matches(p,it.command) } == true } != false)
-        require(lastSettledCommand?.let { it.command.uid == uid && it.valid() } != false)
+        require(pendingTerminalProof?.let { it.ownedBy(uid) && pendingInvitationCommands.singleOrNull()?.let { p -> it.command?.let { c -> CommandResolution.matches(p,c) } == true } == true } != false)
+        require(lastSettledCommand?.let { it.ownedBy(uid) && pendingInvitationCommands.none(it::consumed) } != false)
         require(pendingInvitationCommands.size <= 1 && pendingInvitationCommands.all { it.uid == uid })
     }
 }

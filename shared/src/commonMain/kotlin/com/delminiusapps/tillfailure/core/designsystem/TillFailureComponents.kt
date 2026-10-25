@@ -211,6 +211,8 @@ fun TillFailureTextField(
     visualTransformation: VisualTransformation = VisualTransformation.None,
     trailingContent: (@Composable () -> Unit)? = null,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    singleLine: Boolean = true,
+    maxLines: Int = Int.MAX_VALUE,
 ) {
     OutlinedTextField(
         value = value,
@@ -224,7 +226,8 @@ fun TillFailureTextField(
         },
         trailingIcon = trailingContent,
         visualTransformation = visualTransformation,
-        singleLine = true,
+        singleLine = singleLine,
+        maxLines = if(singleLine) 1 else maxLines,
         keyboardOptions = keyboardOptions,
         shape = RoundedCornerShape(TillFailureRadii.sm),
         colors = OutlinedTextFieldDefaults.colors(

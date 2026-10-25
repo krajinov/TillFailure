@@ -146,7 +146,7 @@ class InvitationViewModel(private var client: InvitationClient) : ViewModel() {
             "Protected command recovery is unavailable. Sign-out stays blocked." else mutable.value.message)
         if (read.isSuccess && read.getOrNull() == null && uid != null) {
             val proof = runCatching { client.lastSettled(uid) }.getOrNull()
-            if (proof?.source == "resolution-v1") mutable.value=mutable.value.copy(message=if (proof.resolution?.outcome == "applied")
+            if (proof?.source == "resolution-v1" || proof?.marker?.source == "resolution-v1") mutable.value=mutable.value.copy(message=if ((proof?.resolution?.outcome ?: proof?.marker?.outcome) == "applied")
                 "The original request completed. Recheck access separately." else "The original request was not applied. It cannot execute later.")
         }
         val pending = read.getOrNull()

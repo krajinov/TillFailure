@@ -1,3 +1,4 @@
+import { trainerNoteOperation } from "./trainer-notes.js";
 import { clientRevocationOperation } from "./client-revocation.js";
 import { resolveOwnCommand } from "./command-resolution.js";
 import { getAuth } from "firebase-admin/auth";
@@ -135,5 +136,20 @@ export const clientRevocationEmulator = onCall(async request => {
     const reason = error instanceof Error ? error.message : "";
     throw new HttpsError(["unauthenticated","unauthorized","unverified-email"].includes(reason) ? "permission-denied" : "failed-precondition",
       ["unauthenticated","unauthorized","unverified-email"].includes(reason) ? "unauthorized" : reason === "assignment-artifacts" ? reason : "revocation-unavailable");
+  }
+});
+
+export const trainerNotesEmulator = onCall(async request => {
+  try {
+    requireProvisioningEmulators(); const db=emulatorFirestore();
+    const header=request.rawRequest.get("authorization");
+    if(!header?.startsWith("Bearer ") || !request.auth) throw new Error("unauthorized");
+    const token=await getAuth().verifyIdToken(header.slice(7),true).catch(()=>{throw new Error("unauthorized");});
+    if(token.uid!==request.auth.uid || token.firebase.sign_in_provider==="anonymous") throw new Error("unauthorized");
+    return await trainerNoteOperation(db,request.auth.uid,request.data);
+  } catch(error) {
+    const reason=error instanceof Error?error.message:"";
+    const denied=["unauthorized","unauthenticated","unverified-email"].includes(reason);
+    throw new HttpsError(denied?"permission-denied":reason==="rate-limited"?"resource-exhausted":"failed-precondition",denied?"unauthorized":reason==="rate-limited"?reason:"note-unavailable");
   }
 });

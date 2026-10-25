@@ -20,7 +20,7 @@ import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 
 @Composable
-internal fun ClientsRoute(repository: ClientRepository, scope: ClientScope, clientId: String?, onOpen: (String) -> Unit, onBack: () -> Unit, onAccessLost: () -> Unit, onInvitations: (Boolean) -> Unit = {}, onRevoked: () -> Unit = onBack, workspaceName: String = "Selected workspace", completedRevocation: Boolean = false) {
+internal fun ClientsRoute(repository: ClientRepository, scope: ClientScope, clientId: String?, onOpen: (String) -> Unit, onBack: () -> Unit, onAccessLost: () -> Unit, onInvitations: (Boolean) -> Unit = {}, onRevoked: () -> Unit = onBack, workspaceName: String = "Selected workspace", completedRevocation: Boolean = false, onNotes: (String) -> Unit = {}) {
     val vm: ClientsViewModel = koinViewModel(parameters = { parametersOf(repository) })
     val state by vm.state.collectAsStateWithLifecycle()
     val owner = LocalLifecycleOwner.current
@@ -40,11 +40,11 @@ internal fun ClientsRoute(repository: ClientRepository, scope: ClientScope, clie
             launch { vm.effect.collect { when (it) { is ClientsEffect.Revoked -> if (vm.consumeRevocationEffect(it,scope,clientId)) onRevoked(); is ClientsEffect.OpenDetail -> open(it.clientId); ClientsEffect.Back -> back(); ClientsEffect.AccessLost -> lost(); is ClientsEffect.Invitations -> invitations(it.compose) } } }
         }
     }
-    ClientsScreen(if (state.scope == scope) state else ClientsState(loading = true), clientId != null, vm::onEvent, workspaceName, completedRevocation)
+    ClientsScreen(if (state.scope == scope) state else ClientsState(loading = true), clientId != null, vm::onEvent, workspaceName, completedRevocation, onNotes)
 }
 
 @Composable
-internal fun ClientsScreen(state: ClientsState, isDetail: Boolean, onEvent: (ClientsEvent) -> Unit, workspaceName: String = "Selected workspace", completedRevocation: Boolean = false) {
+internal fun ClientsScreen(state: ClientsState, isDetail: Boolean, onEvent: (ClientsEvent) -> Unit, workspaceName: String = "Selected workspace", completedRevocation: Boolean = false, onNotes: (String) -> Unit = {}) {
     state.revocationPrompt?.let { prompt ->
         TillFailureConfirmationDialog(
             title="Revoke client access to this workspace?",
@@ -77,6 +77,9 @@ internal fun ClientsScreen(state: ClientsState, isDetail: Boolean, onEvent: (Cli
             if (!state.loading && state.error == null && state.items.isEmpty()) item { Text("No assigned active clients.", color = TillFailureTheme.colors.secondaryText) }
             if (state.nextCursor != null && state.error == null) item { TillFailurePrimaryButton("Load more", { onEvent(ClientsEvent.LoadMore) }, enabled = !state.loading && !state.revocationBusy && state.revocationPrompt == null) }
         } else state.detail?.let { client -> item { ClientLabels(client) } }
+        if (isDetail && state.detail != null && !state.loading && state.error == null) item {
+            TillFailureSecondaryButton("Private trainer note",{onNotes(state.detail.clientId)},enabled=!state.revocationBusy && state.revocationPrompt==null)
+        }
         if (isDetail && state.revocationPreparation != null) item {
             TillFailureSecondaryButton("Revoke client access to this workspace",{onEvent(ClientsEvent.Revoke)},enabled=!state.loading && !state.revocationBusy)
         }
