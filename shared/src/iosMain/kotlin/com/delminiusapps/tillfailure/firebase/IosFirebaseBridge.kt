@@ -12,6 +12,7 @@ import com.delminiusapps.tillfailure.persistence.NativeRecoveryPersistenceBridge
 import com.delminiusapps.tillfailure.persistence.RecoveryUidContract
 import com.delminiusapps.tillfailure.invitations.*
 import com.delminiusapps.tillfailure.clients.*
+import com.delminiusapps.tillfailure.exercises.*
 import platform.Foundation.NSUUID
 
 class NativeFirebaseAuthState(
@@ -74,6 +75,9 @@ class NativeClientOutcome(val json: String?, val error: String?)
 class NativeInvitationOutcome(val json: String?, val error: String?, val ambiguous: Boolean)
 
 interface NativeIdentityBridge : NativeFirebaseBridge {
+    fun readSystemExercises(uid: String, afterId: String?, exerciseId: String?, callback: (NativeClientOutcome) -> Unit): String {
+        callback(NativeClientOutcome(null, "UNAVAILABLE")); return ""
+    }
     fun beforeCommandRetirement() {}
     fun noteBindingNonce(): String = error("unavailable")
     fun callClients(uid: String, json: String, callback: (NativeClientOutcome) -> Unit): String
@@ -147,6 +151,18 @@ class IosProductIdentityClient(
             }
             // Keep native settlement alive to reconcile durable work; suppress only presentation.
             return FirebaseCancellation { cancelled = true }
+        }
+    }
+    override val exercises: SystemExerciseRepository = object : SystemExerciseRepository {
+        override fun read(uid: String, afterId: String?, exerciseId: String?, callback: (ExerciseResult) -> Unit): FirebaseCancellation {
+            if (!SystemExerciseProtocol.validRequest(uid, afterId, exerciseId)) {
+                callback(ExerciseResult(error = ExerciseError.Unavailable)); return FirebaseCancellation {}
+            }
+            var cancelled = false
+            val token = bridge.readSystemExercises(uid, afterId, exerciseId) { result ->
+                if (!cancelled) callback(SystemExerciseProtocol.result(afterId, exerciseId, result.json, result.error))
+            }
+            return FirebaseCancellation { cancelled = true; bridge.cancel(token) }
         }
     }
     override val clients: ClientRepository = object : ClientRepository {

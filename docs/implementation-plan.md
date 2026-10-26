@@ -1,7 +1,7 @@
 # Implementation roadmap
 
-Status: **Milestone 3 locally accepted; Milestone 4 PRs 1–5 merged with acceptance gates open; Milestone 5 client-management plan proposed**
-Review date: **2026-10-17**
+Status: **Milestone 3 locally accepted; Milestones 4–5 merged with acceptance gates open; Milestone 6 PR 1 implemented for review; later exercises/program-creation slices proposed**
+Review date: **2026-10-26**
 
 Milestones are ordered, reviewable changes. Foundation work may be horizontal; feature milestones must demonstrate an end-to-end user outcome with authorization and recovery, not just screens or repositories. “Commands” are planned verification and may require files that do not exist yet.
 
@@ -58,9 +58,9 @@ Implementation status (2026-10-17): **all five slices merged through PR #8; Mile
 
 ## 5. Client management
 
-Planning status (2026-10-17): **PR 1 named, assigned-client read behavior approved by Josip; no implementation authorized by the documentation task**. The [Milestone 5 plan](milestones/milestone-5-plan.md) inventories existing mechanisms and proposes sequential PRs: named assigned-client read-only emulator roster/minimal details, invitation integration, then policy-gated own-profile editing, relationship revocation and private notes. PR 1 exposes only displayName and relationship/onboarding status for the active trainer’s assigned clients in the selected active workspace, with active caller/path-bound trainer authorization on every request. Its trusted response projection keeps global accounts private and tracks authoritative onboarding name changes; each request builds the authorized-only projection from the complete capped active membership set, sorts by createdAt/clientId and fills pages with authorized lookahead. nextCursor exists only when an additional authorized row exists; hidden historical records cannot create pages. Complete-read/budget failure is generic unavailable with no partial page, cursor or false end. Fixed-size authenticated-encrypted AES-256-GCM cursors contain only the last returned row position. Cursors bind caller/trainer/workspace/query/version/caller-authority-revision/expiry, use uniform invalid-cursor reload without anchor-existence checks, and grant no authority themselves. Contact data, search, mutations and sensitive content remain excluded. The missing endpoint/validators, complete-active-cap/read-budget proof, authorized-only fill/lookahead, source-query/index/encrypted-cursor/key-lifecycle proof and native wiring are engineering deliverables of PR 1; no additional external prerequisite blocks starting it. Deployment, retention and broader visibility remain unapproved. Search, trainer editing, reassignment and archive/reactivation require their actual policies; future feature tabs remain in their existing milestones.
+Implementation status (2026-10-25): **all five slices and the own-command prerequisite merged through PR #15 (`bd3cc2b`); Milestone 5 is not fully accepted.** The [closeout](milestones/milestone-5-closeout.md) preserves original evidence and classifies remaining gates by affected slice, bounded emulator development and real-data/production/release use. The [original plan](milestones/milestone-5-plan.md) retains its dated approvals and planning history.
 
-Progress/decision update (2026-10-20): PRs 1–2 are merged through #11. Josip separately approved client-owned global displayName/locale/timeZoneId editing, current assigned-trainer name visibility through the narrow projection, trainer edit denial and explicit revision-conflict reload. PR 3 implements the requested atomic receipt-backed emulator update and existing protected recovery; this supersedes its earlier field-policy implementation gate. Production deployment and unresolved privacy/retention remain unapproved. Relationship revocation and private notes retain their separate gates. See the [PR 3 report](milestones/milestone-5-pr3-report.md).
+The merged scope is assigned-client name/relationship/onboarding reads, invitation integration, client-owned global basic-profile editing, exact own-command outcomes after workspace authority loss, owner-and-assigned-trainer membership revocation, and N1–N5 synthetic private notes. The eight protected variants share the existing ledger/resolver; note retirement uses ADR-002 content-free markers. Assignment artifacts still block revocation, inaccessible note slots stay occupied, and unresolved submitted text remains protected. Search, trainer identity edits, reassignment, same-pair return, broader history, real personal note data, production and offline grants remain outside approval. See the closeout for the precise limitations and separate interaction/platform/policy gates.
 
 - **User outcome:** Trainer lists, invites, opens and maintains active clients; client sees only own profile; trainer-only notes remain private.
 - **Affected areas:** `clients`, `profile`, trainer dashboard summaries.
@@ -71,6 +71,12 @@ Progress/decision update (2026-10-20): PRs 1–2 are merged through #11. Josip s
 - **Dependencies/risks:** Health-data minimization, private-note offline/cache behavior, profile/photo MVP decision.
 
 ## 6. Exercises and program creation
+
+Planning status (2026-10-25): the [Milestone 6 plan](milestones/milestone-6-plan.md) confirms this canonical scope and proposes four reviewable PRs: (1) online read-only system-exercise list/details, (2) bounded custom-exercise creation/correction, (3) explicitly saved single-author template drafts, (4) immutable version publication/browsing. PR 1 uses synthetic original text and existing catalog Rules, with no writes/search/media/offline grant, and is ready only for a separate implementation authorization. PRs 2–4 require their named product/security decisions on fields/ownership, draft persistence/loss, publication limits/lifecycle and exact recovery/retention. No generic journal or broad member grant is preapproved. Pencil transport failed during planning; retained frame references are not fresh visual verification. M5 acceptance remains open.
+
+PR 1 handoff (2026-10-25): Josip separately authorized the exact D3 synthetic online read-only slice and its verification; see the [recorded authorization](milestones/milestone-6-plan.md#pr-1-implementation-authorization-2026-10-25). Later M6 policy proposals remain unapproved.
+
+M6 PR 1 implementation update (2026-10-26): the approved D3 read-only synthetic slice is implemented with qualified verification in the [PR 1 report](milestones/milestone-6-pr1-report.md). Existing catalog Rules/indexes and all eight protected command variants remain unchanged; full acceptance and later M6 decisions remain open. Earlier planning/readiness statements retain their original baseline.
 
 - **User outcome:** Trainer browses system/custom exercises and creates/version-publishes a program template.
 - **Affected areas:** `exercises`, `programs` builder/detail.

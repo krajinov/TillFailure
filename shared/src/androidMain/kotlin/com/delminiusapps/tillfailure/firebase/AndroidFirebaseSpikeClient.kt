@@ -1,6 +1,10 @@
 package com.delminiusapps.tillfailure.firebase
 
 import com.delminiusapps.tillfailure.clients.*
+import com.delminiusapps.tillfailure.exercises.*
+import com.google.firebase.firestore.FieldPath
+import org.json.JSONObject
+import org.json.JSONArray
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
@@ -212,6 +216,43 @@ class AndroidFirebaseSpikeClient(
                 val active = synchronized(callbackLock) { cancelled.set(true); connection.getAndSet(null) }
                 active?.disconnect()
             }
+        }
+    }
+    override val exercises: SystemExerciseRepository = object : SystemExerciseRepository {
+        override fun read(uid: String, afterId: String?, exerciseId: String?, callback: (ExerciseResult) -> Unit): FirebaseCancellation {
+            val cancelled = AtomicBoolean(false)
+            val issuedEpoch = synchronized(callbackLock) { invitationAuthEpoch }
+            fun allowed() = !cancelled.get() && !terminated.get() && !accountFrozen && auth.currentUser?.uid == uid &&
+                invitationAuthEpoch == issuedEpoch && fence.accepts(0L)
+            fun deliver(result: ExerciseResult) = synchronized(callbackLock) { if (allowed()) callback(result) }
+            val tokenTask = synchronized(callbackLock) {
+                if (!allowed() || !productMemoryCache || configuration.projectId != "demo-tillfailure-m3" || !SystemExerciseProtocol.validRequest(uid, afterId, exerciseId)) null
+                else auth.currentUser!!.getIdToken(true)
+            }
+            if (tokenTask == null) { callback(ExerciseResult(error = ExerciseError.Unavailable)); return FirebaseCancellation {} }
+            fun failure(error: Exception) = deliver(SystemExerciseProtocol.result(afterId, exerciseId, null, mapFailure(error).code.name))
+            tokenTask.addOnFailureListener(::failure).addOnSuccessListener {
+                synchronized(callbackLock) {
+                    if (!allowed()) return@addOnSuccessListener
+                    fun documents(docs: List<DocumentSnapshot>) {
+                        val result = runCatching {
+                            check(docs.none { it.metadata.isFromCache || it.metadata.hasPendingWrites() })
+                            val array = JSONArray()
+                            docs.filter { it.exists() }.forEach { doc -> array.put(JSONObject().put("id", doc.id).put("data", JSONObject(doc.data!!))) }
+                            SystemExerciseProtocol.result(afterId, exerciseId, JSONObject().put("documents", array).toString(), null)
+                        }.getOrDefault(ExerciseResult(error = ExerciseError.Malformed))
+                        deliver(result)
+                    }
+                    if (exerciseId != null) firestore.collection("systemExercises").document(exerciseId).get(Source.SERVER)
+                        .addOnSuccessListener { documents(listOf(it)) }.addOnFailureListener(::failure)
+                    else {
+                        var query = firestore.collection("systemExercises").whereEqualTo("status", "published").orderBy(FieldPath.documentId()).limit(21)
+                        if (afterId != null) query = query.startAfter(afterId)
+                        query.get(Source.SERVER).addOnSuccessListener { documents(it.documents) }.addOnFailureListener(::failure)
+                    }
+                }
+            }
+            return FirebaseCancellation { synchronized(callbackLock) { cancelled.set(true) } }
         }
     }
     private val terminated = AtomicBoolean(false)

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { after, before, beforeEach, describe, it } from "node:test";
 import { assertFails, assertSucceeds, initializeTestEnvironment, RulesTestEnvironment } from "@firebase/rules-unit-testing";
-import { collection, collectionGroup, doc, getDoc, getDocs, deleteDoc, limit, orderBy, query, setDoc, updateDoc, where } from "firebase/firestore";
+import { collection, collectionGroup, doc, getDoc, getDocs, deleteDoc, limit, orderBy, query, setDoc, updateDoc, where, documentId, startAfter } from "firebase/firestore";
 import { deleteObject, ref, uploadString } from "firebase/storage";
 import { publishAssignment } from "../src/assigned-program.js";
 import { transitionAccountLifecycle, transitionMembership, transitionWorkspace } from "../src/catalog.js";
@@ -54,6 +54,71 @@ async function seedEligibleAssignment(): Promise<void> {
 }
 
 describe("Firestore and Storage rules", () => {
+  it("M6 executes published ID-ordered 20-plus-lookahead pages and fresh exact gets without broadening catalog access", async () => {
+    const admin = emulatorFirestore();
+    await admin.doc("users/m6_reader").create({schemaVersion:1, accountStatus:"active"});
+    await admin.doc("users/m6_reader/authorizations/systemCatalog").create({schemaVersion:1,status:"active",activeMembershipCount:1});
+    for(let n=1;n<=23;n++) await admin.doc(`systemExercises/ex_${String(n).padStart(2,"0")}`).create({schemaVersion:1,name:`Synthetic ${n}`,nameNormalized:`synthetic ${n}`,muscleGroups:["legs"],equipment:[],instructions:"Synthetic demonstration text.",status:"published"});
+    for(const status of ["draft","archived"]) await admin.doc(`systemExercises/${status}`).create({status});
+    const db=verifiedContext("m6_reader").firestore(), base=collection(db,"systemExercises");
+    const first=await assertSucceeds(getDocs(query(base,where("status","==","published"),orderBy(documentId()),limit(21))));
+    assert.equal(first.size,21);assert.equal(first.docs[19]!.id,"ex_20");
+    const rest=await assertSucceeds(getDocs(query(base,where("status","==","published"),orderBy(documentId()),startAfter("ex_20"),limit(21))));
+    assert.deepEqual(rest.docs.map(d=>d.id),["ex_21","ex_22","ex_23"]);
+    await assertSucceeds(getDoc(doc(db,"systemExercises/ex_01")));
+    await assertFails(getDocs(query(base,orderBy(documentId()),limit(21))));
+    for(const status of ["draft","archived"]) {
+      await assertFails(getDoc(doc(db,`systemExercises/${status}`)));
+      await assertFails(getDocs(query(base,where("status","==",status),limit(21))));
+    }
+    await assertFails(setDoc(doc(db,"systemExercises/new"),{status:"published"}));
+    await assertFails(updateDoc(doc(db,"systemExercises/ex_01"),{name:"Changed"}));
+    await assertFails(deleteDoc(doc(db,"systemExercises/ex_01")));
+    await admin.doc("systemExercises/ex_01").update({status:"archived"});
+    await assertFails(getDoc(doc(db,"systemExercises/ex_01")));
+    const refreshed=await assertSucceeds(getDocs(query(base,where("status","==","published"),orderBy(documentId()),limit(21))));
+    assert.equal(refreshed.docs[0]!.id,"ex_02");
+    // Rules authorize document visibility, not schema projection. The native/shared strict reader
+    // must reject this malformed client-safe test document atomically (including lookahead).
+    await admin.doc("systemExercises/ex_21").update({instructions:7});
+    assert.equal((await assertSucceeds(getDoc(doc(db,"systemExercises/ex_21")))).get("instructions"),7);
+  });
+  it("M6 denies ineligible catalog identity and malformed entitlements", async () => {
+    const admin=emulatorFirestore();
+    await admin.doc("systemExercises/ex").create({status:"published"});
+    const account=admin.doc("users/m6_reader"), entitlement=admin.doc("users/m6_reader/authorizations/systemCatalog");
+    await account.create({schemaVersion:1,accountStatus:"active"});
+    const db=verifiedContext("m6_reader").firestore();
+    const read=()=>getDoc(doc(db,"systemExercises/ex"));
+    await assertFails(read());
+    for(const data of [{schemaVersion:1,status:"inactive",activeMembershipCount:0},{schemaVersion:1,status:"active",activeMembershipCount:"1"},
+      {schemaVersion:2,status:"active",activeMembershipCount:1},{schemaVersion:1,status:"active",activeMembershipCount:21},
+      {schemaVersion:1,status:"active",activeMembershipCount:0}]) { await entitlement.set(data);await assertFails(read()); }
+    await entitlement.set({schemaVersion:1,status:"active",activeMembershipCount:2});await assertSucceeds(read());
+    await entitlement.update({activeMembershipCount:1});await assertSucceeds(read());
+    await entitlement.update({activeMembershipCount:0,status:"inactive"});await assertFails(read());
+    await entitlement.update({activeMembershipCount:1,status:"active"});
+    await assertFails(getDoc(doc(environment.authenticatedContext("m6_reader",{email_verified:false}).firestore(),"systemExercises/ex")));
+    await assertFails(getDoc(doc(environment.unauthenticatedContext().firestore(),"systemExercises/ex")));
+    await account.update({accountStatus:"disabled"});await assertFails(read());
+    await account.update({accountStatus:"active",schemaVersion:2});await assertFails(read());
+  });
+  it("M6 actual membership transactions preserve catalog reads after non-final loss and deny after final loss", async () => {
+    const db=emulatorFirestore(),uid="m6_two";
+    await db.doc(`users/${uid}`).create({schemaVersion:1,accountStatus:"active",lifecycleRevision:1});
+    await db.doc(`users/${uid}/authorizations/systemCatalog`).create({schemaVersion:1,status:"active",activeMembershipCount:2,revision:1});
+    for(const wid of ["m6_a","m6_b"]) {
+      await db.doc(`workspaces/${wid}`).create({schemaVersion:1,status:"active",membershipRevision:1,activeRosterCount:1,catalogContributionCount:1});
+      await db.doc(`workspaces/${wid}/memberships/${uid}`).create({schemaVersion:1,workspaceId:wid,userId:uid,role:"trainer",status:"active",revision:1,catalogContributionActive:true});
+    }
+    await db.doc("systemExercises/published").create({status:"published"});
+    const mobile=verifiedContext(uid).firestore(),read=()=>getDoc(doc(mobile,"systemExercises/published"));
+    await assertSucceeds(read());
+    for(const [index,wid] of ["m6_a","m6_b"].entries()) {
+      await transitionMembership(db,{callerUid:"operator",idempotencyKey:`m6-revoke-${wid}`,workspaceId:wid,uid,role:"trainer",nextStatus:"revoked",expectedRevision:1,expectedWorkspaceRevision:1,maxMembershipsPerAccount:2,maxMembershipsPerWorkspace:5});
+      if(index===0)await assertSucceeds(read());else await assertFails(read());
+    }
+  });
   it("denies every direct private-note and receipt path including the author", async () => {
     const admin=emulatorFirestore(), path="workspaces/ws/privateTrainerNotes/client";
     await admin.doc(path).set({schemaVersion:1,authorTrainerId:"trainer",subjectClientId:"client",body:"Synthetic administration"});
