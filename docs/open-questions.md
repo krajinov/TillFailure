@@ -1,9 +1,9 @@
 # Open questions and decision blockers
 
 Status: **decision register**
-Review date: **2026-10-25**
+Review date: **2026-10-26**
 
-These items are unresolved unless explicitly marked. “Blocks” names the first milestone that cannot be accepted without the answer; earlier planning/spikes may proceed. Milestone 4 PRs 1–5 are merged through PR #8, but acceptance remains open. The [closeout gate register](milestones/milestone-4-closeout.md#remaining-gates-and-classification) distinguishes slice blockers (A), Milestone 4 acceptance gaps that permit independent development (B), and production/release gates (C). Fixture values are not production approvals. Milestone 5's five slices and own-command prerequisite are now merged through PR #15; its [closeout](milestones/milestone-5-closeout.md#remaining-gates-and-dependencies) carries forward the affected gates without declaring full acceptance. The [Milestone 6 plan](milestones/milestone-6-plan.md) is documentation only.
+These items are unresolved unless explicitly marked. “Blocks” names the first milestone that cannot be accepted without the answer; earlier planning/spikes may proceed. Milestone 4 PRs 1–5 are merged through PR #8, but acceptance remains open. The [closeout gate register](milestones/milestone-4-closeout.md#remaining-gates-and-classification) distinguishes slice blockers (A), Milestone 4 acceptance gaps that permit independent development (B), and production/release gates (C). Fixture values are not production approvals. Milestone 5's five slices and own-command prerequisite are now merged through PR #15; its [closeout](milestones/milestone-5-closeout.md#remaining-gates-and-dependencies) carries forward the affected gates without declaring full acceptance. The [Milestone 6 plan](milestones/milestone-6-plan.md) records the later exact-D3 authorization; PR 1 is implemented for review and later policies remain unapproved.
 
 ## Product and policy
 
@@ -99,7 +99,7 @@ PR 5 baseline verification (2026-10-24) confirmed PR #14 merged into main at `51
 
 ## Milestone 6 decisions and implementation readiness (2026-10-25)
 
-The canonical milestone is **Exercises and program creation**. Its [decision register](milestones/milestone-6-plan.md#decision-register) distinguishes recorded approvals from engineering proposals and new owner decisions. PR 1 is an online, read-only system-exercise list/detail slice using synthetic original text and the existing entitlement. It adds no write, search, media, broad grant, durable draft or offline behavior. No additional product-policy blocker is identified inside that boundary, but **a separate implementation authorization is required**; this documentation task supplies none. Pencil failed to connect, so fresh frame/visual evidence remains unavailable and acceptance must retain that limitation.
+The canonical milestone is **Exercises and program creation**. Its [decision register](milestones/milestone-6-plan.md#decision-register) distinguishes recorded approvals from engineering proposals and new owner decisions. PR 1 is an online, read-only system-exercise list/detail slice using synthetic original text and the existing entitlement. It adds no write, search, media, broad grant, durable draft or offline behavior. No additional product-policy blocker is identified inside that boundary, and Josip separately authorized implementation on 2026-10-25; the qualified [implementation report](milestones/milestone-6-pr1-report.md) now records the result. Pencil failed to connect, so fresh frame/visual evidence remains unavailable and acceptance must retain that limitation.
 
 | Decision / owner | Blocks | Proposed bounded treatment, not approval |
 |---|---|---|
@@ -113,3 +113,5 @@ The canonical milestone is **Exercises and program creation**. Its [decision reg
 The assignment-index Rules limitation remains an explicit blocker for assignment-bearing revocation/history integration, not for source-only M6 browsing/building. Before M7, reconcile the security document's proposed assignment receipt namespace (`lifecycleCommands`) with the isolated implementation (`assignmentCommands`); neither is an existing template-publish adapter. No Rules or index correction is implemented by this documentation task.
 
 Authorization update (2026-10-25): Josip approved exact D3 implementation and verification for M6 PR 1. This closes the separate implementation-authorization blocker for that slice only; D4–D9 and later policy proposals remain unapproved. See the [handoff](milestones/milestone-6-plan.md#pr-1-implementation-authorization-2026-10-25).
+
+M6 PR 1 status (2026-10-26): D3 implementation is available for review with qualified [evidence](milestones/milestone-6-pr1-report.md). This closes no later field/ownership, real catalog/search/media, draft persistence/loss, publication, retention, production or offline decision. Screen-reader/interaction and inherited gates remain open.

@@ -1,7 +1,7 @@
 # Implementation roadmap
 
-Status: **Milestone 3 locally accepted; Milestones 4–5 merged with acceptance gates open; Milestone 6 exercises/program-creation plan proposed**
-Review date: **2026-10-25**
+Status: **Milestone 3 locally accepted; Milestones 4–5 merged with acceptance gates open; Milestone 6 PR 1 implemented for review; later exercises/program-creation slices proposed**
+Review date: **2026-10-26**
 
 Milestones are ordered, reviewable changes. Foundation work may be horizontal; feature milestones must demonstrate an end-to-end user outcome with authorization and recovery, not just screens or repositories. “Commands” are planned verification and may require files that do not exist yet.
 
@@ -73,6 +73,10 @@ The merged scope is assigned-client name/relationship/onboarding reads, invitati
 ## 6. Exercises and program creation
 
 Planning status (2026-10-25): the [Milestone 6 plan](milestones/milestone-6-plan.md) confirms this canonical scope and proposes four reviewable PRs: (1) online read-only system-exercise list/details, (2) bounded custom-exercise creation/correction, (3) explicitly saved single-author template drafts, (4) immutable version publication/browsing. PR 1 uses synthetic original text and existing catalog Rules, with no writes/search/media/offline grant, and is ready only for a separate implementation authorization. PRs 2–4 require their named product/security decisions on fields/ownership, draft persistence/loss, publication limits/lifecycle and exact recovery/retention. No generic journal or broad member grant is preapproved. Pencil transport failed during planning; retained frame references are not fresh visual verification. M5 acceptance remains open.
+
+PR 1 handoff (2026-10-25): Josip separately authorized the exact D3 synthetic online read-only slice and its verification; see the [recorded authorization](milestones/milestone-6-plan.md#pr-1-implementation-authorization-2026-10-25). Later M6 policy proposals remain unapproved.
+
+M6 PR 1 implementation update (2026-10-26): the approved D3 read-only synthetic slice is implemented with qualified verification in the [PR 1 report](milestones/milestone-6-pr1-report.md). Existing catalog Rules/indexes and all eight protected command variants remain unchanged; full acceptance and later M6 decisions remain open. Earlier planning/readiness statements retain their original baseline.
 
 - **User outcome:** Trainer browses system/custom exercises and creates/version-publishes a program template.
 - **Affected areas:** `exercises`, `programs` builder/detail.
@@ -147,5 +151,3 @@ Planning status (2026-10-25): the [Milestone 6 plan](milestones/milestone-6-plan
 Each milestone should be one or a small sequence of reviewable pull requests with explicit migration and rollback notes. Security rules land with the feature and denial tests; UI does not precede an authorization model. A milestone may not declare success from a visual-only path, emulator-only behavior where native behavior matters, or a snackbar without durable state.
 
 Anything outside the stated MVP—payments/invoices/subscriptions/credits, group sessions, advanced analytics/photo comparison, multi-trainer workspaces, public discovery, AI programs, wearables/nutrition, or desktop/web—requires a new scope decision and must not appear as a nonfunctional release control.
-
-PR 1 handoff (2026-10-25): Josip separately authorized the exact D3 synthetic online read-only slice and its verification; see the [recorded authorization](milestones/milestone-6-plan.md#pr-1-implementation-authorization-2026-10-25). Later M6 policy proposals remain unapproved.

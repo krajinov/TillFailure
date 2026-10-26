@@ -161,6 +161,7 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
     #if DEBUG
     var debugAppName: String { generation.appName }
     var debugCurrentUid: String? { auth.currentUser?.uid }
+    var debugReplacementBridge: FirebaseNativeBridge? { successor }
     var debugBeforeWriteIssuance: (() -> Void)?
     var debugDidIssueWrite: (() -> Void)?
     #endif
@@ -513,6 +514,56 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
             callback(NativeFirebaseSessionRefresh(uid: nil, isAnonymous: false, email: nil, emailVerified: false,
                 failure: self.terminatedFailure ?? NativeFirebaseFailure(code: "FAILED_PRECONDITION", retryable: false)))
         }
+    }
+
+    func readSystemExercises(uid: String, afterId: String?, exerciseId: String?, callback: @escaping (NativeClientOutcome) -> Void) -> String {
+        let token = UUID().uuidString
+        #if DEBUG
+        lock.lock(); defer { lock.unlock() }
+        guard productMemoryCache, !terminated, !accountFrozen, auth.currentUser?.uid == uid, generation.projectID == "demo-tillfailure-m3",
+              SystemExerciseProtocol.shared.validRequest(uid: uid, afterId: afterId, exerciseId: exerciseId) else {
+            callback(NativeClientOutcome(json: nil, error: "UNAVAILABLE")); return token
+        }
+        let issuedEpoch = invitationAuthEpoch, callbackEpoch = currentEpoch
+        var cancelled = false
+        cancellations[token] = { cancelled = true }
+        func allowed() -> Bool { !cancelled && !self.terminated && !self.accountFrozen && self.auth.currentUser?.uid == uid &&
+            self.invitationAuthEpoch == issuedEpoch && self.currentEpoch == callbackEpoch }
+        func finish(_ documents: [DocumentSnapshot]?, _ error: Error?) {
+            DispatchQueue.main.async {
+                self.lock.lock(); defer { self.lock.unlock() }
+                guard allowed() else { return }
+                self.cancellations.removeValue(forKey: token)
+                if let error { callback(NativeClientOutcome(json: nil, error: Self.mapFailure(error).code)); return }
+                guard let documents, !documents.contains(where: { $0.metadata.isFromCache || $0.metadata.hasPendingWrites }) else {
+                    callback(NativeClientOutcome(json: nil, error: "UNAVAILABLE")); return
+                }
+                let records = documents.filter { $0.exists }.map { ["id": $0.documentID, "data": $0.data() ?? [:]] as [String: Any] }
+                guard let data = try? JSONSerialization.data(withJSONObject: ["documents": records]), data.count <= 256 * 1024,
+                      let json = String(data: data, encoding: .utf8) else {
+                    callback(NativeClientOutcome(json: nil, error: "MALFORMED")); return
+                }
+                callback(NativeClientOutcome(json: json, error: nil))
+            }
+        }
+        auth.currentUser!.getIDTokenForcingRefresh(true) { _, error in
+            DispatchQueue.main.async {
+                self.lock.lock(); defer { self.lock.unlock() }
+                guard allowed() else { return }
+                if error != nil { self.cancellations.removeValue(forKey: token); callback(NativeClientOutcome(json: nil, error: "UNAUTHENTICATED")); return }
+                if let exerciseId {
+                    self.firestore.collection("systemExercises").document(exerciseId).getDocument(source: .server) { document, error in finish(document.map { [$0] }, error) }
+                } else {
+                    var query = self.firestore.collection("systemExercises").whereField("status", isEqualTo: "published").order(by: FieldPath.documentID()).limit(to: 21)
+                    if let afterId { query = query.start(after: [afterId]) }
+                    query.getDocuments(source: .server) { snapshot, error in finish(snapshot?.documents, error) }
+                }
+            }
+        }
+        #else
+        callback(NativeClientOutcome(json: nil, error: "UNAVAILABLE"))
+        #endif
+        return token
     }
 
     func callClients(uid: String, json: String, callback: @escaping (NativeClientOutcome) -> Void) -> String {

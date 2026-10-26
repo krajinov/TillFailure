@@ -19,6 +19,7 @@ import com.delminiusapps.tillfailure.profile.*
 import com.delminiusapps.tillfailure.invitations.InvitationEntry
 import com.delminiusapps.tillfailure.invitations.TrainerInvitationPresentation
 import com.delminiusapps.tillfailure.clients.*
+import com.delminiusapps.tillfailure.exercises.*
 import com.delminiusapps.tillfailure.clients.ClientRepository
 import com.delminiusapps.tillfailure.clients.ClientsRoute
 import com.delminiusapps.tillfailure.clients.ClientScope
@@ -32,8 +33,8 @@ import kotlinx.serialization.modules.*
 
 @Serializable internal data class ShellOwner(val uid: String?, val workspace: String?, val trainer: String?, val role: String?, val epoch: Long)
 @Serializable internal data class ShellDestination(val page: ShellPage, val clientId: String? = null, val owner: ShellOwner? = null,
-    val invitationEntry: InvitationEntry? = null, val refreshVersion: Long = 0) : NavKey
-@Serializable internal enum class ShellPage { Home, Profile, Invitations, Clients, ClientDetails, EditProfile, TrainerNote }
+    val invitationEntry: InvitationEntry? = null, val refreshVersion: Long = 0, val exerciseId: String? = null) : NavKey
+@Serializable internal enum class ShellPage { Home, Profile, Invitations, Clients, ClientDetails, EditProfile, TrainerNote, Exercises, ExerciseDetails }
 private val shellSavedState = SavedStateConfiguration {
     serializersModule = SerializersModule { polymorphic(NavKey::class) { subclass(ShellDestination::class, ShellDestination.serializer()) } }
 }
@@ -41,7 +42,7 @@ private val shellSavedState = SavedStateConfiguration {
 /** No catalog fixtures or future tabs. The caller supplies a current, server-verified root. */
 @Composable
 internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
-    invitations: (@Composable (TrainerInvitationPresentation?, (() -> Unit)?) -> Unit)?, onboardingRecovery: (@Composable () -> Unit)?, clients: ClientRepository?, profile: ProfileViewModel? = null) {
+    invitations: (@Composable (TrainerInvitationPresentation?, (() -> Unit)?) -> Unit)?, onboardingRecovery: (@Composable () -> Unit)?, clients: ClientRepository?, profile: ProfileViewModel? = null, exercises: SystemExerciseRepository? = null) {
     val owner = ShellOwner(state.accountUid, state.verifiedWorkspaceId, state.accountUid.takeIf { state.verifiedRole == "trainer" }, state.verifiedRole, state.authorityEpoch)
     val stack = rememberNavBackStack(shellSavedState, ShellDestination(ShellPage.Home, owner = owner))
     LaunchedEffect(owner, stack.lastOrNull()) {
@@ -89,13 +90,21 @@ internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
             if (stack.lastOrNull() == selectedDestination) {
                 if (selectedDestination?.page == ShellPage.TrainerNote) noteLeave?.takeIf { it.first==selectedDestination }?.second?.invoke(null)
                 else if (selectedDestination?.page == ShellPage.EditProfile) leaveProfile(ProfileExit.Back)
+                else if (selectedDestination?.page in setOf(ShellPage.Exercises, ShellPage.ExerciseDetails)) backFromExercises(stack, selectedDestination!!)
                 else if (selectedDestination?.page == ShellPage.Invitations) backFromInvitations(stack, selectedDestination)
                 else if (stack.size > 1) stack.removeLastOrNull()
             }
         }, modifier = Modifier.weight(1f), entryDecorators = listOf(rememberSaveableStateHolderNavEntryDecorator(), rememberProductViewModelStoreDecorator()), entryProvider = entryProvider {
             entry<ShellDestination> { destination ->
                 if (destination.owner != owner) return@entry
-                if(destination.page == ShellPage.TrainerNote) {
+                if (destination.page in setOf(ShellPage.Exercises, ShellPage.ExerciseDetails)) {
+                    if (owner.role == "trainer" && exercises != null && owner.uid != null && owner.workspace != null) {
+                        ExercisesRoute(exercises, ExerciseVisit(ExerciseScope(owner.uid, owner.workspace, owner.epoch), destination.refreshVersion, destination.exerciseId),
+                            { ownsClientDestination(stack, owner, currentOwner, destination) },
+                            { id -> if (ownsClientDestination(stack, owner, currentOwner, destination)) stack.add(ShellDestination(ShellPage.ExerciseDetails, owner = owner, refreshVersion = destination.refreshVersion + 1, exerciseId = id)) },
+                            { if (ownsClientDestination(stack, owner, currentOwner, destination)) backFromExercises(stack, destination) })
+                    }
+                } else if(destination.page == ShellPage.TrainerNote) {
                     val commands=clients?.commands
                     if(state.verifiedRole=="trainer" && commands!=null && owner.uid!=null && owner.workspace!=null && destination.clientId!=null)
                         TrainerNoteRoute(commands,NoteOwner(ClientScope(owner.uid,owner.workspace,owner.uid,owner.epoch),destination.clientId,destination.refreshVersion),
@@ -132,11 +141,12 @@ internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
                             Text(if (state.verifiedRole == "trainer") "Trainer home" else "You're ready${state.displayName.takeIf { it.isNotBlank() }?.let { ", $it" }.orEmpty()}.",
                                 style = MaterialTheme.typography.headlineLarge, color = TillFailureTheme.colors.primaryText)
                             TillFailureCard {
-                                Text(if (state.verifiedRole == "trainer") "View assigned clients and manage invitations. Programming and scheduling are planned for a later update."
+                                Text(if (state.verifiedRole == "trainer") "View assigned clients, manage invitations and browse system exercises. Programming and scheduling are planned for a later update."
                                     else "Onboarding complete. Workouts, scheduling, progress and messages are planned for later updates.",
                                     Modifier.padding(TillFailureSpacing.lg), color = TillFailureTheme.colors.secondaryText)
                             }
                             if (state.verifiedRole == "trainer") TillFailurePrimaryButton("Clients", { open(ShellPage.Clients, destination) })
+                            if (state.verifiedRole == "trainer" && exercises != null) TillFailurePrimaryButton("Exercises", { open(ShellPage.Exercises, destination) })
                             if (state.verifiedRole == "trainer") TillFailurePrimaryButton("Client invitations", { open(ShellPage.Invitations, destination) })
                             TillFailureSecondaryButton("Profile and access", { open(ShellPage.Profile, destination) })
                             onboardingRecovery?.invoke(); recovery()
@@ -162,7 +172,7 @@ internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
                             if (profileState?.scope == expected && profileState.visit == destination.refreshVersion)
                                 ProfileScreen(profileState, { profile?.onEvent(expected, destination.refreshVersion, profileState.promptId, it) }, { onEvent(IdentityEvent.Retry) })
                         }
-                        ShellPage.Clients, ShellPage.ClientDetails, ShellPage.TrainerNote -> Unit
+                        ShellPage.Clients, ShellPage.ClientDetails, ShellPage.TrainerNote, ShellPage.Exercises, ShellPage.ExerciseDetails -> Unit
                         ShellPage.Invitations -> {
                             invitations?.invoke(destination.invitationEntry?.let { TrainerInvitationPresentation(it, destination.refreshVersion) }) { backFromInvitations(stack, destination) }
                             onboardingRecovery?.invoke()
@@ -171,14 +181,15 @@ internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
                 }
             }
         })
-        val pages = if (state.verifiedRole == "trainer") listOf(ShellPage.Home, ShellPage.Clients, ShellPage.Profile) else listOf(ShellPage.Home, ShellPage.Profile)
-        TillFailureBottomNavigation(pages.map { page -> TillFailureNavigationItem(page.name, if (page == ShellPage.Home) "⌂" else "○", selected == page || page == ShellPage.Profile && selected == ShellPage.EditProfile || page == ShellPage.Clients && selected in setOf(ShellPage.ClientDetails, ShellPage.Invitations, ShellPage.TrainerNote)) }, { open(pages[it]) })
+        val pages = if (state.verifiedRole == "trainer") listOfNotNull(ShellPage.Home, ShellPage.Clients, ShellPage.Exercises.takeIf { exercises != null }, ShellPage.Profile) else listOf(ShellPage.Home, ShellPage.Profile)
+        TillFailureBottomNavigation(pages.map { page -> TillFailureNavigationItem(page.name, if (page == ShellPage.Home) "⌂" else "○", selected == page || page == ShellPage.Exercises && selected == ShellPage.ExerciseDetails || page == ShellPage.Profile && selected == ShellPage.EditProfile || page == ShellPage.Clients && selected in setOf(ShellPage.ClientDetails, ShellPage.Invitations, ShellPage.TrainerNote)) }, { open(pages[it]) })
     }
 }
 
 /** One owned route; navigation results contain no invitation reply, email or bearer. */
 internal fun openShellPage(stack: MutableList<NavKey>, owner: ShellOwner, page: ShellPage, source: ShellDestination?) {
     if (source == null || stack.lastOrNull() != source || source.owner != owner) return
+    if (page in setOf(ShellPage.Exercises, ShellPage.ExerciseDetails) && owner.role != "trainer") return
     if (page == ShellPage.Invitations && owner.role == "trainer") {
         openClientInvitations(stack, owner, InvitationEntry.Manage, source); return
     }
@@ -228,3 +239,11 @@ internal fun acceptProfileNavigation(model: ProfileViewModel, result: ProfileNav
 /** An exiting entry may still receive a failed read; it cannot reset a newer root or destination. */
 internal fun ownsClientDestination(stack: List<NavKey>, owner: ShellOwner, currentOwner: ShellOwner, source: ShellDestination): Boolean =
     currentOwner == owner && source.owner == owner && stack.lastOrNull() == source
+
+/** A detail return always creates a fresh list visit/read; stale exiting entries cannot navigate. */
+internal fun backFromExercises(stack: MutableList<NavKey>, source: ShellDestination) {
+    if (source.page !in setOf(ShellPage.Exercises, ShellPage.ExerciseDetails) || stack.lastOrNull() != source || stack.size < 2) return
+    stack.removeLastOrNull()
+    val list = stack.lastOrNull() as? ShellDestination
+    if (list?.page == ShellPage.Exercises && list.owner == source.owner) stack[stack.lastIndex] = list.copy(refreshVersion = source.refreshVersion + 1)
+}
