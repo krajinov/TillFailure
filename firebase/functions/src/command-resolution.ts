@@ -1,3 +1,4 @@
+import { exerciseAction, validExerciseDescriptor, exerciseDecisionValid } from "./custom-exercise-contract.js";
 import { validNoteSave, noteDecisionValid } from "./trainer-notes.js";
 import { validRevocationBinding, revocationDecisionValid } from "./client-revocation.js";
 import { Firestore, Timestamp } from "firebase-admin/firestore";
@@ -24,6 +25,8 @@ export function resolutionBinding(uid: string, raw: unknown) {
     "complete-onboarding": ["action", "workspaceId", "idempotencyKey", "onboarding"],
     "revoke-client": ["action", "workspaceId", "idempotencyKey", "revocation"],
     "save-trainer-note": ["action", "workspaceId", "idempotencyKey", "noteSave"],
+    "create-custom-exercise": ["action", "workspaceId", "idempotencyKey", "exerciseWrite"],
+    "correct-custom-exercise": ["action", "workspaceId", "idempotencyKey", "exerciseWrite"],
     "update-profile": ["action", "workspaceId", "idempotencyKey", "profileUpdate"] };
   if (!fields[d.action] || !exact(d, fields[d.action]!)) fail();
   const key = participantUid(strictPathIdentifier(d.idempotencyKey, "key"), "key");
@@ -51,10 +54,11 @@ export function resolutionBinding(uid: string, raw: unknown) {
     const p = d.profileUpdate;
     if (!exact(p, ["displayName", "locale", "timeZoneId", "expectedRevision"]) || !validBasics(p) || !integer(p.expectedRevision, 1) || p.expectedRevision >= ONBOARDING_FIXTURE_POLICY.maxRevision) fail();
   }
+  if (exerciseAction(d.action) && !validExerciseDescriptor(d)) fail();
   if (d.action === "save-trainer-note" && !validNoteSave(d.noteSave)) fail();
   if (d.action === "revoke-client" && !validRevocationBinding(d.revocation)) fail();
-  const kind = d.action === "save-trainer-note" ? "trainer-note-save" : d.action === "revoke-client" ? "client-membership-revoke" : invitation ? `invitation-${d.action}` : d.action === "complete-onboarding" ? "onboarding-complete" : "profile-update";
-  const hashVersion = d.action === "save-trainer-note" ? "trainer-note-v1" : d.action === "revoke-client" ? "client-revocation-v1" : invitation ? "invitation-v1" : d.action === "complete-onboarding" ? "onboarding-v1" : "profile-v1";
+  const kind = exerciseAction(d.action) ? (d.action === "create-custom-exercise" ? "custom-exercise-create" : "custom-exercise-correct") : d.action === "save-trainer-note" ? "trainer-note-save" : d.action === "revoke-client" ? "client-membership-revoke" : invitation ? `invitation-${d.action}` : d.action === "complete-onboarding" ? "onboarding-complete" : "profile-update";
+  const hashVersion = exerciseAction(d.action) ? "custom-exercise-v1" : d.action === "save-trainer-note" ? "trainer-note-v1" : d.action === "revoke-client" ? "client-revocation-v1" : invitation ? "invitation-v1" : d.action === "complete-onboarding" ? "onboarding-v1" : "profile-v1";
   request = invitation ? { ...request, token: d.acceptanceTokenDigest ?? null, callerUid: uid } : { ...request, callerUid: uid, policyVersion: 1 };
   return { d, key, kind, hashVersion, hash: stableHash(request), id: commandId(uid, key) };
 }
@@ -67,13 +71,16 @@ function terminal(b: ReturnType<typeof resolutionBinding>, r: Data, uid: string)
     outcome = r.outcome; stamp = r.decidedAt;
   } else {
     const invite = b.kind.startsWith("invitation-");
-    if (!exact(r, ["schemaVersion", "commandKind", "callerUid", "workspaceId", "requestHash", "result", "committedAt", ...(invite ? ["invitationId"] : ["client-membership-revoke","trainer-note-save"].includes(b.kind) ? ["clientUid"] : [])]) ||
+    if (!exact(r, ["schemaVersion", "commandKind", "callerUid", "workspaceId", "requestHash", "result", "committedAt", ...(exerciseAction(b.d.action) ? ["exerciseId"] : invite ? ["invitationId"] : ["client-membership-revoke","trainer-note-save"].includes(b.kind) ? ["clientUid"] : [])]) ||
         r.schemaVersion !== 1 || r.commandKind !== b.kind || r.callerUid !== uid || r.requestHash !== b.hash) fail();
     if (typeof r.workspaceId !== "string") fail();
     participantUid(strictPathIdentifier(r.workspaceId, "workspace"), "workspace");
     if (b.d.workspaceId !== undefined && r.workspaceId !== b.d.workspaceId) fail();
     const p = r.result;
-    if (b.kind === "trainer-note-save") {
+    if (exerciseAction(b.d.action)) {
+      if (r.exerciseId !== b.d.exerciseWrite.exerciseId || !exerciseDecisionValid(p,r.workspaceId,b.d.exerciseWrite,b.d.action)) fail();
+      if (p.status === "exercise-conflict") outcome = "not-applied-conflict";
+    } else if (b.kind === "trainer-note-save") {
       if (r.clientUid !== b.d.noteSave.clientUid || !noteDecisionValid(p,r.workspaceId,b.d.noteSave)) fail();
       if (p.status === "note-conflict") outcome = "not-applied-conflict";
     } else if (b.kind === "client-membership-revoke") {

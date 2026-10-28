@@ -151,3 +151,8 @@ M6 PR 1 implementation update (2026-10-26): the approved D3 read-only synthetic 
 Each milestone should be one or a small sequence of reviewable pull requests with explicit migration and rollback notes. Security rules land with the feature and denial tests; UI does not precede an authorization model. A milestone may not declare success from a visual-only path, emulator-only behavior where native behavior matters, or a snackbar without durable state.
 
 Anything outside the stated MVP—payments/invoices/subscriptions/credits, group sessions, advanced analytics/photo comparison, multi-trainer workspaces, public discovery, AI programs, wearables/nutrition, or desktop/web—requires a new scope decision and must not appear as a nonfunctional release control.
+
+
+### Milestone 6 PR 2 approval and bounded implementation
+
+The [approved PR 2 contract](milestones/milestone-6-pr2-plan.md#approval-and-implementation-authorization-2026-10-26) covers synthetic emulator-only author-scoped custom creation/browsing/details/correction and two protected command adapters. It retains system catalog read-only access, all eight older protected variants and existing one-account clean departure. No archive/delete/transfer, broader member visibility, search/media, template references, program builder, assignment, production or offline grant. [Implementation evidence](milestones/milestone-6-pr2-report.md) records exact source and qualifies native/interaction acceptance; approval is not full milestone acceptance.

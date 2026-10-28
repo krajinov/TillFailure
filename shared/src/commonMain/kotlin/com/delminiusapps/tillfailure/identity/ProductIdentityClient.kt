@@ -15,6 +15,7 @@ data class MembershipDiscoveryResult(
 
 /** Narrow product surface. All reads used for authorization must be server sourced. */
 interface ProductIdentityClient {
+    val customExercises: com.delminiusapps.tillfailure.exercises.CustomExerciseRepository? get() = null
     val exercises: com.delminiusapps.tillfailure.exercises.SystemExerciseRepository? get() = null
     val clients: ClientRepository? get() = null
     /** Connectivity is a recheck trigger, never evidence of authority. Delivered on the UI thread. */

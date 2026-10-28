@@ -119,6 +119,18 @@ describe("Firestore and Storage rules", () => {
       if(index===0)await assertSucceeds(read());else await assertFails(read());
     }
   });
+  it("denies direct custom definition, receipt and admission paths to every mobile role", async () => {
+    const admin=emulatorFirestore(),path="workspaces/ws/exercises/00000000-0000-4000-8000-000000000001";
+    await admin.doc(path).set({ownerUid:"author",name:"Synthetic"});
+    for(const uid of ["author","owner","other","client"]) {
+      const db=verifiedContext(uid).firestore();
+      await assertFails(getDoc(doc(db,path)));await assertFails(getDocs(collection(db,"workspaces/ws/exercises")));
+      await assertFails(getDocs(query(collection(db,"workspaces/ws/exercises"),where("ownerUid","==",uid),orderBy(documentId()),limit(21))));
+      await assertFails(setDoc(doc(db,path),{ownerUid:uid,name:"Changed"}));await assertFails(deleteDoc(doc(db,path)));
+      for(const p of ["lifecycleCommands/custom","customExerciseRequests/custom","commandResolutionConfig/current"])await assertFails(getDoc(doc(db,p)));
+    }
+  });
+
   it("denies every direct private-note and receipt path including the author", async () => {
     const admin=emulatorFirestore(), path="workspaces/ws/privateTrainerNotes/client";
     await admin.doc(path).set({schemaVersion:1,authorTrainerId:"trainer",subjectClientId:"client",body:"Synthetic administration"});
