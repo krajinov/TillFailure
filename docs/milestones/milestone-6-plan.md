@@ -114,6 +114,8 @@ Each PR must deliver the named user outcome through backend/Rules, shared logic,
 
 ### PR 2 — Bounded custom-exercise creation and correction
 
+The [PR 2 policy and implementation plan](milestone-6-pr2-plan.md) now specifies C1–C7 decisions, exact create/correct contracts, recovery/retention budgets and verification. It is a documentation-only recommendation awaiting approval; D5/D8 and the implementation handoff remain open.
+
 **Outcome:** after D5/D8 approval, the author creates a synthetic custom exercise, reopens it, corrects it and sees a current system/custom distinction. Retain PR 1 system read-only behavior. Include archive only if its exact reference policy is approved; otherwise omit the control and record the deferral, not false milestone completion.
 
 **Verification:** Backend proves author/workspace/path/field denials, immutable IDs/ownership, create collision, concurrent same-revision edit, no partial updates, durable conflict/replay, authority-loss and resolver races, bounds and unchanged catalog/source/client denials. Shared proves form validation, exact command preparation, duplicate Save, dirty Back/Cancel, conflict reload and stale callbacks. Both native hosts prove held-result/pre-send/proof/retirement restart, original-UID resolution, blocked departure and clean B isolation using intact create-only datasets. Actual normal/large-text keyboard/IME, Save/correction/Cancel/Back/conflict/error and TalkBack/VoiceOver are required. No media or offline edits.
@@ -159,3 +161,17 @@ PR 1 implementation handoff (2026-10-26): the exact approved D3 slice is impleme
 ## PR 1 finalization authorization (2026-10-26)
 
 Josip authorized bounded final review/corrections and affected verification, one implementation commit (`feat(exercises): add online system exercise browsing`), normal push and a PR against `main` titled **Milestone 6 PR 1: online system exercise browsing**. This supersedes the earlier leave-uncommitted/no-publication handoff only for PR 1. Preserve the separate planning commit and original recovery data; no history rewrite, merge, deployment, production/offline enablement, dependency upgrade, later-policy approval or PR 2 is authorized. See the [final-review evidence](milestone-6-pr1-report.md#final-review-and-publication-2026-10-26).
+
+## PR 1 merge and PR 2 planning handoff (2026-10-26)
+
+[PR #16](https://github.com/krajinov/TillFailure/pull/16) is merged into `main` at `49b97f53772a2c6afa42d7f5ed195e0b4df6b554`, verified through GitHub metadata and a clean `pull --ff-only`. This supersedes the historical PR 1 publication status above; it does not close the [PR 1 acceptance gaps](milestone-6-pr1-report.md#actual-interaction-and-remaining-acceptance) or inherited M5 gates.
+
+Josip authorized inspection and documentation only for PR 2 on `docs/milestone-6-pr2-custom-exercises-plan`. The [new plan](milestone-6-pr2-plan.md#decisions-for-approval) recommends author-only synthetic create/read/correct, current workspace authority with separately approved same-author restoration semantics, memory-only unsubmitted forms and two bounded protected commands with content-free retirement. It explicitly rejects copying notes' permanent relationship bindings/occupied client slots into reusable definitions. C1–C6 refine D5/D8; C7 remains the separate implementation authorization. No code, Rules/index/dependency/design change, build, commit, push, PR, deployment or implementation is authorized by this planning handoff. PR 3/4 and real-data/production/offline policies remain unapproved.
+
+
+## PR 2 approval and implementation authorization (2026-10-26)
+
+Josip approved [C1–C6 and separately authorized C7](milestone-6-pr2-plan.md#approval-and-implementation-authorization-2026-10-26) for exact synthetic emulator-only custom create/browse/detail/correct. This supersedes PR 2's historical policy/start blockers within D5/D8/D10 only for the specified contract. Record the three-file planning commit, create `feature/milestone-6-pr2-custom-exercises`, prove budgets/contracts first, then implement and verify both native hosts and report qualified evidence. Implementation changes remain uncommitted/unstaged. PR 1/inherited acceptance gaps remain; real-data/production/offline, references and PR 3/4 policies remain unapproved. No push, PR, merge or deployment is authorized.
+
+
+PR 2 implementation handoff (2026-10-28): the approved synthetic emulator-only custom create/browse/detail/correct slice is implemented for review on `feature/milestone-6-pr2-custom-exercises`, after planning commit `b986247`. The [PR 2 report](milestone-6-pr2-report.md) records exact inventory/source fingerprint, fresh tests/builds, native restart/admission evidence, failed attempts and remaining interaction/accessibility/OS/physical gates. This is not full milestone acceptance. The initial handoff was uncommitted/unstaged. Josip authorized final review, one implementation commit, normal push and a PR against main on 2026-10-28; the report preserves that review and verification attribution. No merge, deployment, production/offline or later-policy approval.

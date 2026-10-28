@@ -73,6 +73,7 @@ class AndroidFirebaseSpikeClient(
         }
         override fun recoveryState(uid: String) = synchronized(callbackLock) { invitationLedger.recoveryState(uid) }
         override val memory get() = PendingInvitationLinks.memory
+        override fun customExerciseAdmission(uid:String,request:InvitationRequest)=synchronized(callbackLock) { !terminated.get() && !accountFrozen && auth.currentUser?.uid==uid && invitationLedger.customExerciseAdmission(uid,request) }
         override fun newNoteBindingNonce(): String = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it.toInt() and 255) }
         override fun newCommandKey(): String = resolutionCommandKey(UUID.randomUUID().toString())
         override fun pending(uid: String): PendingInvitationCommand? = synchronized(callbackLock) { invitationLedger.pending(uid) }
@@ -116,6 +117,7 @@ class AndroidFirebaseSpikeClient(
                         val valid = synchronized(callbackLock) { !terminated.get() && auth.currentUser?.uid == uid && issuedEpoch == invitationAuthEpoch }
                         check(valid && identity.token != null)
                         val callable = when (request.action) {
+                            "create-custom-exercise", "correct-custom-exercise" -> "customExercisesEmulator"
                             "note-get", "save-trainer-note" -> "trainerNotesEmulator"
                             "prepare-client-revocation", "revoke-client" -> "clientRevocationEmulator"
                             "resolve-command" -> "commandResolutionEmulator"
@@ -160,6 +162,62 @@ class AndroidFirebaseSpikeClient(
                 beforeInvitationTransportForTest?.invoke(transport) ?: transport()
             }.addOnFailureListener { settle(InvitationOutcome(error = "unavailable", ambiguous = true)) }
             return FirebaseCancellation { cancelled.set(true) }
+        }
+    }
+    override val customExercises: CustomExerciseRepository = object : CustomExerciseRepository {
+        override val commands get() = invitations
+        override fun newExerciseId()=UUID.randomUUID().toString()
+        override fun read(scope: ExerciseScope, request: CustomExerciseReadRequest, callback: (CustomExerciseResult) -> Unit): FirebaseCancellation {
+            val cancelled = AtomicBoolean(false)
+            val connection = AtomicReference<HttpURLConnection?>()
+            val uid = scope.uid
+            val issuedEpoch = synchronized(callbackLock) { invitationAuthEpoch }
+            fun allowed() = synchronized(callbackLock) {
+                !cancelled.get() && !terminated.get() && !accountFrozen && auth.currentUser?.uid == uid &&
+                    issuedEpoch == invitationAuthEpoch && fence.accepts(0L)
+            }
+            // Freeze/retirement and token issuance share the existing native admission lock.
+            val task = synchronized(callbackLock) {
+                if (!allowed() || configuration.projectId != "demo-tillfailure-m3" || !request.valid() || request.workspaceId != scope.workspaceId) null
+                else auth.currentUser!!.getIdToken(true)
+            }
+            if (task == null) {
+                callback(CustomExerciseResult(error = "unavailable")); return FirebaseCancellation {}
+            }
+            fun deliver(result: CustomExerciseResult) = synchronized(callbackLock) { if (allowed()) callback(result) }
+            task.addOnSuccessListener { identity ->
+                Thread {
+                    val result = runCatching {
+                        check(allowed() && identity.token != null)
+                        val c = URL("http://${configuration.host}:${configuration.functionsPort}/demo-tillfailure-m3/europe-west1/customExercisesEmulator").openConnection() as HttpURLConnection
+                        synchronized(callbackLock) {
+                            check(allowed())
+                            connection.set(c)
+                        }
+                        try {
+                            c.requestMethod = "POST"; c.instanceFollowRedirects = false
+                            c.connectTimeout = 10_000; c.readTimeout = 10_000; c.doOutput = true
+                            c.setRequestProperty("Content-Type", "application/json")
+                            c.setRequestProperty("Authorization", "Bearer ${identity.token}")
+                            c.outputStream.use { it.write(("{\"data\":" + CustomExerciseProtocol.request(request) + "}").toByteArray(Charsets.UTF_8)) }
+                            val status = c.responseCode
+                            val bytes = (if (status == 200) c.inputStream else c.errorStream).use { input ->
+                                val output = java.io.ByteArrayOutputStream(); val buffer = ByteArray(8192)
+                                while (true) { val count = input.read(buffer); if (count < 0) break
+                                    check(output.size() + count <= 64 * 1024); output.write(buffer, 0, count) }
+                                output.toByteArray()
+                            }
+                            check(bytes.size <= 64 * 1024)
+                            CustomExerciseProtocol.callable(scope, request, status, bytes.toString(Charsets.UTF_8))
+                        } finally { c.disconnect(); connection.compareAndSet(c, null) }
+                    }.getOrDefault(CustomExerciseResult(error = "unavailable"))
+                    Handler(Looper.getMainLooper()).post { deliver(result) }
+                }.start()
+            }.addOnFailureListener { deliver(CustomExerciseResult(error = "unavailable")) }
+            return FirebaseCancellation {
+                val active = synchronized(callbackLock) { cancelled.set(true); connection.getAndSet(null) }
+                active?.disconnect()
+            }
         }
     }
     override val clients: ClientRepository = object : ClientRepository {

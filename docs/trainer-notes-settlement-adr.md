@@ -19,3 +19,10 @@ Use one new typed Save adapter in this protocol and one guarded point read/Save 
 ## Consequences and proof
 
 The envelope/ledger, transient acceptance consumer, recovery presentation and both native transports understand the tagged retired form. The original seven variants remain regression-tested. The [PR 5 report](milestones/milestone-5-pr5-report.md) attributes prerequisite tests, final suites, real native process recovery and interaction limitations separately. Production, real personal data, offline grants, privileged support, deletion and historical restoration remain outside this decision.
+
+
+## Custom-exercise extension (C6 approved 2026-10-26)
+
+Josip approved the [M6 PR 2 contract](milestones/milestone-6-pr2-plan.md#approval-and-implementation-authorization-2026-10-26). `custom-exercise-create` and `custom-exercise-correct` now use the same exact-command pending slot, full durable terminal proof and `compacted-v1` retirement. Their marker retains only UID, kind/command ID, `custom-exercise-v1` hash/version, source/outcome and a resolver decision time when actually supplied. It discards exercise/workspace IDs, authority, name, instructions, taxonomy and raw key only after verified proof persistence. Unknown outcomes retain the original encrypted submitted command. No original text is silently retained in the settled slot.
+
+The eight earlier variants keep their original hashes, receipt forms and recovery behavior: the seven legacy forms remain full proofs, and trainer notes retain their existing compaction and permanent relationship-binding policy. Custom definitions instead retain immutable author/workspace identity and check current authority; command authority revisions are immutable submission bindings, not permanently occupied client relationships. This extension creates no queue, store, offline grant, real-data retention or restoration operation. The new command's complete admission/proof/encrypted budgets and evidence are specified in the [PR 2 plan](milestones/milestone-6-pr2-plan.md#pending-budgets-and-settled-marker-retention) and [report](milestones/milestone-6-pr2-report.md).

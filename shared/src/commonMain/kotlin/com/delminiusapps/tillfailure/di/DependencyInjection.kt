@@ -14,6 +14,7 @@ import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
 
 private val foundationModule = module {
+    viewModel { (repository: com.delminiusapps.tillfailure.exercises.CustomExerciseRepository) -> com.delminiusapps.tillfailure.exercises.CustomExercisesViewModel(repository) }
     viewModel { (repository: com.delminiusapps.tillfailure.exercises.SystemExerciseRepository) -> com.delminiusapps.tillfailure.exercises.ExercisesViewModel(repository) }
     viewModel { (client: com.delminiusapps.tillfailure.invitations.InvitationClient) -> com.delminiusapps.tillfailure.clients.TrainerNoteViewModel(client) }
     viewModel { (client: com.delminiusapps.tillfailure.invitations.InvitationClient) ->

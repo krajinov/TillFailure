@@ -20,7 +20,7 @@ import kotlinx.coroutines.launch
 
 @Composable
 internal fun ExercisesRoute(repository: SystemExerciseRepository, owner: ExerciseVisit, isCurrent: () -> Boolean,
-    onOpen: (String) -> Unit, onBack: () -> Unit) {
+    onOpen: (String) -> Unit, onBack: () -> Unit, onCustom:(()->Unit)?=null) {
     val vm: ExercisesViewModel = koinViewModel(parameters = { parametersOf(repository) })
     val state by vm.state.collectAsStateWithLifecycle()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -42,18 +42,19 @@ internal fun ExercisesRoute(repository: SystemExerciseRepository, owner: Exercis
             } }
         }
     }
-    ExercisesScreen(if (state.owner == owner) state else ExercisesState(loading = true), owner.exerciseId != null) { event ->
+    ExercisesScreen(if (state.owner == owner) state else ExercisesState(loading = true), owner.exerciseId != null, onCustom) { event ->
         if (current()) vm.onEvent(owner, event)
     }
 }
 
 @Composable
-internal fun ExercisesScreen(state: ExercisesState, detail: Boolean, onEvent: (ExercisesEvent) -> Unit) {
+internal fun ExercisesScreen(state: ExercisesState, detail: Boolean, onCustom:(()->Unit)?=null, onEvent: (ExercisesEvent) -> Unit) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(TillFailureSpacing.xl), verticalArrangement = Arrangement.spacedBy(TillFailureSpacing.lg)) {
         item { TillFailureSecondaryButton("Back", { onEvent(ExercisesEvent.Back) }) }
         item { Text(if (detail) "Exercise details" else "Exercises", Modifier.semantics { heading() },
             style = MaterialTheme.typography.headlineLarge, color = TillFailureTheme.colors.primaryText) }
         item { Text("Published system exercises · online only", color = TillFailureTheme.colors.secondaryText) }
+        if(!detail && onCustom!=null)item { TillFailureSecondaryButton("My custom exercises",onCustom) }
         if (state.loading) item { Text("Loading exercises…", Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = TillFailureTheme.colors.secondaryText) }
         state.error?.let { error -> item {
             Text(when (error) {

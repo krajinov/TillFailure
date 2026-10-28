@@ -34,7 +34,7 @@ import kotlinx.serialization.modules.*
 @Serializable internal data class ShellOwner(val uid: String?, val workspace: String?, val trainer: String?, val role: String?, val epoch: Long)
 @Serializable internal data class ShellDestination(val page: ShellPage, val clientId: String? = null, val owner: ShellOwner? = null,
     val invitationEntry: InvitationEntry? = null, val refreshVersion: Long = 0, val exerciseId: String? = null) : NavKey
-@Serializable internal enum class ShellPage { Home, Profile, Invitations, Clients, ClientDetails, EditProfile, TrainerNote, Exercises, ExerciseDetails }
+@Serializable internal enum class ShellPage { Home, Profile, Invitations, Clients, ClientDetails, EditProfile, TrainerNote, Exercises, ExerciseDetails, CustomExercises, CustomExerciseDetails, CustomExerciseEditor }
 private val shellSavedState = SavedStateConfiguration {
     serializersModule = SerializersModule { polymorphic(NavKey::class) { subclass(ShellDestination::class, ShellDestination.serializer()) } }
 }
@@ -42,7 +42,7 @@ private val shellSavedState = SavedStateConfiguration {
 /** No catalog fixtures or future tabs. The caller supplies a current, server-verified root. */
 @Composable
 internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
-    invitations: (@Composable (TrainerInvitationPresentation?, (() -> Unit)?) -> Unit)?, onboardingRecovery: (@Composable () -> Unit)?, clients: ClientRepository?, profile: ProfileViewModel? = null, exercises: SystemExerciseRepository? = null) {
+    invitations: (@Composable (TrainerInvitationPresentation?, (() -> Unit)?) -> Unit)?, onboardingRecovery: (@Composable () -> Unit)?, clients: ClientRepository?, profile: ProfileViewModel? = null, exercises: SystemExerciseRepository? = null, customExercises: CustomExerciseRepository? = null) {
     val owner = ShellOwner(state.accountUid, state.verifiedWorkspaceId, state.accountUid.takeIf { state.verifiedRole == "trainer" }, state.verifiedRole, state.authorityEpoch)
     val stack = rememberNavBackStack(shellSavedState, ShellDestination(ShellPage.Home, owner = owner))
     LaunchedEffect(owner, stack.lastOrNull()) {
@@ -50,6 +50,7 @@ internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
             stack.clear(); stack.add(ShellDestination(ShellPage.Home, owner = owner))
         }
     }
+    var customLeave by remember(owner) { mutableStateOf<Pair<ShellDestination,(String?)->Unit>?>(null) }
     var noteLeave by remember(owner) { mutableStateOf<Pair<ShellDestination,(String?)->Unit>?>(null) }
     val profileState = profile?.state?.collectAsStateWithLifecycle()?.value
     val currentOwner by rememberUpdatedState(owner)
@@ -73,6 +74,9 @@ internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
             profile?.onEvent(p.scope!!, p.visit, p.promptId, ProfileEvent.Leave(exit))
     }
     fun open(page: ShellPage, source: ShellDestination? = selectedDestination) {
+        if(source?.page in customExercisePages && stack.lastOrNull()==source) {
+            customLeave?.takeIf { it.first==source }?.second?.invoke(page.name);return
+        }
         if(source?.page == ShellPage.TrainerNote && stack.lastOrNull()==source) {
             noteLeave?.takeIf { it.first==source }?.second?.invoke(page.name);return
         }
@@ -88,7 +92,8 @@ internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
     Column(Modifier.fillMaxSize().background(TillFailureTheme.colors.background).safeDrawingPadding().imePadding()) {
         NavDisplay(backStack = stack, onBack = {
             if (stack.lastOrNull() == selectedDestination) {
-                if (selectedDestination?.page == ShellPage.TrainerNote) noteLeave?.takeIf { it.first==selectedDestination }?.second?.invoke(null)
+                if (selectedDestination?.page in customExercisePages) customLeave?.takeIf { it.first==selectedDestination }?.second?.invoke(null)
+                else if (selectedDestination?.page == ShellPage.TrainerNote) noteLeave?.takeIf { it.first==selectedDestination }?.second?.invoke(null)
                 else if (selectedDestination?.page == ShellPage.EditProfile) leaveProfile(ProfileExit.Back)
                 else if (selectedDestination?.page in setOf(ShellPage.Exercises, ShellPage.ExerciseDetails)) backFromExercises(stack, selectedDestination!!)
                 else if (selectedDestination?.page == ShellPage.Invitations) backFromInvitations(stack, selectedDestination)
@@ -97,12 +102,30 @@ internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
         }, modifier = Modifier.weight(1f), entryDecorators = listOf(rememberSaveableStateHolderNavEntryDecorator(), rememberProductViewModelStoreDecorator()), entryProvider = entryProvider {
             entry<ShellDestination> { destination ->
                 if (destination.owner != owner) return@entry
-                if (destination.page in setOf(ShellPage.Exercises, ShellPage.ExerciseDetails)) {
+                if (destination.page in customExercisePages) {
+                    if(owner.role=="trainer" && customExercises!=null && owner.uid!=null && owner.workspace!=null) {
+                        val mode=when(destination.page){ShellPage.CustomExercises->CustomExerciseMode.List;ShellPage.CustomExerciseDetails->CustomExerciseMode.Detail;else->CustomExerciseMode.Editor}
+                        CustomExercisesRoute(customExercises,CustomExerciseVisit(ExerciseScope(owner.uid,owner.workspace,owner.epoch),destination.refreshVersion,mode,destination.exerciseId),
+                            {ownsClientDestination(stack,owner,currentOwner,destination)},
+                            {callback,install->if(install && stack.lastOrNull()==destination)customLeave=destination to callback else if(customLeave?.second===callback)customLeave=null},
+                            {n->if(ownsClientDestination(stack,owner,currentOwner,destination)) {
+                                if(n.kind=="back") {if(n.exit!=null)openShellPage(stack,owner,ShellPage.valueOf(n.exit),destination) else backFromCustomExercises(stack,destination)}
+                                else {
+                                    val page=if(n.kind in setOf("create","edit"))ShellPage.CustomExerciseEditor else ShellPage.CustomExerciseDetails
+                                    val visit=stack.filterIsInstance<ShellDestination>().maxOf{it.refreshVersion}+1
+                                    if(n.kind=="saved")stack.removeLastOrNull()
+                                    stack.add(ShellDestination(page,owner=owner,refreshVersion=visit,exerciseId=n.id))
+                                }
+                            }},
+                            {if(ownsClientDestination(stack,owner,currentOwner,destination))openClientInvitations(stack,owner,InvitationEntry.Manage,destination)})
+                    }
+                } else if (destination.page in setOf(ShellPage.Exercises, ShellPage.ExerciseDetails)) {
                     if (owner.role == "trainer" && exercises != null && owner.uid != null && owner.workspace != null) {
                         ExercisesRoute(exercises, ExerciseVisit(ExerciseScope(owner.uid, owner.workspace, owner.epoch), destination.refreshVersion, destination.exerciseId),
                             { ownsClientDestination(stack, owner, currentOwner, destination) },
                             { id -> if (ownsClientDestination(stack, owner, currentOwner, destination)) stack.add(ShellDestination(ShellPage.ExerciseDetails, owner = owner, refreshVersion = destination.refreshVersion + 1, exerciseId = id)) },
-                            { if (ownsClientDestination(stack, owner, currentOwner, destination)) backFromExercises(stack, destination) })
+                            { if (ownsClientDestination(stack, owner, currentOwner, destination)) backFromExercises(stack, destination) },
+                            if(destination.page==ShellPage.Exercises && customExercises!=null) ({if(ownsClientDestination(stack,owner,currentOwner,destination))stack.add(ShellDestination(ShellPage.CustomExercises,owner=owner,refreshVersion=destination.refreshVersion+1))}) else null)
                     }
                 } else if(destination.page == ShellPage.TrainerNote) {
                     val commands=clients?.commands
@@ -172,7 +195,7 @@ internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
                             if (profileState?.scope == expected && profileState.visit == destination.refreshVersion)
                                 ProfileScreen(profileState, { profile?.onEvent(expected, destination.refreshVersion, profileState.promptId, it) }, { onEvent(IdentityEvent.Retry) })
                         }
-                        ShellPage.Clients, ShellPage.ClientDetails, ShellPage.TrainerNote, ShellPage.Exercises, ShellPage.ExerciseDetails -> Unit
+                        ShellPage.Clients, ShellPage.ClientDetails, ShellPage.TrainerNote, ShellPage.Exercises, ShellPage.ExerciseDetails, ShellPage.CustomExercises, ShellPage.CustomExerciseDetails, ShellPage.CustomExerciseEditor -> Unit
                         ShellPage.Invitations -> {
                             invitations?.invoke(destination.invitationEntry?.let { TrainerInvitationPresentation(it, destination.refreshVersion) }) { backFromInvitations(stack, destination) }
                             onboardingRecovery?.invoke()
@@ -182,14 +205,14 @@ internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
             }
         })
         val pages = if (state.verifiedRole == "trainer") listOfNotNull(ShellPage.Home, ShellPage.Clients, ShellPage.Exercises.takeIf { exercises != null }, ShellPage.Profile) else listOf(ShellPage.Home, ShellPage.Profile)
-        TillFailureBottomNavigation(pages.map { page -> TillFailureNavigationItem(page.name, if (page == ShellPage.Home) "⌂" else "○", selected == page || page == ShellPage.Exercises && selected == ShellPage.ExerciseDetails || page == ShellPage.Profile && selected == ShellPage.EditProfile || page == ShellPage.Clients && selected in setOf(ShellPage.ClientDetails, ShellPage.Invitations, ShellPage.TrainerNote)) }, { open(pages[it]) })
+        TillFailureBottomNavigation(pages.map { page -> TillFailureNavigationItem(page.name, if (page == ShellPage.Home) "⌂" else "○", selected == page || page == ShellPage.Exercises && selected in setOf(ShellPage.ExerciseDetails)+customExercisePages || page == ShellPage.Profile && selected == ShellPage.EditProfile || page == ShellPage.Clients && selected in setOf(ShellPage.ClientDetails, ShellPage.Invitations, ShellPage.TrainerNote)) }, { open(pages[it]) })
     }
 }
 
 /** One owned route; navigation results contain no invitation reply, email or bearer. */
 internal fun openShellPage(stack: MutableList<NavKey>, owner: ShellOwner, page: ShellPage, source: ShellDestination?) {
     if (source == null || stack.lastOrNull() != source || source.owner != owner) return
-    if (page in setOf(ShellPage.Exercises, ShellPage.ExerciseDetails) && owner.role != "trainer") return
+    if (page in setOf(ShellPage.Exercises, ShellPage.ExerciseDetails)+customExercisePages && owner.role != "trainer") return
     if (page == ShellPage.Invitations && owner.role == "trainer") {
         openClientInvitations(stack, owner, InvitationEntry.Manage, source); return
     }
@@ -246,4 +269,13 @@ internal fun backFromExercises(stack: MutableList<NavKey>, source: ShellDestinat
     stack.removeLastOrNull()
     val list = stack.lastOrNull() as? ShellDestination
     if (list?.page == ShellPage.Exercises && list.owner == source.owner) stack[stack.lastIndex] = list.copy(refreshVersion = source.refreshVersion + 1)
+}
+
+
+private val customExercisePages=setOf(ShellPage.CustomExercises,ShellPage.CustomExerciseDetails,ShellPage.CustomExerciseEditor)
+internal fun backFromCustomExercises(stack:MutableList<NavKey>,source:ShellDestination) {
+    if(stack.lastOrNull()!=source || source.page !in customExercisePages || stack.size<2)return
+    stack.removeLastOrNull()
+    val top=stack.lastOrNull() as? ShellDestination?:return
+    if(top.owner==source.owner && top.page in customExercisePages+ShellPage.Exercises)stack[stack.lastIndex]=top.copy(refreshVersion=source.refreshVersion+1)
 }

@@ -75,6 +75,7 @@ class NativeClientOutcome(val json: String?, val error: String?)
 class NativeInvitationOutcome(val json: String?, val error: String?, val ambiguous: Boolean)
 
 interface NativeIdentityBridge : NativeFirebaseBridge {
+    fun callCustomExercises(uid:String,json:String,callback:(NativeClientOutcome)->Unit):String { callback(NativeClientOutcome(null,"unavailable"));return "" }
     fun readSystemExercises(uid: String, afterId: String?, exerciseId: String?, callback: (NativeClientOutcome) -> Unit): String {
         callback(NativeClientOutcome(null, "UNAVAILABLE")); return ""
     }
@@ -134,6 +135,7 @@ class IosProductIdentityClient(
         }
         override fun recoveryState(uid: String) = protectedRead { invitationLedger.recoveryState(uid) }
         override val memory get() = PendingInvitationLinks.memory
+        override fun customExerciseAdmission(uid:String,request:InvitationRequest)=bridge.withWritableAccount(uid) { invitationLedger.customExerciseAdmission(uid,request) }
         override fun newNoteBindingNonce(): String = bridge.noteBindingNonce()
         override fun newCommandKey(): String = resolutionCommandKey(NSUUID().UUIDString)
         override fun pending(uid: String): PendingInvitationCommand? = protectedRead { invitationLedger.pending(uid) }
@@ -161,6 +163,20 @@ class IosProductIdentityClient(
             var cancelled = false
             val token = bridge.readSystemExercises(uid, afterId, exerciseId) { result ->
                 if (!cancelled) callback(SystemExerciseProtocol.result(afterId, exerciseId, result.json, result.error))
+            }
+            return FirebaseCancellation { cancelled = true; bridge.cancel(token) }
+        }
+    }
+    override val customExercises: CustomExerciseRepository = object : CustomExerciseRepository {
+        override val commands get() = invitations
+        override fun newExerciseId()=NSUUID().UUIDString.lowercase()
+        override fun read(scope: ExerciseScope, request: CustomExerciseReadRequest, callback: (CustomExerciseResult) -> Unit): FirebaseCancellation {
+            if (!request.valid() || request.workspaceId != scope.workspaceId) {
+                callback(CustomExerciseResult(error = "unavailable")); return FirebaseCancellation {}
+            }
+            var cancelled = false
+            val token = bridge.callCustomExercises(scope.uid, CustomExerciseProtocol.request(request)) { result ->
+                if (!cancelled) callback(CustomExerciseProtocol.result(scope, request, result.json, result.error))
             }
             return FirebaseCancellation { cancelled = true; bridge.cancel(token) }
         }
