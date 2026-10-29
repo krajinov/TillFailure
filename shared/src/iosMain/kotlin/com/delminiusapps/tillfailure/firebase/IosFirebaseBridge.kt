@@ -1,5 +1,7 @@
 package com.delminiusapps.tillfailure.firebase
 
+import com.delminiusapps.tillfailure.programs.*
+
 import com.delminiusapps.tillfailure.identity.MembershipDiscoveryResult
 import com.delminiusapps.tillfailure.identity.ProductIdentityClient
 import com.delminiusapps.tillfailure.identity.CleanDepartureOwnership
@@ -75,6 +77,7 @@ class NativeClientOutcome(val json: String?, val error: String?)
 class NativeInvitationOutcome(val json: String?, val error: String?, val ambiguous: Boolean)
 
 interface NativeIdentityBridge : NativeFirebaseBridge {
+    fun callProgramDrafts(uid:String,json:String,callback:(NativeClientOutcome)->Unit):String { callback(NativeClientOutcome(null,"unavailable"));return "" }
     fun callCustomExercises(uid:String,json:String,callback:(NativeClientOutcome)->Unit):String { callback(NativeClientOutcome(null,"unavailable"));return "" }
     fun readSystemExercises(uid: String, afterId: String?, exerciseId: String?, callback: (NativeClientOutcome) -> Unit): String {
         callback(NativeClientOutcome(null, "UNAVAILABLE")); return ""
@@ -135,6 +138,7 @@ class IosProductIdentityClient(
         }
         override fun recoveryState(uid: String) = protectedRead { invitationLedger.recoveryState(uid) }
         override val memory get() = PendingInvitationLinks.memory
+        override fun draftAdmission(uid:String,request:InvitationRequest)=bridge.withWritableAccount(uid) { invitationLedger.draftAdmission(uid,request) }
         override fun customExerciseAdmission(uid:String,request:InvitationRequest)=bridge.withWritableAccount(uid) { invitationLedger.customExerciseAdmission(uid,request) }
         override fun newNoteBindingNonce(): String = bridge.noteBindingNonce()
         override fun newCommandKey(): String = resolutionCommandKey(NSUUID().UUIDString)
@@ -163,6 +167,22 @@ class IosProductIdentityClient(
             var cancelled = false
             val token = bridge.readSystemExercises(uid, afterId, exerciseId) { result ->
                 if (!cancelled) callback(SystemExerciseProtocol.result(afterId, exerciseId, result.json, result.error))
+            }
+            return FirebaseCancellation { cancelled = true; bridge.cancel(token) }
+        }
+    }
+    override val drafts: DraftRepository = object : DraftRepository {
+        override val commands get() = invitations
+        override val systemExercises get() = this@IosProductIdentityClient.exercises
+        override val customExercises get() = this@IosProductIdentityClient.customExercises
+        override fun newId()=NSUUID().UUIDString.lowercase()
+        override fun read(scope: ExerciseScope, request: DraftReadRequest, callback: (DraftReadResult) -> Unit): FirebaseCancellation {
+            if (!request.valid() || request.workspaceId != scope.workspaceId) {
+                callback(DraftReadResult(error = "unavailable")); return FirebaseCancellation {}
+            }
+            var cancelled = false
+            val token = bridge.callProgramDrafts(scope.uid, DraftReads.request(request)) { result ->
+                if (!cancelled) callback(DraftReads.result(scope, request, result.json, result.error))
             }
             return FirebaseCancellation { cancelled = true; bridge.cancel(token) }
         }

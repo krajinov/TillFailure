@@ -31,7 +31,7 @@ Designed post-MVP controls stay absent or clearly unavailable through product co
 ## Product rules that drive architecture
 
 - Workspace-scoped access requires current server account/workspace/membership authorization. Global system-catalog reads use the active account and fixed trusted entitlement defined in [firestore-security.md](firestore-security.md#global-catalog-rules-check); this grants no workspace role. A previously verified account may perform only the bounded, restricted local workout recovery proposed in [offline-sync.md](offline-sync.md); cached roles/entitlements never authorize backend access.
-- A template edit creates a new template version. It never mutates assigned snapshots or completed workout history.
+- Explicit publication of an edited template will create a new immutable version in PR 4. M6 PR 3 explicitly saved drafts replace only the bounded mutable draft at its expected revision; they do not publish or mutate assigned snapshots or completed workout history.
 - Clients read only trusted, account-owned [assigned-program snapshots](firestore-schema.md#assigned-program-snapshot-identity) and derived planned workouts, never trainer templates/versions/items. Source IDs are audit metadata, not permission. Content changes/reassignment create a new immutable copy; cancellation/revocation/archive/expiry denies old content while unsynchronized cached work stays in locked account recovery under the offline policy.
 - A planned workout describes intent; a workout session and its logged sets describe what actually occurred.
 - Workout completion and other critical saved outcomes are durable records, not transient navigation/snackbar effects.

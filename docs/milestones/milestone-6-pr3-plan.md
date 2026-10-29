@@ -1,7 +1,7 @@
 # Milestone 6 PR 3: explicitly saved program-template drafts
 
-Status: **policy and implementation proposal; no policy approval or implementation authorization.**
-Prepared 2026-10-28, Europe/Sarajevo. Documentation inspection and changes only.
+Status: **P1–P6 approved; P7 separately authorized on 2026-10-28. Synthetic emulator implementation is locally complete for review, with acceptance gaps.**
+Prepared 2026-10-28, Europe/Sarajevo. The proposal and original planning evidence below are historical; the [implementation report](milestone-6-pr3-report.md) records actual measurements and verification. The approval section supersedes approval-pending language only within its exact scope.
 
 ## Baseline and evidence
 
@@ -317,3 +317,5 @@ Planning verification: repository/PR inspection; the documentation-only sizing c
 ## Approval and implementation authorization (2026-10-28)
 
 Josip approved P1–P6 and separately authorized P7 for the exact synthetic, emulator-only slice in this plan, including the stricter new-draft admission ceiling subject to actual serializer and native proof. This supersedes the earlier approval-pending statements only for that scope. Complete the feasibility checks before enabling Save; preserve all ten existing protected variants and their recovery behavior. Publication, assignment, real data, production and offline remain unapproved. The authorized planning commit contains only the four planning files, followed by the implementation branch; implementation changes remain uncommitted and unstaged. No push, PR, merge or deployment is authorized.
+
+Final-review authorization (2026-10-29): Josip authorized bounded review and in-scope corrections, one implementation commit, normal push and a PR against main. This supersedes earlier uncommitted/no-push handoff instructions only for PR 3. The [report](milestone-6-pr3-report.md#final-review-and-publication-authorization-2026-10-29) preserves verification attribution and remaining gates. No merge, deployment, production/offline enablement or PR 4 authorization.

@@ -9,6 +9,7 @@ import com.delminiusapps.tillfailure.profile.BasicProfile
 import com.delminiusapps.tillfailure.profile.ProfileUpdate
 import com.delminiusapps.tillfailure.clients.*
 import com.delminiusapps.tillfailure.exercises.*
+import com.delminiusapps.tillfailure.programs.*
 import com.delminiusapps.tillfailure.clients.ClientRevocationDecision
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -33,6 +34,7 @@ data class PendingInvitationCommand(
     val revocation: ClientRevocation? = null,
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val noteSave: NoteSave? = null,
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val exerciseWrite: CustomExerciseWrite? = null,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val draftSave: DraftSave? = null,
 ) { override fun toString() = "PendingInvitationCommand(redacted)" }
 
 @Serializable
@@ -50,6 +52,7 @@ data class InvitationRequest(
     val revocation: ClientRevocation? = null, val clientUid: String? = null,
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val noteSave: NoteSave? = null,
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val exerciseWrite: CustomExerciseWrite? = null,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val draftSave: DraftSave? = null,
 ) {
     // Preserve the existing Swift bridge constructor while extending the protected protocol.
     constructor(action: String, workspaceId: String?, invitationId: String?, email: String?, token: String?,
@@ -62,7 +65,7 @@ data class InvitationRequest(
     override fun toString(): String = "InvitationRequest(action=$action)"
     fun pending(uid: String): PendingInvitationCommand? = if (action == "resolve-command") resolution?.takeIf { it.uid == uid } else idempotencyKey?.let {
         PendingInvitationCommand(uid, action, it, workspaceId, invitationId, expectedVersion, email, onboarding, profileUpdate,
-            if (action == "accept" && it.startsWith("or1-") && token != null) commandDigest(token) else null, revocation=revocation,noteSave=noteSave,exerciseWrite=exerciseWrite)
+            if (action == "accept" && it.startsWith("or1-") && token != null) commandDigest(token) else null, revocation=revocation,noteSave=noteSave,exerciseWrite=exerciseWrite,draftSave=draftSave)
     }
 }
 
@@ -84,6 +87,7 @@ data class InvitationReply(
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val noteRead: NoteRead? = null,
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val noteDecision: NoteDecision? = null,
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val exerciseDecision: CustomExerciseDecision? = null,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val draftDecision: DraftDecision? = null,
     val profile: BasicProfile? = null, val profileCommandKey: String? = null,
 ) {
     override fun toString(): String = "InvitationReply(status=$status)"
@@ -104,6 +108,7 @@ interface InvitationClient {
     fun workspacePreference(uid: String): String? = null
     fun saveWorkspacePreference(uid: String, workspaceId: String) {}
     fun newNoteBindingNonce(): String = error("unavailable")
+    fun draftAdmission(uid:String,request:InvitationRequest):Boolean = false
     fun customExerciseAdmission(uid:String,request:InvitationRequest):Boolean = request.pending(uid)?.let(CustomExerciseBudget::pendingFits)==true
     fun newCommandKey(): String
     fun observePending(uid: String, callback: () -> Unit): FirebaseCancellation = FirebaseCancellation {}
@@ -211,20 +216,26 @@ class InvitationLedger(private val store: AccountPersistencePrototype) {
     fun workspacePreference(uid: String): String? = lock.locked { record(uid).preferredWorkspaceId }
     fun saveWorkspacePreference(uid: String, workspaceId: String) = lock.locked {
         val record = record(uid)
-        if (record.switchMarker == null) store.write(record.copy(preferredWorkspaceId = workspaceId))
+        if (record.switchMarker == null && record.pendingInvitationCommands.none { it.action=="save-program-draft" }) store.write(record.copy(preferredWorkspaceId = workspaceId))
     }
     fun lastSettled(uid: String): CommandTerminalProof? = lock.locked { record(uid).lastSettledCommand }
     fun pending(uid: String): PendingInvitationCommand? = lock.locked { record(uid).pendingInvitationCommands.singleOrNull() }
+    fun draftAdmission(uid:String,request:InvitationRequest):Boolean = lock.locked { runCatching {
+        val r=record(uid);val p=request.pending(uid)?:return@runCatching false
+        DraftProtocol.validRequest(request) && recoveryState(uid)==ProtectedRecoveryState.Clean && DraftBudget.admission(r,p)
+    }.getOrDefault(false) }
     fun customExerciseAdmission(uid:String,request:InvitationRequest):Boolean = lock.locked { runCatching {
         val r=record(uid);if(!CustomExerciseProtocol.writeRequestShape(request))return@runCatching false;val p=request.pending(uid)?:return@runCatching false
         validPendingCommand(uid,p) && recoveryState(uid)==ProtectedRecoveryState.Clean && r.pendingInvitationCommands.isEmpty() && r.lastSettledCommand?.consumed(p)!=true && CustomExerciseBudget.admission(r,p)
     }.getOrDefault(false) }
     fun prepare(uid: String, request: InvitationRequest): Boolean = lock.locked { runCatching {
         val record = record(uid)
+        if (request.action == "save-program-draft" && !DraftProtocol.validRequest(request)) return@runCatching false
         if (recoveryState(uid) !in setOf(ProtectedRecoveryState.Clean, ProtectedRecoveryState.PendingCommand)) return@runCatching false
         if(CustomExerciseProtocol.action(request.action) && !CustomExerciseProtocol.writeRequestShape(request)) return@runCatching false
         val command = request.pending(uid) ?: return@runCatching request.action in setOf("list", "preview", "profile-get", "prepare-client-revocation", "note-get") && record.pendingInvitationCommands.isEmpty()
         if (!validPendingCommand(uid, command)) return@runCatching false
+        if(command.action=="save-program-draft" && !DraftBudget.admission(record.copy(pendingInvitationCommands=emptyList(),pendingTerminalProof=null),command)) return@runCatching false
         if (CustomExerciseProtocol.action(command.action) && !CustomExerciseBudget.admission(record,command)) return@runCatching false
         val old = record.pendingInvitationCommands.singleOrNull()
         if (old == null && record.lastSettledCommand?.consumed(command) == true) return@runCatching false
@@ -265,11 +276,13 @@ internal fun validPendingCommand(uid: String, p: PendingInvitationCommand): Bool
     fun invitation() = p.invitationId != null && Regex("^[a-f0-9]{64}$").matches(p.invitationId)
     if (p.action == "accept" && p.idempotencyKey.startsWith("or1-") && p.acceptanceTokenDigest == null) return false
     if (p.acceptanceTokenDigest != null && (p.action != "accept" || !Regex("^[a-f0-9]{64}$").matches(p.acceptanceTokenDigest))) return false
+    if (p.action != "save-program-draft" && p.draftSave != null) return false
     if (p.action != "save-trainer-note" && p.noteSave != null) return false
     if (!CustomExerciseProtocol.action(p.action) && p.exerciseWrite != null) return false
     if (p.action != "revoke-client" && p.revocation != null) return false
     if (p.uid != uid || !segment(p.idempotencyKey) || p.action != "update-profile" && p.profileUpdate != null) return false
     return when (p.action) {
+        "save-program-draft" -> segment(p.workspaceId) && p.invitationId==null && p.email==null && p.expectedVersion==null && p.onboarding==null && p.profileUpdate==null && p.revocation==null && p.noteSave==null && p.exerciseWrite==null && p.draftSave?.valid()==true && DraftBudget.pendingFits(p)
         "create-custom-exercise", "correct-custom-exercise" -> segment(p.workspaceId) && p.invitationId==null && p.email==null && p.expectedVersion==null && p.onboarding==null && p.profileUpdate==null && p.revocation==null && p.noteSave==null && p.exerciseWrite?.valid(p.action)==true && CustomExerciseBudget.pendingFits(p)
         "save-trainer-note" -> segment(p.workspaceId) && p.invitationId == null && p.email == null && p.expectedVersion == null && p.onboarding == null && p.profileUpdate == null && p.revocation == null && p.noteSave?.valid() == true && p.noteSave.clientUid != uid && CommandResolution.request(p).length <= 8192 && InvitationJson.request(CommandResolution.original(p)).encodeToByteArray().size <= 32750
         "revoke-client" -> segment(p.workspaceId) && p.invitationId == null && p.email == null && p.expectedVersion == null && p.onboarding == null && p.revocation?.valid() == true && p.revocation.clientUid != uid
@@ -289,7 +302,7 @@ internal fun validPendingCommand(uid: String, p: PendingInvitationCommand): Bool
 
 object InvitationJson {
     val format = Json { explicitNulls = false }
-    fun request(value: InvitationRequest): String = if (value.action == "resolve-command") CommandResolution.request(value.resolution ?: error("binding-required")) else if(CustomExerciseProtocol.action(value.action)) CommandResolution.descriptor(value.pending("wire") ?: error("binding-required")).toString() else format.encodeToString(InvitationRequest.serializer(), value)
+    fun request(value: InvitationRequest): String = if (value.action == "resolve-command") CommandResolution.request(value.resolution ?: error("binding-required")) else if(value.action == "save-program-draft" || CustomExerciseProtocol.action(value.action)) CommandResolution.descriptor(value.pending("wire") ?: error("binding-required")).toString() else format.encodeToString(InvitationRequest.serializer(), value)
     fun callable(request: InvitationRequest, httpStatus: Int, body: String): InvitationOutcome = runCatching {
         val envelope = format.parseToJsonElement(body) as? JsonObject ?: error("envelope")
         if (httpStatus == 200 && envelope.keys == setOf("result")) {
@@ -311,6 +324,7 @@ object InvitationJson {
     else if (ambiguous) InvitationOutcome(error = "unavailable", ambiguous = true)
     else runCatching {
         val reply = if (request.action == "resolve-command") InvitationReply(terminalOutcome=CommandResolution.parse(request.resolution ?: error("binding-required"),json) ?: error("outcome-invalid"))
+            else if (request.action=="save-program-draft") DraftProtocol.parse(request,json)
             else if (CustomExerciseProtocol.action(request.action)) CustomExerciseProtocol.parseDecision(request,json)
             else if (request.action in setOf("note-get","save-trainer-note")) TrainerNoteProtocol.parse(request,json)
             else if (request.action in setOf("prepare-client-revocation", "revoke-client")) com.delminiusapps.tillfailure.clients.ClientRevocationProtocol.parseReply(request,json)
@@ -320,6 +334,8 @@ object InvitationJson {
     }
         .getOrDefault(InvitationOutcome(error = "unavailable", ambiguous = true))
     fun validReply(request: InvitationRequest, reply: InvitationReply): Boolean {
+        if (request.action == "save-program-draft") return DraftProtocol.validRequest(request) && request.draftSave?.let { reply.draftDecision?.valid(request.workspaceId, it) } == true && reply.copy(draftDecision=null)==InvitationReply()
+        if (request.draftSave != null || reply.draftDecision != null) return false
         if (CustomExerciseProtocol.action(request.action)) return CustomExerciseProtocol.validDecision(request,reply)
         if (reply.exerciseDecision!=null || request.exerciseWrite!=null) return false
         if (request.action in setOf("note-get","save-trainer-note")) return TrainerNoteProtocol.valid(request,reply)

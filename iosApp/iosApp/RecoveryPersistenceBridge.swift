@@ -2,7 +2,39 @@ import CryptoKit
 import Darwin
 import Foundation
 import Security
+#if !PR3_SIZING
 import Shared
+#endif
+
+// Shared by the native store and the isolated sizing executable; encoding is unchanged.
+enum RecoveryEnvelopeEncoder {
+    private struct Envelope: Codable {
+        let encryptionVersion: Int
+        let keyIdentifier: String
+        let nonce: String
+        let ciphertext: String
+        let tag: String
+    }
+    static func upperBound(plaintextBytes: Int, keyIdentifier: String) throws -> Int {
+        precondition(plaintextBytes >= 0 && plaintextBytes <= 65536)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let header = try encoder.encode(Envelope(encryptionVersion: 1, keyIdentifier: keyIdentifier, nonce: "", ciphertext: "", tag: "")).count
+        return header + 2 * (16 + 24 + 4 * ((plaintextBytes + 2) / 3))
+    }
+    static func encode(plaintext: Data, key: SymmetricKey, associatedData: Data, keyIdentifier: String) throws -> Data {
+        let nonce = AES.GCM.Nonce()
+        let sealed = try AES.GCM.seal(plaintext, using: key, nonce: nonce, authenticating: associatedData)
+        let envelope = Envelope(encryptionVersion: 1, keyIdentifier: keyIdentifier,
+            nonce: Data(sealed.nonce).base64EncodedString(), ciphertext: sealed.ciphertext.base64EncodedString(),
+            tag: sealed.tag.base64EncodedString())
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return try encoder.encode(envelope)
+    }
+}
+
+#if !PR3_SIZING
 
 final class RecoveryPersistenceBridge: NSObject, NativeRecoveryPersistenceBridge {
     private struct EncryptedEnvelope: Codable {
@@ -77,23 +109,9 @@ final class RecoveryPersistenceBridge: NSObject, NativeRecoveryPersistenceBridge
                     _ = try readPlaintext(uid: uid)
                 }
                 let key = try loadKey(createIfMissing: true)
-                let nonce = AES.GCM.Nonce()
-                let sealed = try AES.GCM.seal(
-                    Data(plaintext.utf8),
-                    using: key,
-                    nonce: nonce,
-                    authenticating: associatedData(uid: uid)
-                )
-                let envelope = EncryptedEnvelope(
-                    encryptionVersion: Int(encryptionVersion),
-                    keyIdentifier: keyIdentifier,
-                    nonce: Data(sealed.nonce).base64EncodedString(),
-                    ciphertext: sealed.ciphertext.base64EncodedString(),
-                    tag: sealed.tag.base64EncodedString()
-                )
-                let encoder = JSONEncoder()
-                encoder.outputFormatting = [.sortedKeys]
-                try atomicallyReplace(target: target, data: encoder.encode(envelope), uid: uid)
+                let encoded = try RecoveryEnvelopeEncoder.encode(plaintext: Data(plaintext.utf8), key: key,
+                    associatedData: associatedData(uid: uid), keyIdentifier: keyIdentifier)
+                try atomicallyReplace(target: target, data: encoded, uid: uid)
                 return success()
             }
         } catch {
@@ -373,3 +391,5 @@ final class RecoveryPersistenceBridge: NSObject, NativeRecoveryPersistenceBridge
     }
     #endif
 }
+
+#endif

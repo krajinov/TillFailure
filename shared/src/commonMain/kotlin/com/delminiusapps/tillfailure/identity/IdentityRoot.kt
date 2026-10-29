@@ -103,7 +103,7 @@ fun IdentityRoot(client: ProductIdentityClient?, onOpenDevelopmentCatalog: (() -
                 }
                 val invitationClient = viewModel.activeClient().invitations
                 if (invitationClient == null) {
-                    IdentityStateNavigation(state, viewModel.effect, viewModel::onEvent, onOpenDevelopmentCatalog, customExercises = viewModel.activeClient().customExercises, exercises = viewModel.activeClient().exercises, clients = viewModel.activeClient().clients)
+                    IdentityStateNavigation(state, viewModel.effect, viewModel::onEvent, onOpenDevelopmentCatalog, drafts = viewModel.activeClient().drafts, customExercises = viewModel.activeClient().customExercises, exercises = viewModel.activeClient().exercises, clients = viewModel.activeClient().clients)
                 } else {
                     val invitations: InvitationViewModel = koinViewModel(parameters = { parametersOf(invitationClient) })
                     val profile: ProfileViewModel = koinViewModel(parameters = { parametersOf(invitationClient) })
@@ -133,7 +133,7 @@ fun IdentityRoot(client: ProductIdentityClient?, onOpenDevelopmentCatalog: (() -
                         }
                     }
                     IdentityStateNavigation(state.copy(busy = state.busy || visibleInvitationState.busy),
-                        viewModel.effect, viewModel::onEvent, onOpenDevelopmentCatalog, onboardingClient = invitationClient, customExercises = viewModel.activeClient().customExercises, exercises = viewModel.activeClient().exercises, clients = viewModel.activeClient().clients, profile = profile) { presentation, back ->
+                        viewModel.effect, viewModel::onEvent, onOpenDevelopmentCatalog, onboardingClient = invitationClient, drafts = viewModel.activeClient().drafts, customExercises = viewModel.activeClient().customExercises, exercises = viewModel.activeClient().exercises, clients = viewModel.activeClient().clients, profile = profile) { presentation, back ->
                         DisposableEffect(presentation, state.accountUid, state.verifiedWorkspaceId, state.authorityEpoch, state.status, invitationClient) {
                             if (presentation != null && state.status == GateStatus.TrainerHome) {
                                 invitations.updateClient(invitationClient); invitations.updateIdentity(state)
@@ -163,6 +163,7 @@ private fun IdentityStateNavigation(
     onEvent: (IdentityEvent) -> Unit,
     onOpenDevelopmentCatalog: (() -> Unit)?,
     onboardingClient: com.delminiusapps.tillfailure.invitations.InvitationClient? = null,
+    drafts: com.delminiusapps.tillfailure.programs.DraftRepository? = null,
     customExercises: com.delminiusapps.tillfailure.exercises.CustomExerciseRepository? = null,
     exercises: com.delminiusapps.tillfailure.exercises.SystemExerciseRepository? = null,
     clients: ClientRepository? = null,
@@ -200,7 +201,7 @@ private fun IdentityStateNavigation(
         entryProvider = entryProvider {
             entry<IdentityStateDestination> {
                 // Current server gate always wins over restored keys and buffered effects.
-                IdentityScreen(state, onEvent, onOpenDevelopmentCatalog, invitations, customExercises = customExercises, exercises = exercises, clients = clients,
+                IdentityScreen(state, onEvent, onOpenDevelopmentCatalog, invitations, drafts = drafts, customExercises = customExercises, exercises = exercises, clients = clients,
                     profile = profile, onboarding = onboardingClient?.let { service -> { OnboardingRoute(state, service) { onEvent(IdentityEvent.Retry) } } })
             }
         },
@@ -214,6 +215,7 @@ fun IdentityScreen(
     onOpenDevelopmentCatalog: (() -> Unit)? = null,
     invitations: (@Composable (TrainerInvitationPresentation?, (() -> Unit)?) -> Unit)? = null,
     onboarding: (@Composable () -> Unit)? = null,
+    drafts: com.delminiusapps.tillfailure.programs.DraftRepository? = null,
     customExercises: com.delminiusapps.tillfailure.exercises.CustomExerciseRepository? = null,
     exercises: com.delminiusapps.tillfailure.exercises.SystemExerciseRepository? = null,
     clients: ClientRepository? = null,
@@ -221,7 +223,7 @@ fun IdentityScreen(
 ) {
     if (state.status in setOf(GateStatus.ClientHome, GateStatus.TrainerHome)) {
         key(state.accountUid, state.verifiedWorkspaceId, state.verifiedRole, state.authorityEpoch) {
-            RoleShell(state, onEvent, invitations, onboarding, clients, profile, exercises, customExercises)
+            RoleShell(state, onEvent, invitations, onboarding, clients, profile, exercises, customExercises, drafts)
         }
         return
     }

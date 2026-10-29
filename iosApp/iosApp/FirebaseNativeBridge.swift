@@ -566,6 +566,53 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
         return token
     }
 
+    func callProgramDrafts(uid: String, json: String, callback: @escaping (NativeClientOutcome) -> Void) -> String {
+        let token = UUID().uuidString
+        #if DEBUG
+        lock.lock()
+        defer { lock.unlock() }
+        guard !terminated, !accountFrozen, auth.currentUser?.uid == uid, generation.projectID == "demo-tillfailure-m3",
+              json.utf8.count <= 32768, let bytes = json.data(using: .utf8),
+              let payload = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any],
+              ["draft-prepare", "draft-list", "draft-get"].contains(payload["action"] as? String ?? "") else {
+            callback(NativeClientOutcome(json: nil, error: "unavailable")); return token
+        }
+        let issuedEpoch = invitationAuthEpoch, callbackEpoch = currentEpoch
+        var cancelled = false
+        cancellations[token] = { cancelled = true }
+        func allowed() -> Bool { !cancelled && !self.terminated && !self.accountFrozen && self.auth.currentUser?.uid == uid &&
+            self.invitationAuthEpoch == issuedEpoch && self.currentEpoch == callbackEpoch }
+        auth.currentUser!.getIDTokenForcingRefresh(true) { [weak self] _, error in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.lock.lock(); defer { self.lock.unlock() }
+                guard allowed() else { return }
+                if error != nil { self.cancellations.removeValue(forKey: token); callback(NativeClientOutcome(json: nil, error: "unavailable")); return }
+                let functions = Functions.functions(app: self.generation.app, region: "europe-west1")
+                let port = Int(ProcessInfo.processInfo.environment["TF_FUNCTIONS_EMULATOR_PORT"] ?? "") ?? 5001
+                functions.useEmulator(withHost: self.emulatorHost, port: port)
+                functions.httpsCallable("programDraftsEmulator").call(payload) { result, error in
+                    DispatchQueue.main.async {
+                        self.lock.lock(); defer { self.lock.unlock() }
+                        guard allowed() else { return }
+                        self.cancellations.removeValue(forKey: token)
+                        if let error = error as NSError? {
+                            let denied = error.domain == FunctionsErrorDomain && [FunctionsErrorCode.permissionDenied.rawValue, FunctionsErrorCode.unauthenticated.rawValue].contains(error.code)
+                            let reason = denied ? "unauthorized" : "unavailable"
+                            callback(NativeClientOutcome(json: nil, error: reason))
+                        } else if let data = result?.data, let bytes = try? JSONSerialization.data(withJSONObject: data),
+                                  bytes.count <= 64 * 1024, let json = String(data: bytes, encoding: .utf8) {
+                            callback(NativeClientOutcome(json: json, error: nil))
+                        } else { callback(NativeClientOutcome(json: nil, error: "unavailable")) }
+                    }
+                }
+            }
+        }
+        #else
+        callback(NativeClientOutcome(json: nil, error: "unavailable"))
+        #endif
+        return token
+    }
     func callCustomExercises(uid: String, json: String, callback: @escaping (NativeClientOutcome) -> Void) -> String {
         let token = UUID().uuidString
         #if DEBUG
@@ -698,7 +745,7 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
           guard !self.terminated, self.auth.currentUser?.uid == uid,
                 self.invitationAuthEpoch == issuedEpoch, self.currentEpoch == callbackEpoch else { return }
           let action = payload["action"] as? String ?? ""
-          let endpoint = payload["protocolVersion"] != nil ? "commandResolutionEmulator" : ["create-custom-exercise", "correct-custom-exercise"].contains(action) ? "customExercisesEmulator" : ["note-get", "save-trainer-note"].contains(action) ? "trainerNotesEmulator" : ["prepare-client-revocation", "revoke-client"].contains(action) ? "clientRevocationEmulator" : action == "complete-onboarding" ? "onboardingEmulator" :
+          let endpoint = payload["protocolVersion"] != nil ? "commandResolutionEmulator" : action == "save-program-draft" ? "programDraftsEmulator" : ["create-custom-exercise", "correct-custom-exercise"].contains(action) ? "customExercisesEmulator" : ["note-get", "save-trainer-note"].contains(action) ? "trainerNotesEmulator" : ["prepare-client-revocation", "revoke-client"].contains(action) ? "clientRevocationEmulator" : action == "complete-onboarding" ? "onboardingEmulator" :
               (["profile-get", "update-profile"].contains(action) ? "basicProfileEmulator" : "invitationEmulator")
           let send = {
           functions.httpsCallable(endpoint).call(payload) { [weak self] result, error in
@@ -731,7 +778,7 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
             }
           }
           }
-          if ["create-custom-exercise", "correct-custom-exercise"].contains(action) {
+          if ["save-program-draft", "create-custom-exercise", "correct-custom-exercise"].contains(action) {
             self.auth.currentUser!.getIDTokenForcingRefresh(true) { _, error in
               DispatchQueue.main.async {
                 self.lock.lock(); defer { self.lock.unlock() }
