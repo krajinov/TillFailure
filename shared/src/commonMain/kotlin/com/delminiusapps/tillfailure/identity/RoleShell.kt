@@ -76,16 +76,7 @@ internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
             profile?.onEvent(p.scope!!, p.visit, p.promptId, ProfileEvent.Leave(exit))
     }
     fun open(page: ShellPage, source: ShellDestination? = selectedDestination) {
-        if(source?.page==ShellPage.Programs && stack.lastOrNull()==source) {draftLeave?.takeIf{it.first==source}?.second?.invoke(page.name);return}
-        if(source?.page in customExercisePages && stack.lastOrNull()==source) {
-            customLeave?.takeIf { it.first==source }?.second?.invoke(page.name);return
-        }
-        if(source?.page == ShellPage.TrainerNote && stack.lastOrNull()==source) {
-            noteLeave?.takeIf { it.first==source }?.second?.invoke(page.name);return
-        }
-        if (source?.page == ShellPage.EditProfile && stack.lastOrNull() == source)
-            leaveProfile(if (page == ShellPage.Home) ProfileExit.Home else ProfileExit.Profile)
-        else openShellPage(stack, owner, page, source)
+        requestShellPage(stack, owner, page, source, draftLeave, customLeave, noteLeave, ::leaveProfile)
     }
     @Composable fun recovery() {
         val p = profileState ?: return
@@ -219,6 +210,23 @@ internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
         })
         val pages = if (state.verifiedRole == "trainer") listOfNotNull(ShellPage.Home, ShellPage.Clients, ShellPage.Exercises.takeIf { exercises != null }, ShellPage.Programs.takeIf { drafts != null }, ShellPage.Profile) else listOf(ShellPage.Home, ShellPage.Profile)
         TillFailureBottomNavigation(pages.map { page -> TillFailureNavigationItem(page.name, if (page == ShellPage.Home) "⌂" else "○", selected == page || page == ShellPage.Exercises && selected in setOf(ShellPage.ExerciseDetails)+customExercisePages || page == ShellPage.Profile && selected == ShellPage.EditProfile || page == ShellPage.Clients && selected in setOf(ShellPage.ClientDetails, ShellPage.Invitations, ShellPage.TrainerNote)) }, { open(pages[it]) })
+    }
+}
+
+/** Dispatch selection before navigation; departure callbacks can fence their mounted ViewModel. */
+internal fun requestShellPage(stack: MutableList<NavKey>, owner: ShellOwner, page: ShellPage, source: ShellDestination?,
+    draftLeave: Pair<ShellDestination, (String?) -> Unit>?,
+    customLeave: Pair<ShellDestination, (String?) -> Unit>?,
+    noteLeave: Pair<ShellDestination, (String?) -> Unit>?, leaveProfile: (ProfileExit) -> Unit) {
+    if (source == null || stack.lastOrNull() != source || source.owner != owner) return
+    // A no-op selection must not prompt or start a departure that will never unmount its owner.
+    if (source.page == page) return
+    when (source.page) {
+        ShellPage.Programs -> draftLeave?.takeIf { it.first == source }?.second?.invoke(page.name)
+        in customExercisePages -> customLeave?.takeIf { it.first == source }?.second?.invoke(page.name)
+        ShellPage.TrainerNote -> noteLeave?.takeIf { it.first == source }?.second?.invoke(page.name)
+        ShellPage.EditProfile -> leaveProfile(if (page == ShellPage.Home) ProfileExit.Home else ProfileExit.Profile)
+        else -> openShellPage(stack, owner, page, source)
     }
 }
 
