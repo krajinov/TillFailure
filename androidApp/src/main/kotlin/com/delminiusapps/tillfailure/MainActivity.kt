@@ -19,6 +19,16 @@ class MainActivity : ComponentActivity() {
         )
         super.onCreate(savedInstanceState)
 
+        if (BuildConfig.DEBUG && intent.hasExtra("tfM6p3UiPrefix")) {
+            // The class exists only in the Debug source set; R8 removes this entire branch in Release.
+            val configuration = com.delminiusapps.tillfailure.firebase.FirebaseEmulatorConfiguration(
+                host="10.0.2.2",authPort=intent.getIntExtra("tfAuthPort",9099),
+                firestorePort=intent.getIntExtra("tfFirestorePort",8080),functionsPort=intent.getIntExtra("tfFunctionsPort",5001))
+            Class.forName("com.delminiusapps.tillfailure.ProgramDraftsUiFixture")
+                .getMethod("prepare",android.content.Context::class.java,com.delminiusapps.tillfailure.firebase.FirebaseEmulatorConfiguration::class.java,String::class.java)
+                .invoke(null,applicationContext,configuration,intent.getStringExtra("tfM6p3UiPrefix"))
+        }
+
         setContent {
             if (BuildConfig.DEBUG && intent.hasExtra("tfPr3Visual")) {
                 com.delminiusapps.tillfailure.designcatalog.InvitationVisualFixture(
