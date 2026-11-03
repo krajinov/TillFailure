@@ -19,6 +19,8 @@ class DraftsViewModelTest {
     private class Repository:DraftRepository,InvitationClient {
         override val commands get()=this
         override val memory=InvitationMemory()
+        val publications=mutableListOf<Pair<PublicationReadRequest,(PublicationReadResult)->Unit>>()
+        override fun publication(scope:ExerciseScope,request:PublicationReadRequest,callback:(PublicationReadResult)->Unit):FirebaseCancellation {publications+=request to callback;return FirebaseCancellation{}}
         val reads=mutableListOf<Pair<DraftReadRequest,(DraftReadResult)->Unit>>()
         val submits=mutableListOf<InvitationRequest>();val replies=mutableListOf<(InvitationOutcome)->Unit>()
         var holdSystem=false
@@ -49,6 +51,44 @@ class DraftsViewModelTest {
         fun select(page:ShellPage=ShellPage.Programs) = requestShellPage(stack,shellOwner,page,destination,
             destination to { target -> departures++;vm.onEvent(owner,vm.state.value.promptId,DraftEvent.Leave(target)) },
             null,null,{error("Unexpected profile departure")})
+    }
+    private fun saved(r:Repository,vm:DraftsViewModel):PublicationContent {
+        val c=ProgramPublicationTest().content();vm.bind(owner)
+        r.reads.last().second(DraftReadResult(authority=authority,items=listOf(DraftRow(c.templateId,c.title,1))))
+        vm.onEvent(owner,0,DraftEvent.Open(c.templateId))
+        r.reads.last().second(DraftReadResult(authority=authority,draft=SavedDraft(1,1,"w",c.templateId,"A",1,0,0,c.title,c.description,c.draft().workouts)))
+        return c
+    }
+    @Test fun publicationRequiresSavedCleanContentAndCancelledPreviewCannotReturn()=runTest {
+        val r=Repository();val vm=DraftsViewModel(r);val c=saved(r,vm)
+        vm.onEvent(owner,0,DraftEvent.Title("Unsaved"));vm.onEvent(owner,0,DraftEvent.PreviewPublication);assertTrue(r.publications.isEmpty())
+        vm.onEvent(owner,0,DraftEvent.Title(c.title));vm.onEvent(owner,0,DraftEvent.PreviewPublication)
+        val (request,callback)=r.publications.single();assertEquals(1,request.expectedRevision)
+        assertEquals(PublicationProtocol.draftHash(c.draft(),"A","w"),request.expectedDraftHash)
+        vm.onEvent(owner,0,DraftEvent.Leave());assertNull(vm.state.value.publicationMode)
+        val p=ProgramPublicationTest().publish().copy(draftHash=request.expectedDraftHash!!)
+        callback(PublicationReadResult(preview=PublicationPreview("w",p,1,c,PublicationProtocol.contentHash(c))))
+        advanceTimeBy(20001);runCurrent();assertNull(vm.state.value.publicationPreview);assertFalse(vm.state.value.busy);assertTrue(r.submits.isEmpty());vm.clear()
+    }
+    @Test fun explicitPublicationConfirmationIsOwnedAndUnverifiedIssuanceStaysDisabled() {
+        val r=Repository();val vm=DraftsViewModel(r);val c=saved(r,vm)
+        vm.onEvent(owner,0,DraftEvent.PreviewPublication);val req=r.publications.single().first
+        val p=ProgramPublicationTest().publish().copy(draftHash=req.expectedDraftHash!!)
+        r.publications.single().second(PublicationReadResult(preview=PublicationPreview("w",p,1,c,PublicationProtocol.contentHash(c))))
+        vm.onEvent(owner,0,DraftEvent.Title("Queued edit"));assertEquals(c.title,vm.state.value.draft!!.title)
+        vm.onEvent(owner,0,DraftEvent.ConfirmPublication);val prompt=vm.state.value.promptId
+        vm.onEvent(owner,prompt-1,DraftEvent.Confirm);assertEquals("publish",vm.state.value.prompt)
+        vm.onEvent(owner,prompt,DraftEvent.Stay);assertTrue(r.submits.isEmpty())
+        vm.onEvent(owner,0,DraftEvent.ConfirmPublication);vm.onEvent(owner,vm.state.value.promptId,DraftEvent.Confirm)
+        assertFalse(PublicationProtocol.ISSUANCE_ENABLED);assertTrue(r.submits.isEmpty());vm.clear()
+    }
+    @Test fun publicationAuthorityLossClearsContentAndOldOwnerCannotOpenVersions() {
+        val r=Repository();val vm=DraftsViewModel(r);saved(r,vm)
+        vm.onEvent(owner,0,DraftEvent.Versions);val callback=r.publications.single().second
+        callback(PublicationReadResult(error="unauthorized"));assertTrue(vm.state.value.denied);assertNull(vm.state.value.draft)
+        vm.onEvent(owner,0,DraftEvent.Versions);assertEquals(1,r.publications.size)
+        vm.clear();callback(PublicationReadResult(items=listOf(VersionRow(PublicationProtocol.versionId(1),1,"Secret",1,0,"a".repeat(64)))))
+        assertTrue(vm.state.value.versions.isEmpty());vm.clear()
     }
     @Test fun activeProgramsReselectionKeepsListAndCleanEditorUsable() {
         val r=Repository();val vm=DraftsViewModel(r);val shell=Shell(vm)

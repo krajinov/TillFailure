@@ -54,6 +54,16 @@ async function seedEligibleAssignment(): Promise<void> {
 }
 
 describe("Firestore and Storage rules", () => {
+  it("M6 publication roots, versions and every descendant deny all direct readers and writers", async () => {
+    const paths=["workspaces/ws/programTemplates/template","workspaces/ws/programTemplates/template/versions/v0000000001","workspaces/ws/programTemplates/template/versions/v0000000001/workouts/w","workspaces/ws/programTemplates/template/versions/v0000000001/workouts/w/exercises/e","workspaces/ws/programTemplates/template/versions/v0000000001/arbitrary/child"];
+    await environment.withSecurityRulesDisabled(async context=>{for(const path of paths)await setDoc(doc(context.firestore(),path),{ownerUid:"author",schemaVersion:1});});
+    for(const uid of ["author","foreign-author","client","owner"]) {
+      const db=verifiedContext(uid).firestore();
+      for(const path of paths){await assertFails(getDoc(doc(db,path)));await assertFails(setDoc(doc(db,path),{ownerUid:uid}));await assertFails(deleteDoc(doc(db,path)));}
+      await assertFails(getDocs(collection(db,"workspaces/ws/programTemplates/template/versions")));
+    }
+  });
+
   it("M6 executes published ID-ordered 20-plus-lookahead pages and fresh exact gets without broadening catalog access", async () => {
     const admin = emulatorFirestore();
     await admin.doc("users/m6_reader").create({schemaVersion:1, accountStatus:"active"});

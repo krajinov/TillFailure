@@ -18,6 +18,7 @@ data class DraftsState(val owner:DraftVisit?=null,val authority:ExerciseAuthorit
     val numbers:Map<String,DraftNumbers> = emptyMap(),val rows:List<DraftRow> = emptyList(),val nextId:String?=null,
     val pickerWorkout:String?=null,val pickerKind:String="system",val preview:DraftPreview?=null,val choices:List<DraftChoice> = emptyList(),val pickerNext:String?=null,
     val focusTarget:String?=null,val focusSequence:Long=0,val busy:Boolean=false,val needsRecovery:Boolean=false,val pending:Boolean=false,val locked:Boolean=false,val denied:Boolean=false,val conflict:String?=null,val message:String="",
+    val publicationMode:String?=null,val publicationPreview:PublicationPreview?=null,val version:ProgramVersion?=null,val versions:List<VersionRow> = emptyList(),val versionsNext:String?=null,
     val prompt:String?=null,val promptId:Long=0,val exit:String?=null) {
     val dirty get()=draft!=baseline || numbers.any { (id,value)->value!=baseline?.workouts?.flatMap {it.items}?.find{it.id==id}?.prescription?.let(DraftNumbers::from) }
     override fun toString()="DraftsState(redacted)"
@@ -41,6 +42,12 @@ sealed interface DraftEvent {
     data object CancelPicker:DraftEvent
     data object MorePicker:DraftEvent
     data object More:DraftEvent
+    data object PreviewPublication:DraftEvent
+    data object ConfirmPublication:DraftEvent
+    data object Versions:DraftEvent
+    data object MoreVersions:DraftEvent
+    data class OpenVersion(val id:String):DraftEvent
+    data object PublicationBack:DraftEvent
     data object Save:DraftEvent
     data object Reload:DraftEvent
     data class Leave(val page:String?=null):DraftEvent
@@ -59,7 +66,7 @@ class DraftsViewModel(private val repository:DraftRepository):ViewModel() {
     private fun pending() {val s=mutable.value;val o=s.owner?:return;val result=runCatching{repository.commands.pending(o.scope.uid)};mutable.value=s.copy(pending=result.getOrNull()!=null,locked=result.isFailure)}
     private fun begin(submitting:Boolean=false):Pair<DraftVisit,Long>? {val o=mutable.value.owner?:return null;generation++;operation?.cancel();timer?.cancel();val g=generation
         mutable.value=mutable.value.copy(busy=true,message="")
-        timer=viewModelScope.launch{delay(20000);if(accept(o,g)){generation++;operation?.cancel();mutable.value=mutable.value.copy(busy=false,needsRecovery=submitting || mutable.value.needsRecovery,message=if(submitting)"The Save outcome is unavailable. Check recovery and Reload before another Save." else "This read is unavailable. Try a fresh authorized read.");pending()}}
+        timer=viewModelScope.launch{delay(20000);if(accept(o,g)){generation++;operation?.cancel();mutable.value=mutable.value.copy(busy=false,needsRecovery=submitting || mutable.value.needsRecovery,message=if(submitting)"The command outcome is unavailable. Check recovery and Reload before another command." else "This read is unavailable. Try a fresh authorized read.");pending()}}
         return o to g}
     private fun accept(o:DraftVisit,g:Long)=!navigating && mutable.value.owner==o && generation==g
     private fun end(){generation++;timer?.cancel();timer=null;mutable.value=mutable.value.copy(busy=false)}
@@ -71,13 +78,17 @@ class DraftsViewModel(private val repository:DraftRepository):ViewModel() {
             if(r.error!=null){mutable.value=if(r.error=="unauthorized")DraftsState(owner=o,denied=true,message="Access is unavailable. Unsaved edits were cleared.") else s.copy(message="Drafts are unavailable. Try a fresh read.");return@read}
             when(action){
                 "draft-prepare"->{val d=DraftSave(repository.newId(),0,r.authority!!,"","",emptyList());mutable.value=s.copy(authority=r.authority,draft=d,baseline=d,numbers=emptyMap(),conflict=null,needsRecovery=false)}
-                "draft-get"->{val d=r.draft!!.write(r.authority!!);mutable.value=s.copy(authority=r.authority,draft=d,baseline=d,numbers=d.workouts.flatMap{it.items}.associate{it.id to DraftNumbers.from(it.prescription)},pickerWorkout=null,conflict=null,needsRecovery=false,message="Current server draft loaded.")}
+                "draft-get"->{val d=r.draft!!.write(r.authority!!);mutable.value=s.copy(authority=r.authority,draft=d,baseline=d,numbers=d.workouts.flatMap{it.items}.associate{it.id to DraftNumbers.from(it.prescription)},pickerWorkout=null,conflict=null,needsRecovery=false,publicationMode=null,publicationPreview=null,version=null,versions=emptyList(),versionsNext=null,message="Current server draft loaded.")}
                 else->mutable.value=s.copy(authority=r.authority,rows=if(more)(s.rows+r.items).distinctBy{it.templateId} else r.items,nextId=r.nextId,draft=null,baseline=null,numbers=emptyMap())
             }
         }
     }
     fun onEvent(owner:DraftVisit,promptId:Long,event:DraftEvent) {
         var s=mutable.value;if(s.owner!=owner || navigating)return
+        if(event==DraftEvent.PublicationBack || event is DraftEvent.Leave && event.page==null && s.publicationMode!=null) {
+            if(s.prompt!=null)return
+            generation++;operation?.cancel();timer?.cancel();mutable.value=s.copy(busy=false,publicationMode=null,publicationPreview=null,version=null,versions=emptyList(),versionsNext=null);return
+        }
         if(event is DraftEvent.Leave) {
             if(s.prompt!=null)return
             if(s.pickerWorkout!=null && event.page==null){closePicker();return}
@@ -89,6 +100,7 @@ class DraftsViewModel(private val repository:DraftRepository):ViewModel() {
             if(s.prompt==null || promptId!=s.promptId)return
             mutable.value=s.copy(prompt=null)
             if(event==DraftEvent.Confirm)when {
+                s.prompt=="publish"->publish()
                 s.prompt=="leave"->leave(s.exit)
                 s.prompt=="reload"->s.draft?.let{if(it.expectedRevision==0)read("draft-get",it.templateId) else read("draft-get",it.templateId)}
                 s.prompt.startsWith("remove:")->edit{s.copy(prompt=null,draft=s.draft?.copy(workouts=s.draft.workouts.filter{it.id!=s.prompt.removePrefix("remove:")}),conflict=null,focusTarget="draft-heading",focusSequence=++sequence,message="Workout and its exercises removed.",numbers=s.numbers.filterKeys{id->s.draft?.workouts?.firstOrNull{it.id==s.prompt.removePrefix("remove:")}?.items?.none{it.id==id}!=false})}
@@ -101,6 +113,11 @@ class DraftsViewModel(private val repository:DraftRepository):ViewModel() {
         val oversized=when(event){is DraftEvent.Title->event.value.length>320;is DraftEvent.Description->event.value.length>960;is DraftEvent.WorkoutTitle->event.value.length>160;is DraftEvent.Numbers->event.value.length>16;else->false}
         if(oversized){mutable.value=s.copy(message="Input is too large. Nothing was truncated or submitted.");return}
         when(event) {
+            DraftEvent.PreviewPublication->publicationRead("publication-prepare")
+            DraftEvent.ConfirmPublication->if(s.publicationPreview!=null && !s.dirty && !s.needsRecovery)mutable.value=s.copy(prompt="publish",promptId=++sequence)
+            DraftEvent.Versions->publicationRead("version-list")
+            DraftEvent.MoreVersions->if(s.versionsNext!=null)publicationRead("version-list",more=true)
+            is DraftEvent.OpenVersion->if(s.versions.any{it.versionId==event.id})publicationRead("version-get",event.id)
             DraftEvent.Create->if(s.draft==null)read("draft-prepare")
             is DraftEvent.Open->if(s.draft==null && s.rows.any{it.templateId==event.id})read("draft-get",event.id)
             DraftEvent.More->if(s.draft==null && s.nextId!=null)read("draft-list",more=true)
@@ -111,7 +128,7 @@ class DraftsViewModel(private val repository:DraftRepository):ViewModel() {
             DraftEvent.CancelPicker->closePicker()
             DraftEvent.MorePicker->if(s.pickerNext!=null)picker(true)
             is DraftEvent.Select->if(s.choices.any{it.id==event.id})select(event.id)
-            else->if(s.draft!=null && s.pickerWorkout==null && s.conflict!="draft-conflict")when(event) {
+            else->if(s.publicationMode==null && s.draft!=null && s.pickerWorkout==null && s.conflict!="draft-conflict")when(event) {
                 is DraftEvent.Title->if(event.value.length<=320)edit{it.copy(draft=it.draft!!.copy(title=event.value))}
                 is DraftEvent.Description->if(event.value.length<=960)edit{it.copy(draft=it.draft!!.copy(description=event.value))}
                 DraftEvent.AddWorkout->if(s.draft.workouts.size<3)edit{it.copy(draft=it.draft!!.copy(workouts=it.draft.workouts+DraftWorkout(repository.newId(),"",emptyList())))}
@@ -161,7 +178,7 @@ class DraftsViewModel(private val repository:DraftRepository):ViewModel() {
     }
 
     private fun save() {
-        val s=mutable.value;val o=s.owner?:return;if(s.needsRecovery || s.conflict!=null || s.draft==null || !s.dirty && s.draft.expectedRevision!=0)return
+        val s=mutable.value;val o=s.owner?:return;if(s.publicationMode!=null || s.needsRecovery || s.conflict!=null || s.draft==null || !s.dirty && s.draft.expectedRevision!=0)return
         val d=runCatching{s.draft.copy(workouts=s.draft.workouts.map{w->w.copy(items=w.items.map{i->i.copy(prescription=(s.numbers[i.id]?:DraftNumbers.from(i.prescription)).parse())})})}.getOrNull()
         if(d==null || !d.valid()){mutable.value=s.copy(message="Check the field limits, numeric values, 3 workouts, 12 items and 650 combined characters. Blank prescriptions are allowed.");return}
         val request=InvitationRequest("save-program-draft",workspaceId=o.scope.workspaceId,idempotencyKey=repository.commands.newCommandKey(),draftSave=d)
@@ -174,6 +191,40 @@ class DraftsViewModel(private val repository:DraftRepository):ViewModel() {
             val decision=outcome.reply.draftDecision
             if(decision.status=="draft-saved")read("draft-get",d.templateId)
             else mutable.value=current.copy(conflict=decision.status,message=if(decision.status=="draft-conflict")"Another Save won. Reload explicitly before editing again." else "A new source changed or is unavailable. Remove or reselect it, or Reload; the previous command is settled.")
+        }
+        pending()
+    }
+    private fun publicationRead(action:String,vid:String?=null,more:Boolean=false) {
+        val s=mutable.value;val d=s.draft?:return;val o=s.owner?:return
+        if(s.dirty || d.expectedRevision<1 || s.needsRecovery || s.conflict!=null || s.pickerWorkout!=null)return
+        val request=PublicationReadRequest(o.scope.workspaceId,d.templateId,action,
+            expectedRevision=if(action=="publication-prepare")d.expectedRevision else null,
+            expectedDraftHash=if(action=="publication-prepare")PublicationProtocol.draftHash(d,o.scope.uid,o.scope.workspaceId) else null,
+            versionId=vid,beforeId=if(more)s.versionsNext else null)
+        val (_,g)=begin()?:return
+        mutable.value=mutable.value.copy(publicationMode=if(action=="publication-prepare")"preview" else if(action=="version-get")"detail" else "versions",publicationPreview=null,version=null)
+        operation=repository.publication(o.scope,request){r->
+            if(!accept(o,g))return@publication;end();val current=mutable.value
+            if(r.error!=null){mutable.value=if(r.error=="unauthorized")DraftsState(owner=o,denied=true,message="Access is unavailable. Publication content was cleared.") else current.copy(message="Publication is unavailable. Reload the saved draft and check its completeness and sources.");return@publication}
+            mutable.value=current.copy(publicationPreview=r.preview,version=r.version,versions=if(action=="version-list"){if(more)(s.versions+r.items).distinctBy{it.versionId} else r.items} else s.versions,versionsNext=if(action=="version-list")r.nextId else s.versionsNext)
+        }
+    }
+    private fun publish() {
+        val s=mutable.value;val o=s.owner?:return;val d=s.draft?:return;val preview=s.publicationPreview?:return
+        if(!PublicationProtocol.ISSUANCE_ENABLED || s.busy || s.pending || s.locked || s.denied || s.dirty || s.needsRecovery || s.conflict!=null ||
+            !preview.valid(o.scope.uid,o.scope.workspaceId,d.templateId,d.expectedRevision,PublicationProtocol.draftHash(d,o.scope.uid,o.scope.workspaceId)))return
+        val request=InvitationRequest("publish-program-template",workspaceId=o.scope.workspaceId,idempotencyKey=repository.commands.newCommandKey(),publish=preview.publish)
+        if(!repository.commands.publicationAdmission(o.scope.uid,request)){mutable.value=s.copy(message="Publication does not fit protected recovery or storage is unavailable. Nothing was submitted.");return}
+        val (_,g)=begin(submitting=true)?:return
+        // Confirmation is consumed before issuance. A repeat publication requires a new preview and confirmation.
+        mutable.value=mutable.value.copy(publicationPreview=null)
+        operation=repository.commands.execute(o.scope.uid,request){outcome->
+            if(!accept(o,g))return@execute;end();pending();val current=mutable.value
+            if(outcome.error in setOf("unauthorized","unauthenticated","unverified-email")){mutable.value=DraftsState(owner=o,pending=current.pending,locked=current.locked,denied=true,message="Access is unavailable. Submitted publication stays protected.");return@execute}
+            val decision=outcome.reply?.publicationDecision
+            if(outcome.error!=null || outcome.ambiguous || decision==null){mutable.value=current.copy(needsRecovery=true,message="Publication outcome is unavailable. Use original-command recovery before publishing again.");return@execute}
+            if(decision.status=="program-published")read("draft-get",d.templateId)
+            else mutable.value=current.copy(publicationMode=null,conflict="draft-conflict",message="Publication conflicted with the draft or its sources. Nothing was published by this command. Reload explicitly before continuing.")
         }
         pending()
     }

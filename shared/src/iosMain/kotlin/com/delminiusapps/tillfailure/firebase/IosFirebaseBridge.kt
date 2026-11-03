@@ -78,6 +78,7 @@ class NativeInvitationOutcome(val json: String?, val error: String?, val ambiguo
 
 interface NativeIdentityBridge : NativeFirebaseBridge {
     fun callProgramDrafts(uid:String,json:String,callback:(NativeClientOutcome)->Unit):String { callback(NativeClientOutcome(null,"unavailable"));return "" }
+    fun callProgramPublications(uid:String,json:String,callback:(NativeClientOutcome)->Unit):String { callback(NativeClientOutcome(null,"unavailable"));return "" }
     fun callCustomExercises(uid:String,json:String,callback:(NativeClientOutcome)->Unit):String { callback(NativeClientOutcome(null,"unavailable"));return "" }
     fun readSystemExercises(uid: String, afterId: String?, exerciseId: String?, callback: (NativeClientOutcome) -> Unit): String {
         callback(NativeClientOutcome(null, "UNAVAILABLE")); return ""
@@ -139,6 +140,7 @@ class IosProductIdentityClient(
         override fun recoveryState(uid: String) = protectedRead { invitationLedger.recoveryState(uid) }
         override val memory get() = PendingInvitationLinks.memory
         override fun draftAdmission(uid:String,request:InvitationRequest)=bridge.withWritableAccount(uid) { invitationLedger.draftAdmission(uid,request) }
+        override fun publicationAdmission(uid:String,request:InvitationRequest)=bridge.withWritableAccount(uid) { invitationLedger.publicationAdmission(uid,request) }
         override fun customExerciseAdmission(uid:String,request:InvitationRequest)=bridge.withWritableAccount(uid) { invitationLedger.customExerciseAdmission(uid,request) }
         override fun newNoteBindingNonce(): String = bridge.noteBindingNonce()
         override fun newCommandKey(): String = resolutionCommandKey(NSUUID().UUIDString)
@@ -183,6 +185,16 @@ class IosProductIdentityClient(
             var cancelled = false
             val token = bridge.callProgramDrafts(scope.uid, DraftReads.request(request)) { result ->
                 if (!cancelled) callback(DraftReads.result(scope, request, result.json, result.error))
+            }
+            return FirebaseCancellation { cancelled = true; bridge.cancel(token) }
+        }
+        override fun publication(scope: ExerciseScope, request: PublicationReadRequest, callback: (PublicationReadResult) -> Unit): FirebaseCancellation {
+            if (!request.valid() || request.workspaceId != scope.workspaceId) {
+                callback(PublicationReadResult(error = "unavailable")); return FirebaseCancellation {}
+            }
+            var cancelled = false
+            val token = bridge.callProgramPublications(scope.uid, PublicationReads.request(request)) { result ->
+                if (!cancelled) callback(PublicationReads.result(scope, request, result.json, result.error))
             }
             return FirebaseCancellation { cancelled = true; bridge.cancel(token) }
         }

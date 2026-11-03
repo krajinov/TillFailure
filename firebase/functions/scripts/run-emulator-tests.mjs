@@ -24,7 +24,7 @@ const child = spawn(
   {
     cwd: functionsDir,
     stdio: "inherit",
-    env: { ...process.env, GCLOUD_PROJECT: projectId }
+    env: { ...process.env, GCLOUD_PROJECT: projectId, TF_RESOLUTION_PROVENANCE_ID: process.env.TF_RESOLUTION_PROVENANCE_ID ?? "publications-isolated" }
   }
 );
 
