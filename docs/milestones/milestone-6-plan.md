@@ -5,7 +5,7 @@ Review date: **2026-10-25**, Europe/Sarajevo.
 Baseline: `bd3cc2b35e9ffa21613b9dac7853a291965d1599`, PR #15 merged into clean, fast-forward-updated `main`.
 Working branch: `docs/milestone-6-plan`.
 
-Current planning update (2026-10-28): PR #17 is merged at `b67c5a557314d032cd0a1130a6c3176a1124ddba`. PR 1/2 are implemented with qualified acceptance; the [PR 3 draft plan](milestone-6-pr3-plan.md) proposes P1–P7 for approval. Its single-document layout, source policy and calculated budgets supersede the earlier illustrative draft tree below. Documentation only; later implementation remains unauthorized. Earlier baseline/approval entries retain their historical dates.
+Current planning update (2026-11-02): PR #18 is verified merged at `de301d3a7668975ca6becff31dad71aea827c946`. PR 1–3 are implemented with qualified acceptance; the approved [PR 3 draft plan](milestone-6-pr3-plan.md) and [report](milestone-6-pr3-report.md) define the actual single-root draft and eleven protected variants. The [PR 4 publication plan](milestone-6-pr4-plan.md) proposes U1–U9: exact saved-state publication, current source validation, one immutable version document and a small twelfth command. Its measured layout comparison supersedes the illustrative publication child tree only as a proposal. Publication policy/implementation remain unauthorized. Earlier baseline/approval entries retain their historical dates.
 
 ## Canonical scope and intended outcome
 
@@ -17,7 +17,7 @@ Program assignment and account-owned snapshots remain M7; active workouts/loggin
 
 ## Reusable implementation and actual gaps
 
-This table records the original pre-PR-1 planning baseline. PR 1/2 changes are recorded below; use the [PR 3 inspected baseline and ten-kind inventory](milestone-6-pr3-plan.md#baseline-and-evidence) for current implementation status.
+This table records the original pre-PR-1 planning baseline. PR 1–3 changes are recorded below; use the [PR 4 inspected baseline and eleven-kind inventory](milestone-6-pr4-plan.md#baseline-and-inspected-evidence) for current implementation status.
 
 | Area / inspected source | Reuse | Missing / boundary |
 |---|---|---|
@@ -134,9 +134,11 @@ The [dedicated PR 3 plan](milestone-6-pr3-plan.md#decisions-for-approval) now su
 
 ### PR 4 — Immutable version publication and version browsing
 
+The [detailed PR 4 plan](milestone-6-pr4-plan.md) now defines the policy decisions, exact descriptor, root-schema transition, source validation, finite budgets and verification gates for this slice. It recommends an inline version after comparing actual Firestore serialization with bounded children; U1–U8 approval and separate U9 implementation authorization remain required. The inherited custom-admission finding stays an explicit separate acceptance/production gate, not a blocker for the new kind under complete prospective admission.
+
 **Outcome:** after D7/D8 and PR 3, the trainer validates and explicitly publishes the saved draft, reopens that exact published version, edits a subsequent draft and publishes a new version without changing the old one. Version/detail UI distinguishes draft, publishing/unknown, published and conflict. No assignment, client access or download claim.
 
-**Verification:** Backend proves complete source/hash validation, finite transaction/byte budgets, old-version immutability, parent and every child client denial, atomic current pointer, concurrent Publish/Save and Publish/Publish, same-key retries/changed-key conflicts, source/lifecycle races and both resolver orderings. Shared proves validation summary/focus, explicit confirmation, exact version selection, no success from a snackbar alone and old-draft callback fencing. Native SDK/process cases cover commit with lost response, pre-transport fence, proof-before-retirement restart, unavailable identity/storage retention and clean A/B isolation; run regression for all existing variants (ten at the PR 3 baseline, plus any authorized draft adapter) if shared protocol changes. Actual publish/Cancel/Back/conflict/reopen/version comparison, normal/large text and screen readers must pass on both hosts. Retain M7 compatibility review of source shape/hash without invoking assignment.
+**Verification:** Backend proves complete source/hash validation, finite transaction/byte budgets, old-version immutability, parent and every child client denial, atomic current pointer, concurrent Publish/Save and Publish/Publish, same-key retries/changed-key conflicts, source/lifecycle races and both resolver orderings. Shared proves validation summary/focus, explicit confirmation, exact version selection, no success from a snackbar alone and old-draft callback fencing. Native SDK/process cases cover commit with lost response, pre-transport fence, proof-before-retirement restart, unavailable identity/storage retention and clean A/B isolation; run regression for all eleven existing variants if shared protocol changes. Actual publish/Cancel/Back/conflict/reopen/version comparison, normal/large text and screen readers must pass on both hosts. Retain M7 compatibility review of source shape/hash without invoking assignment.
 
 ## Acceptance, production and offline boundaries
 
@@ -191,3 +193,9 @@ PR #17 is verified merged into clean fast-forward-updated main at `b67c5a557314d
 Josip approved [P1–P6 and separately authorized P7](milestone-6-pr3-plan.md#approval-and-implementation-authorization-2026-10-28). Planning commit `1c0fd02` is preserved on `feature/milestone-6-pr3-program-drafts`; implementation remains uncommitted and unstaged. The author-only one-document draft mediator/editor and eleventh protected kind now use the proved 36,500-byte prospective admission. The [PR 3 report](milestone-6-pr3-report.md) distinguishes actual serializer/native measurements, transaction and restart checks, interaction gaps and the separate inherited custom-command sizing issue. This supersedes the historical PR 3 planning-only restriction within D6/D7/D8 for the exact approved synthetic slice. No Publish/Assign, production/offline, PR 4 or M7 implementation is authorized; inherited acceptance gates remain.
 
 Final-review authorization (2026-10-29): Josip authorized bounded review and in-scope corrections, one implementation commit, normal push and a PR against main. This supersedes earlier uncommitted/no-push handoff instructions only for PR 3. The [report](milestone-6-pr3-report.md#final-review-and-publication-authorization-2026-10-29) preserves verification attribution and remaining gates. No merge, deployment, production/offline enablement or PR 4 authorization.
+
+## PR 3 merge and PR 4 planning handoff (2026-11-02)
+
+PR #18 is verified merged into clean, fast-forward-updated main at `de301d3a7668975ca6becff31dad71aea827c946`. Branch `docs/milestone-6-pr4-publication-plan` contains documentation and offline sizing only. [U1–U9](milestone-6-pr4-plan.md#decisions-required-before-implementation) cover author-only readers, completeness, exact current-source copies, version numbering/republication, same-root Save/Publish concurrency, continued editing/custody, the twelfth protected adapter and separate approval of the required 192 KiB preview/version-read allowance. No implementation, Rules/index/dependency/design change, commit, push, PR, deployment, production/offline or M7 work is authorized. Changes remain uncommitted and unstaged; inherited acceptance gaps remain qualified.
+
+PR 4 approval (2026-11-02): Josip approved [U1–U8 and separately authorized U9](milestone-6-pr4-plan.md#approval-and-implementation-authorization-2026-11-02), superseding the historical planning-only restriction for the exact synthetic emulator scope. Commit only the four reviewed planning files, then implement on `feature/milestone-6-pr4-program-publication` after real source-binding/serialization/admission proof. The 192 KiB allowance is specific to preview/version reads; prior draft/command/recovery limits and custom admission remain unchanged. Implementation stays uncommitted/unstaged; no push, PR, merge, deployment, real-data/production/offline or M7 work.

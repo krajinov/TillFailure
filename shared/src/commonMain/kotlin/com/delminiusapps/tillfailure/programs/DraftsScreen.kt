@@ -47,7 +47,9 @@ internal fun DraftsScreen(s:DraftsState,event:(DraftEvent)->Unit,recovery:()->Un
         DraftHeading(if(s.pickerWorkout!=null)"Choose an exercise" else if(s.draft!=null)"Program draft" else "My program drafts","draft-heading",s,MaterialTheme.typography.headlineLarge)
         Text("Synthetic programs · online only · author only",color=TillFailureTheme.colors.secondaryText)
         if(s.busy)Text("Working…",Modifier.semantics{liveRegion=LiveRegionMode.Polite},color=TillFailureTheme.colors.primaryText)
-        if(s.pickerWorkout!=null) {
+        if(s.publicationMode!=null) {
+            PublicationPanel(s,event,enabled)
+        } else if(s.pickerWorkout!=null) {
             Text(if(s.pickerKind=="system")"System exercises" else "Your custom exercises",Modifier.semantics{heading()},color=TillFailureTheme.colors.primaryText)
             s.preview?.let{preview->
                 Text(preview.item.name,Modifier.semantics{heading()},style=MaterialTheme.typography.titleLarge,color=TillFailureTheme.colors.primaryText)
@@ -90,6 +92,9 @@ internal fun DraftsScreen(s:DraftsState,event:(DraftEvent)->Unit,recovery:()->Un
             }}
             TillFailureSecondaryButton("Add workout",{event(DraftEvent.AddWorkout)},enabled=editable && d.workouts.size<3)
             TillFailurePrimaryButton("Save draft",{event(DraftEvent.Save)},enabled=editable && !s.needsRecovery && (s.dirty || d.expectedRevision==0) && s.conflict==null,loading=s.busy)
+            TillFailureSecondaryButton("Preview publication",{event(DraftEvent.PreviewPublication)},enabled=enabled && !s.dirty && !s.needsRecovery && s.conflict==null && d.expectedRevision>0 && PublicationProtocol.complete(d))
+            TillFailureSecondaryButton("Published versions",{event(DraftEvent.Versions)},enabled=enabled && !s.dirty && !s.needsRecovery && s.conflict==null && d.expectedRevision>0)
+            Text("Save all edits before previewing publication. Each publication creates a permanent version; further draft edits do not change it.",color=TillFailureTheme.colors.secondaryText)
             if(!s.pending && !s.locked)TillFailureSecondaryButton("Reload current server draft",{event(DraftEvent.Reload)},enabled=enabled)
         } ?: run {
             TillFailurePrimaryButton("Create program draft",{event(DraftEvent.Create)},enabled=enabled)
@@ -99,12 +104,12 @@ internal fun DraftsScreen(s:DraftsState,event:(DraftEvent)->Unit,recovery:()->Un
             TillFailureSecondaryButton("Refresh drafts",{event(DraftEvent.Reload)},enabled=enabled)
         }
         if(s.message.isNotEmpty())Text(s.message,Modifier.semantics{liveRegion=LiveRegionMode.Polite},color=TillFailureTheme.colors.primaryText)
-        if(s.pending)Text("Leaving does not cancel the submitted Save. Its exact outcome remains in recovery.",color=TillFailureTheme.colors.secondaryText)
+        if(s.pending)Text("Leaving does not cancel the submitted command. Its exact outcome remains in recovery.",color=TillFailureTheme.colors.secondaryText)
         if(s.pending || s.locked || s.needsRecovery)TillFailureSecondaryButton("Invitations and recovery",recovery)
         TillFailureSecondaryButton(if(s.draft!=null)"Cancel / Back" else "Back",{event(DraftEvent.Leave())})
-        s.prompt?.let{p->TillFailureConfirmationDialog(title=if(p=="leave")"Leave unsaved changes?" else if(p=="reload")"Replace unsaved edits?" else "Remove workout and its exercises?",
-            message=if(p=="leave")"Your unsent edits will be lost. Submitted work stays protected." else if(p=="reload")"A fresh authorized read will replace your foreground edits only if it succeeds." else "Removal changes the foreground draft. Save explicitly to change the server draft.",
-            confirmLabel=if(p=="leave")"Leave" else if(p=="reload")"Reload" else "Remove",onConfirm={event(DraftEvent.Confirm)},onDismiss={event(DraftEvent.Stay)})}
+        s.prompt?.let{p->TillFailureConfirmationDialog(title=if(p=="publish")"Publish immutable version?" else if(p=="leave")"Leave unsaved changes?" else if(p=="reload")"Replace unsaved edits?" else "Remove workout and its exercises?",
+            message=if(p=="publish")"Publish exactly the previewed saved draft and source content? This version cannot be edited or deleted. Publishing identical content again requires another explicit confirmation." else if(p=="leave")"Your unsent edits will be lost. Submitted work stays protected." else if(p=="reload")"A fresh authorized read will replace your foreground edits only if it succeeds." else "Removal changes the foreground draft. Save explicitly to change the server draft.",
+            confirmLabel=if(p=="publish")"Publish" else if(p=="leave")"Leave" else if(p=="reload")"Reload" else "Remove",onConfirm={event(DraftEvent.Confirm)},onDismiss={event(DraftEvent.Stay)})}
     }
 }
 
@@ -113,4 +118,34 @@ private fun DraftHeading(label:String,id:String,state:DraftsState,style:TextStyl
     val focus=remember(id){FocusRequester()}
     LaunchedEffect(state.focusSequence,id){if(state.focusTarget==id)focus.requestFocus()}
     Text(label,Modifier.focusRequester(focus).focusable().semantics{heading()},style=style,color=TillFailureTheme.colors.primaryText)
+}
+
+@Composable
+private fun PublicationPanel(s:DraftsState,event:(DraftEvent)->Unit,enabled:Boolean) {
+    val content=s.publicationPreview?.preview?:s.version?.content()
+    Text(when(s.publicationMode){"preview"->"Publication preview";"detail"->"Published version ${s.version?.versionNumber?:""}";else->"Published versions"},Modifier.semantics{heading()},style=MaterialTheme.typography.headlineMedium,color=TillFailureTheme.colors.primaryText)
+    content?.let { c->
+        Text(c.title,Modifier.semantics{heading()},style=MaterialTheme.typography.titleLarge,color=TillFailureTheme.colors.primaryText)
+        if(c.description.isNotEmpty())Text(c.description,color=TillFailureTheme.colors.primaryText)
+        c.workouts.forEachIndexed { wi,w->
+            Text("${wi+1}. ${w.title}",Modifier.semantics{heading()},style=MaterialTheme.typography.titleLarge,color=TillFailureTheme.colors.primaryText)
+            w.items.forEachIndexed { ii,i->
+                Text("${wi+1}.${ii+1} ${i.name}",Modifier.semantics{heading()},style=MaterialTheme.typography.titleMedium,color=TillFailureTheme.colors.primaryText)
+                Text(i.instructions,color=TillFailureTheme.colors.primaryText)
+                Text("Muscle groups: ${i.muscleGroups.joinToString().ifEmpty{"Unspecified"}}",color=TillFailureTheme.colors.secondaryText)
+                Text("Equipment: ${i.equipment.joinToString().ifEmpty{"Unspecified"}}",color=TillFailureTheme.colors.secondaryText)
+                Text("${i.prescription.sets} sets · ${i.prescription.reps} reps · ${i.prescription.restSeconds} seconds rest",color=TillFailureTheme.colors.primaryText)
+                Text(i.prescription.loadGrams?.let{"External load: $it grams"}?:"Load unspecified",color=TillFailureTheme.colors.primaryText)
+                Text(if(i.sourceKind=="system")"Copied system exercise" else "Copied custom exercise · revision ${i.sourceRevision}",color=TillFailureTheme.colors.secondaryText)
+            }
+        }
+    }
+    s.publicationPreview?.let { TillFailurePrimaryButton("Publish version ${it.nextVersionNumber}",{event(DraftEvent.ConfirmPublication)},enabled=enabled && PublicationProtocol.ISSUANCE_ENABLED) }
+    if(s.publicationMode=="versions") {
+        s.versions.forEach{TillFailureSecondaryButton("Version ${it.versionNumber} · ${it.title}",{event(DraftEvent.OpenVersion(it.versionId))},enabled=enabled)}
+        if(s.versions.isEmpty() && !s.busy)Text("No versions loaded.",color=TillFailureTheme.colors.secondaryText)
+        if(s.versionsNext!=null)TillFailureSecondaryButton("Load more versions",{event(DraftEvent.MoreVersions)},enabled=enabled)
+    }
+    if(s.publicationMode=="detail")TillFailureSecondaryButton("Back to versions",{event(DraftEvent.Versions)},enabled=enabled)
+    TillFailureSecondaryButton("Cancel / Back to draft",{event(DraftEvent.PublicationBack)})
 }

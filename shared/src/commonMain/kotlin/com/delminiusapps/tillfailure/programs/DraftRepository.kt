@@ -8,9 +8,9 @@ import kotlinx.serialization.json.*
 
 @Serializable
 data class SavedDraft(val schemaVersion:Int,val policyVersion:Int,val workspaceId:String,val templateId:String,val ownerUid:String,
-    val revision:Int,val createdAtMillis:Long,val updatedAtMillis:Long,val title:String,val description:String,val workouts:List<DraftWorkout>) {
+    val revision:Int,val createdAtMillis:Long,val updatedAtMillis:Long,val title:String,val description:String,val workouts:List<DraftWorkout>,val versionCount:Int?=null,val currentVersionId:String?=null) {
     fun write(authority:ExerciseAuthority)=DraftSave(templateId,revision,authority,title,description,workouts)
-    fun valid(uid:String,wid:String)=schemaVersion==1 && policyVersion==1 && workspaceId==wid && ownerUid==uid && revision in 1..Int.MAX_VALUE-1 &&
+    fun valid(uid:String,wid:String)=((schemaVersion==1 && versionCount==null && currentVersionId==null) || (schemaVersion==2 && versionCount!=null && versionCount in 1 until revision && currentVersionId==PublicationProtocol.versionId(versionCount))) && policyVersion==1 && workspaceId==wid && ownerUid==uid && revision in 1..Int.MAX_VALUE-1 &&
         createdAtMillis in 0..8640000000000000L && updatedAtMillis in createdAtMillis..8640000000000000L && write(ExerciseAuthority(1,1,1)).copy(expectedRevision=0).valid()
     override fun toString()="SavedDraft(redacted)"
 }
@@ -31,6 +31,7 @@ interface DraftRepository {
     val commands:InvitationClient
     val systemExercises:SystemExerciseRepository
     val customExercises:CustomExerciseRepository
+    fun publication(scope:ExerciseScope,request:PublicationReadRequest,callback:(PublicationReadResult)->Unit):FirebaseCancellation { callback(PublicationReadResult(error="unavailable"));return FirebaseCancellation {} }
     fun newId():String
     fun read(scope:ExerciseScope,request:DraftReadRequest,callback:(DraftReadResult)->Unit):FirebaseCancellation
 }

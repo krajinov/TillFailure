@@ -1,3 +1,4 @@
+import { publicationDescriptor, publicationDecisionValid } from "./program-publication-contract.js";
 import { draftDescriptor, validDraftSave } from "./program-draft-contract.js";
 import { draftDecisionValid } from "./program-drafts.js";
 import { exerciseAction, validExerciseDescriptor, exerciseDecisionValid } from "./custom-exercise-contract.js";
@@ -20,7 +21,7 @@ export function resolutionBinding(uid: string, raw: unknown) {
   if (!exact(raw, ["protocolVersion", "descriptor"]) || raw.protocolVersion !== 1 || !raw.descriptor || typeof raw.descriptor !== "object") fail();
   if (JSON.stringify(raw).length > 8192) fail();
   const d = (raw as Data).descriptor as Data;
-  const fields: Record<string, string[]> = { "save-program-draft": ["action","workspaceId","idempotencyKey","draftSave"], create: ["action", "workspaceId", "email", "idempotencyKey"],
+  const fields: Record<string, string[]> = { "publish-program-template": ["action","workspaceId","idempotencyKey","publish"], "save-program-draft": ["action","workspaceId","idempotencyKey","draftSave"], create: ["action", "workspaceId", "email", "idempotencyKey"],
     resend: ["action", "workspaceId", "invitationId", "expectedVersion", "idempotencyKey"],
     revoke: ["action", "workspaceId", "invitationId", "expectedVersion", "idempotencyKey"],
     accept: ["action", "invitationId", "expectedVersion", "idempotencyKey", "acceptanceTokenDigest"],
@@ -60,8 +61,9 @@ export function resolutionBinding(uid: string, raw: unknown) {
   if (exerciseAction(d.action) && !validExerciseDescriptor(d)) fail();
   if (d.action === "save-trainer-note" && !validNoteSave(d.noteSave)) fail();
   if (d.action === "revoke-client" && !validRevocationBinding(d.revocation)) fail();
-  const kind = d.action === "save-program-draft" ? "program-draft-save" : exerciseAction(d.action) ? (d.action === "create-custom-exercise" ? "custom-exercise-create" : "custom-exercise-correct") : d.action === "save-trainer-note" ? "trainer-note-save" : d.action === "revoke-client" ? "client-membership-revoke" : invitation ? `invitation-${d.action}` : d.action === "complete-onboarding" ? "onboarding-complete" : "profile-update";
-  const hashVersion = d.action === "save-program-draft" ? "program-draft-v1" : exerciseAction(d.action) ? "custom-exercise-v1" : d.action === "save-trainer-note" ? "trainer-note-v1" : d.action === "revoke-client" ? "client-revocation-v1" : invitation ? "invitation-v1" : d.action === "complete-onboarding" ? "onboarding-v1" : "profile-v1";
+  if (d.action === "publish-program-template") publicationDescriptor(d.workspaceId,d.idempotencyKey,d.publish);
+  const kind = d.action === "publish-program-template" ? "program-template-publish" : d.action === "save-program-draft" ? "program-draft-save" : exerciseAction(d.action) ? (d.action === "create-custom-exercise" ? "custom-exercise-create" : "custom-exercise-correct") : d.action === "save-trainer-note" ? "trainer-note-save" : d.action === "revoke-client" ? "client-membership-revoke" : invitation ? `invitation-${d.action}` : d.action === "complete-onboarding" ? "onboarding-complete" : "profile-update";
+  const hashVersion = d.action === "publish-program-template" ? "program-publication-v1" : d.action === "save-program-draft" ? "program-draft-v1" : exerciseAction(d.action) ? "custom-exercise-v1" : d.action === "save-trainer-note" ? "trainer-note-v1" : d.action === "revoke-client" ? "client-revocation-v1" : invitation ? "invitation-v1" : d.action === "complete-onboarding" ? "onboarding-v1" : "profile-v1";
   request = invitation ? { ...request, token: d.acceptanceTokenDigest ?? null, callerUid: uid } : { ...request, callerUid: uid, policyVersion: 1 };
   return { d, key, kind, hashVersion, hash: stableHash(request), id: commandId(uid, key) };
 }
@@ -74,13 +76,16 @@ function terminal(b: ReturnType<typeof resolutionBinding>, r: Data, uid: string)
     outcome = r.outcome; stamp = r.decidedAt;
   } else {
     const invite = b.kind.startsWith("invitation-");
-    if (!exact(r, ["schemaVersion", "commandKind", "callerUid", "workspaceId", "requestHash", "result", "committedAt", ...(b.d.action === "save-program-draft" ? ["templateId"] : exerciseAction(b.d.action) ? ["exerciseId"] : invite ? ["invitationId"] : ["client-membership-revoke","trainer-note-save"].includes(b.kind) ? ["clientUid"] : [])]) ||
+    if (!exact(r, ["schemaVersion", "commandKind", "callerUid", "workspaceId", "requestHash", "result", "committedAt", ...(["save-program-draft","publish-program-template"].includes(b.d.action) ? ["templateId"] : exerciseAction(b.d.action) ? ["exerciseId"] : invite ? ["invitationId"] : ["client-membership-revoke","trainer-note-save"].includes(b.kind) ? ["clientUid"] : [])]) ||
         r.schemaVersion !== 1 || r.commandKind !== b.kind || r.callerUid !== uid || r.requestHash !== b.hash) fail();
     if (typeof r.workspaceId !== "string") fail();
     participantUid(strictPathIdentifier(r.workspaceId, "workspace"), "workspace");
     if (b.d.workspaceId !== undefined && r.workspaceId !== b.d.workspaceId) fail();
     const p = r.result;
-    if (b.d.action === "save-program-draft") {
+    if (b.d.action === "publish-program-template") {
+      if (r.templateId !== b.d.publish.templateId || !publicationDecisionValid(p,r.workspaceId,b.d.publish)) fail();
+      if (p.status !== "program-published") outcome = "not-applied-conflict";
+    } else if (b.d.action === "save-program-draft") {
       if (r.templateId !== b.d.draftSave.templateId || !draftDecisionValid(p,r.workspaceId,b.d.draftSave)) fail();
       if (p.status !== "draft-saved") outcome = "not-applied-conflict";
     } else if (exerciseAction(b.d.action)) {

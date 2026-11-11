@@ -1,0 +1,821 @@
+{
+  "reviewDate": "2026-11-03",
+  "status": "native-matrix-passed-ios-synthetic-ui-verified",
+  "branch": "feature/milestone-6-pr4-program-publication",
+  "baseline": "de301d3a7668975ca6becff31dad71aea827c946",
+  "planningCommit": "d37d4466a73b608379f3f068079d7f2099702531",
+  "approval": {
+    "policy": [
+      "U1",
+      "U2",
+      "U3",
+      "U4",
+      "U5",
+      "U6",
+      "U7",
+      "U8"
+    ],
+    "separateImplementation": "U9"
+  },
+  "sourceInventory": {
+    "count": 32,
+    "manifestSha256": "19e24d9e1829ffa51032bb1c30203b6a27c6142e3fa9b740a7bab541b9e0c336",
+    "excludedSelfReferences": [
+      "milestone-6-pr4-report.md",
+      "milestone-6-pr4-source-manifest.sha256",
+      "milestone-6-pr4-verification.json"
+    ],
+    "priorReviewManifestSha256": "51088acc3180252327f4161f7e52728d4bde895b9487dce9fe71d6f0e2a265a2"
+  },
+  "backend": {
+    "node": "22.23.4",
+    "tests": 289,
+    "failures": 0,
+    "publicationTests": 16,
+    "extraActualWireCase": {
+      "tests": 1,
+      "failures": 0
+    }
+  },
+  "shared": {
+    "testAndroidHostTest": {
+      "tests": 259,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "iosSimulatorArm64Test": {
+      "tests": 258,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "actualBytes": {
+    "versionDto": 135372,
+    "previewCallable": 135554,
+    "versionGetCallable": 135433,
+    "adminCommit": 146344,
+    "adminDocuments": {
+      "version": 136986,
+      "root": 8510,
+      "receipt": 759
+    },
+    "publicationRequest": 1296,
+    "resolverRequest": 1331,
+    "pendingCommand": 2232,
+    "pendingEnvelopeWithPriorNote": 17720,
+    "fullProofField": 3711,
+    "fullProofEnvelopeWithPriorNote": 21427,
+    "retiredEnvelope": 3038,
+    "departureEnvelope": 3897,
+    "swiftEncoderSampleMaximum": 29154,
+    "nativeSwiftMaximum": 29192,
+    "nativeAndroidMaximum": 28742
+  },
+  "calculatedBounds": {
+    "content": 145264,
+    "version": 153456,
+    "readResponse": 161648,
+    "adminPayloadWithReserve": 220528,
+    "adminOpaqueMetadataReserve": 8192,
+    "emulatorTransactionTokenBound": 9,
+    "emulatorVersion": "1.22.0",
+    "emulatorJarSha256": "9b6498b7f62714d67f48f59b3818883cd682dbcd46b9f59511de81c97bb5166c",
+    "fullCommitBoundScope": "reviewed emulator/SDK/inline layout",
+    "prospectivePlaintext": 36500,
+    "swiftEncryptedAtCeiling": 97517,
+    "androidEncryptedAtCeiling": 48796
+  },
+  "nativeStorage": {
+    "androidFixtures": 40,
+    "swiftFixtures": 40,
+    "androidOversizeBytesPreserved": true,
+    "swiftOversizeBytesPreserved": true,
+    "swiftExistingKeyMetadataStatus": 0,
+    "priorUnsignedStatus": -34018,
+    "nativeCommandRestartAccepted": true,
+    "matrixPredatesFinalAdmissionOnlyDepartureGuard": true
+  },
+  "release": {
+    "androidArtifactSha256": "06f1842b0b8ab331622d92b0cd5286e5ff7b3bb02180f9992738533534131274",
+    "androidAbsentMarkers": [
+      "M6P4_ANDROID",
+      "AndroidProgramPublicationsTest",
+      "AndroidPublicationSizingTest",
+      "TF_M6P4",
+      "ProgramDraftsUiFixture"
+    ],
+    "androidEntry": "MainActivity uses a null product identity provider outside DEBUG; existing adapter classes are not claimed absent from dex",
+    "iosArtifactSha256": "e42dd9cd92b985325d7509180525012ea8efff5a63d1a4e0cdff2ef334fb3a60",
+    "iosAbsentMarkers": [
+      "TF_M6P4",
+      "M6P4_IOS",
+      "ProgramPublicationsHarness",
+      "programPublicationsEmulator",
+      "keychainMetadataStatus"
+    ],
+    "iosNewMutationDeniedBeforePreparationOutsideDebug": true
+  },
+  "nativeFixtureCustody": {
+    "identities": 18,
+    "uidInventorySha256": "d1be5433279ef2d5fd8df146ba986db0ae9a78ac68718f4756e6d35bc28833c3",
+    "provenanceIdSha256": "797e30bd3fe45967374f3e29f27dbdd0a16966bac621a62c1bb45d4c80605e43",
+    "shutdownExport": "failed-no-verified-exit-checkpoint",
+    "recreatedOrRekeyedForCommandPass": false
+  },
+  "remainingGates": [
+    "android-interactive-publication-ui",
+    "gesture-scroll-full-accessibility-large-text-os-and-physical-device-coverage"
+  ],
+  "inheritedCustomFinding": {
+    "unchanged": true,
+    "plaintext": 51966,
+    "swiftUpperBound": 138757,
+    "earlierSample": 70569
+  },
+  "git": {
+    "implementationCommitted": false,
+    "indexEmpty": true,
+    "pushOrPrOrDeployment": false
+  },
+  "audit": {
+    "reviewedFiles": 35,
+    "sourceFiles": 32,
+    "localLinkPathsChecked": 85,
+    "localAnchorsChecked": 32,
+    "whitespaceFindings": 0,
+    "credentialPatternFindings": 0,
+    "personalMachinePathFindings": 0,
+    "generatedArtifactsInSourceInventory": false
+  },
+  "nativeResume": {
+    "date": "2026-11-03",
+    "singleSupervisor": true,
+    "fixtureAccounts": 18,
+    "fixtureDrafts": 16,
+    "protectedCommandsAtFirstCheckpoint": 0,
+    "allFixtureAuthAndMediatorReadsPassed": true,
+    "androidImage": "API 34 Google Play ARM64",
+    "iosRuntime": "iOS 26.2 iPhone 17 signed Debug",
+    "nativeCases": [
+      {
+        "platform": "android",
+        "case": "applied",
+        "stage": {
+          "platform": "android",
+          "mode": "applied",
+          "stage": "stage",
+          "rootRevision": 2,
+          "versions": 1,
+          "receipts": [
+            {
+              "id": "efef8402694441baffa61bb653faa1d53e2195fee43c4e9c6a3dfc80836405b6",
+              "kind": "program-template-publish",
+              "status": "program-published"
+            }
+          ],
+          "nativeLogSha256": "bb0620c60bb9ac56626b96f3c016f345a995657ba1a63fb0d8ae5705f7974dbf",
+          "checkpointManifestSha256": "59ae122edaa2f1f1a0f3e3b739f5125598dafc01596bcdc3f3f1d35f77ed3b4e"
+        },
+        "resume": {
+          "platform": "android",
+          "mode": "applied",
+          "stage": "resume",
+          "rootRevision": 2,
+          "versions": 1,
+          "receipts": [
+            {
+              "id": "efef8402694441baffa61bb653faa1d53e2195fee43c4e9c6a3dfc80836405b6",
+              "kind": "program-template-publish",
+              "status": "program-published"
+            }
+          ],
+          "nativeLogSha256": "0b60cfc64a6f290ebc3567abb49b41bf5f8c86137238bafa8b7f9d43c38ada62",
+          "checkpointManifestSha256": "535d1e44c797fb6d72ff70001dc069f96d1917b6fdc855d93fdda13f6556a0b4"
+        },
+        "commandBinding": {
+          "id": "efef8402694441baffa61bb653faa1d53e2195fee43c4e9c6a3dfc80836405b6",
+          "requestHash": "2d9d7f246a60f8ae497277dc0bf8ac15633568b69d41686bd60e58fe7c66c3af"
+        }
+      },
+      {
+        "platform": "android",
+        "case": "fenced",
+        "stage": {
+          "platform": "android",
+          "mode": "fenced",
+          "stage": "stage",
+          "rootRevision": 1,
+          "versions": 0,
+          "receipts": [],
+          "nativeLogSha256": "0d766d3454b9b9e951ab4cd101628ebfe14e5c16a45a2c89d8e5938b4568c42c",
+          "checkpointManifestSha256": "d3fe7e6c076a3ee9c992d41b47edd1ef1ad5aa1be89a0a2923a1f8fbe9e57753"
+        },
+        "resume": {
+          "platform": "android",
+          "mode": "fenced",
+          "stage": "resume",
+          "rootRevision": 1,
+          "versions": 0,
+          "receipts": [
+            {
+              "id": "94fe2ddf619b13288e7ffe3ee66a5e8c8b75c4d49b8a6d16169c34d178e53c6c",
+              "kind": "own-command-fence",
+              "status": "not-applied-fenced"
+            }
+          ],
+          "nativeLogSha256": "5d4284b7e44714d17c29823c25b40053c3853a180558d4fba48c5f6f93a699f9",
+          "checkpointManifestSha256": "e65c8fbf23be1ef54443e9f8375ddbb13741c07316eb9497a8ab65e73a06e596"
+        },
+        "commandBinding": {
+          "id": "94fe2ddf619b13288e7ffe3ee66a5e8c8b75c4d49b8a6d16169c34d178e53c6c",
+          "requestHash": "1c43e9aa7aa323c833d93ef893e5fd501a4156f79eb1d779d82e0ac0c2c08da3"
+        }
+      },
+      {
+        "platform": "android",
+        "case": "conflict",
+        "stage": {
+          "platform": "android",
+          "mode": "conflict",
+          "stage": "stage",
+          "rootRevision": 2,
+          "versions": 1,
+          "receipts": [
+            {
+              "id": "c2cc960cbd72b0cd68f8224584a35ecddcd1925c67bbe292223c6980a6343b63",
+              "kind": "program-template-publish",
+              "status": "program-published"
+            },
+            {
+              "id": "d50227ea8041b6019d8ec3c358bd7082c2839516c639c709af4e7043387a9d96",
+              "kind": "program-template-publish",
+              "status": "publication-conflict"
+            }
+          ],
+          "nativeLogSha256": "92a2d2acb1cea42012897c891f44311444a073867b7265dcedce0291247e1524",
+          "checkpointManifestSha256": "c61dffd078949f3606b67b54a0353298fa3d0dd5323ddb439ce863f1bb07f38c"
+        },
+        "resume": {
+          "platform": "android",
+          "mode": "conflict",
+          "stage": "resume",
+          "rootRevision": 2,
+          "versions": 1,
+          "receipts": [
+            {
+              "id": "c2cc960cbd72b0cd68f8224584a35ecddcd1925c67bbe292223c6980a6343b63",
+              "kind": "program-template-publish",
+              "status": "program-published"
+            },
+            {
+              "id": "d50227ea8041b6019d8ec3c358bd7082c2839516c639c709af4e7043387a9d96",
+              "kind": "program-template-publish",
+              "status": "publication-conflict"
+            }
+          ],
+          "nativeLogSha256": "4345cebfe765587c8ec7eb24571523a48aee76bc123501cdd43f31ce686bac26",
+          "checkpointManifestSha256": "bc5a86b4c85ffa5fa3aa0b95f9ac5219e91ba7e6d448289edd3a1f3455b64904"
+        },
+        "commandBinding": {
+          "id": "d50227ea8041b6019d8ec3c358bd7082c2839516c639c709af4e7043387a9d96",
+          "requestHash": "1a69e6a167d912a2ef11dbebc64988b60ab87eb39331f8e7c0d4220399a1cfb4"
+        }
+      },
+      {
+        "platform": "android",
+        "case": "proof",
+        "stage": {
+          "platform": "android",
+          "mode": "proof",
+          "stage": "stage",
+          "rootRevision": 2,
+          "versions": 1,
+          "receipts": [
+            {
+              "id": "48c70ebfc32baeb4a22d776ec48530bcabb927aa32a05ccdc0ed7a6445d6bafd",
+              "kind": "program-template-publish",
+              "status": "program-published"
+            }
+          ],
+          "nativeLogSha256": "7fe93771fe8d6abee5ec9a700396cd22847be61c8e4a3d1fce3062952482a89b",
+          "checkpointManifestSha256": "b7e5659e8db4481b1db55a90bf1957dc100748e524a94cfee46dcea3bc806842"
+        },
+        "resume": {
+          "platform": "android",
+          "mode": "proof",
+          "stage": "resume",
+          "rootRevision": 2,
+          "versions": 1,
+          "receipts": [
+            {
+              "id": "48c70ebfc32baeb4a22d776ec48530bcabb927aa32a05ccdc0ed7a6445d6bafd",
+              "kind": "program-template-publish",
+              "status": "program-published"
+            }
+          ],
+          "nativeLogSha256": "121d40ba8b0bb85db1162ad7fb89727c87c03f20f5af7a1e92111fda7df28b05",
+          "checkpointManifestSha256": "481942a5bc022b05f041666d922bf8742e0e5a03bfc1c5822cc647c519acd0ec"
+        },
+        "commandBinding": {
+          "id": "48c70ebfc32baeb4a22d776ec48530bcabb927aa32a05ccdc0ed7a6445d6bafd",
+          "requestHash": "b93acbc6e84c02ccb527f80b165ce36703f0f08eef0b32b6a0b5c4ca130a6e21"
+        }
+      },
+      {
+        "platform": "android",
+        "case": "failure",
+        "stage": {
+          "platform": "android",
+          "mode": "failure",
+          "stage": "stage",
+          "rootRevision": 2,
+          "versions": 1,
+          "receipts": [
+            {
+              "id": "6746aeb1083c652ceec4de2966ca20347efc7a304eac84dcf31b2720f13b678e",
+              "kind": "program-template-publish",
+              "status": "program-published"
+            }
+          ],
+          "nativeLogSha256": "7ddd9c686885402e0a60199197dcfae2c2e948c7fdb5df6dd8a9c8858a6368bc",
+          "checkpointManifestSha256": "fcd7379df1d577c18b87ef9d0818471616786c4d76a59426946f280d35e10ecf"
+        },
+        "resume": {
+          "platform": "android",
+          "mode": "failure",
+          "stage": "resume",
+          "rootRevision": 2,
+          "versions": 1,
+          "receipts": [
+            {
+              "id": "6746aeb1083c652ceec4de2966ca20347efc7a304eac84dcf31b2720f13b678e",
+              "kind": "program-template-publish",
+              "status": "program-published"
+            }
+          ],
+          "nativeLogSha256": "4bf020bc3af9eeb1fece690c58da40bf6186295626c53609b322dda306a005c6",
+          "checkpointManifestSha256": "d123ab02dcae3bdd58393ab67a28cfcdc02226c9dd6ffcd7c3fab4e0bd58948c"
+        },
+        "commandBinding": {
+          "id": "6746aeb1083c652ceec4de2966ca20347efc7a304eac84dcf31b2720f13b678e",
+          "requestHash": "841a0d8bd2a90b3f2e1d92ff12dbf79ba59a3b08293b1acf253823a274cc4b0a"
+        }
+      },
+      {
+        "platform": "android",
+        "case": "settled",
+        "stage": {
+          "platform": "android",
+          "mode": "settled",
+          "stage": "stage",
+          "rootRevision": 2,
+          "versions": 1,
+          "receipts": [
+            {
+              "id": "cce5811394ed2a74596951145c7003ec38f22ccc0fd9ea6d749a1cc8715298a2",
+              "kind": "program-template-publish",
+              "status": "program-published"
+            }
+          ],
+          "nativeLogSha256": "a6ad6cc60f8f47936ed28852a612a88f2916402014d1a56d97038c4517d23ef3",
+          "checkpointManifestSha256": "7eb72656b5eb0152681904a36e14035cf3ad3266fdfd3813769ab424f24a0417"
+        },
+        "resume": {
+          "platform": "android",
+          "mode": "settled",
+          "stage": "resume",
+          "rootRevision": 2,
+          "versions": 1,
+          "receipts": [
+            {
+              "id": "cce5811394ed2a74596951145c7003ec38f22ccc0fd9ea6d749a1cc8715298a2",
+              "kind": "program-template-publish",
+              "status": "program-published"
+            }
+          ],
+          "nativeLogSha256": "4646d8b55ceadfd79cd4d899e775371a189901472e57529ee61af652dde0c691",
+          "checkpointManifestSha256": "777ab13def3462a33dfed18e4dbe3d75c3ad9935c876d2e8b5318dd0e2881a62"
+        },
+        "commandBinding": {
+          "id": "cce5811394ed2a74596951145c7003ec38f22ccc0fd9ea6d749a1cc8715298a2",
+          "requestHash": "98cb65f736ac8295a8a40533f69943c05c40deb169881e3efe61fd8356363afc"
+        }
+      },
+      {
+        "platform": "android",
+        "case": "admission",
+        "stage": {
+          "platform": "android",
+          "mode": "admission",
+          "stage": "stage",
+          "rootRevision": 2,
+          "versions": 1,
+          "receipts": [
+            {
+              "id": "1077ab099a45e6754868fb22f124b1a3e7a361eb7ce9be05cb3357fa7f0a46a4",
+              "kind": "program-template-publish",
+              "status": "program-published"
+            }
+          ],
+          "nativeLogSha256": "2bc1a4007dfd05a4906573c017230f8d2e15fc805654a371cf9b43afb5d72cb4",
+          "checkpointManifestSha256": "86ad1710ae659d3bdab76a7dad4f34e1181bfefe5b9d48da42911fa070c5288a"
+        },
+        "resume": {
+          "platform": "android",
+          "mode": "admission",
+          "stage": "resume",
+          "rootRevision": 2,
+          "versions": 1,
+          "receipts": [
+            {
+              "id": "1077ab099a45e6754868fb22f124b1a3e7a361eb7ce9be05cb3357fa7f0a46a4",
+              "kind": "program-template-publish",
+              "status": "program-published"
+            }
+          ],
+          "nativeLogSha256": "48d592b95c056d06d1399e2ac8b5e8952bf4097daf973641bfc20054c0c51b32",
+          "checkpointManifestSha256": "88334d3a630d68a5872ba1a3aece8c8e3518c3d719439e05cd27a8bc3505293e"
+        },
+        "commandBinding": {
+          "id": "1077ab099a45e6754868fb22f124b1a3e7a361eb7ce9be05cb3357fa7f0a46a4",
+          "requestHash": "185db35a301a07f6a9395674ef1a6f8112f5571f6f3a5d04c9bece44263cd5fc"
+        }
+      },
+      {
+        "platform": "ios",
+        "case": "applied",
+        "stage": {
+          "platform": "ios",
+          "mode": "applied",
+          "stage": "stage",
+          "rootRevision": 2,
+          "versions": 1,
+          "receipts": [
+            {
+              "id": "52ee4e433fe5528bf9346ff1ed4f72874fc95e02ff670d7fe83d1b96f02f0cc9",
+              "kind": "program-template-publish",
+              "status": "program-published"
+            }
+          ],
+          "nativeLogSha256": "5ae9a0b45d450b2ceee48c6b3692c64a7cac3227d9e9d47b1380d7b8eb8df5e5",
+          "checkpointManifestSha256": "2b131a9a4b46628419a9383cd6dc9bc10cafb0719a9cfa0eb3e7db6cd29e329e"
+        },
+        "resume": {
+          "platform": "ios",
+          "mode": "applied",
+          "stage": "resume",
+          "rootRevision": 2,
+          "versions": 1,
+          "receipts": [
+            {
+              "id": "52ee4e433fe5528bf9346ff1ed4f72874fc95e02ff670d7fe83d1b96f02f0cc9",
+              "kind": "program-template-publish",
+              "status": "program-published"
+            }
+          ],
+          "nativeLogSha256": "d9de713166d038c340e7372f3847ae8981b8632932316241891c31544ecfa797",
+          "checkpointManifestSha256": "5167b6e495178beaf3af0c90a2c52d21474dea28212db6834fb55dd84ac24fc7"
+        },
+        "commandBinding": {
+          "id": "52ee4e433fe5528bf9346ff1ed4f72874fc95e02ff670d7fe83d1b96f02f0cc9",
+          "requestHash": "acf3c8f07aea6805fceb2518ad017b88f3a72c19ff49af18edb763c112ae6803"
+        }
+      },
+      {
+        "platform": "ios",
+        "case": "fenced",
+        "stage": {
+          "platform": "ios",
+          "mode": "fenced",
+          "stage": "stage",
+          "rootRevision": 1,
+          "versions": 0,
+          "receipts": [],
+          "nativeLogSha256": "f6d70e4763d37b167282392bf4c64842e284911c6c45549e823b68e1d1d88b32",
+          "checkpointManifestSha256": "5c0f2fb021a80a1927753317feedde552c80e4d400fe52698cac100b10125ea7"
+        },
+        "resume": {
+          "platform": "ios",
+          "mode": "fenced",
+          "stage": "resume",
+          "rootRevision": 1,
+          "versions": 0,
+          "receipts": [
+            {
+              "id": "280b7dd4021822f1a4389d5d35c490d6be7095e391f2c90b96a36e65bd22c1ea",
+              "kind": "own-command-fence",
+              "status": "not-applied-fenced"
+            }
+          ],
+          "nativeLogSha256": "3a345c398e4c4da29324e092f9b5bc151ea458665d407df882fa91f7983a2100",
+          "checkpointManifestSha256": "caf9b395642a55b5c1d7073f92ec5b480a6991656dcffe04608e98277ace088e"
+        },
+        "commandBinding": {
+          "id": "280b7dd4021822f1a4389d5d35c490d6be7095e391f2c90b96a36e65bd22c1ea",
+          "requestHash": "74d74e8f913ed162982042da91ecbf44dd5a2d8100b293129754beca95f7258c"
+        }
+      },
+      {
+        "platform": "ios",
+        "case": "conflict",
+        "stage": {
+          "platform": "ios",
+          "mode": "conflict",
+          "stage": "stage",
+          "rootRevision": 2,
+          "versions": 1,
+          "receipts": [
+            {
+              "id": "17f0a292697cd727e37fb35292e9209412f5e74b30dc7560b29288f5309ff4d9",
+              "kind": "program-template-publish",
+              "status": "publication-conflict"
+            },
+            {
+              "id": "e145c97437c1b1a8680027b1cea613839d7e5fbbb3d6d88f6e90f9e71426a2c4",
+              "kind": "program-template-publish",
+              "status": "program-published"
+            }
+          ],
+          "nativeLogSha256": "1ff5223268fb6cd4aa97bd95334feee554f1ab9a63c46d55fa415d52b931d8e7",
+          "checkpointManifestSha256": "3b995825b7cbd2322934a931626947ca7fd680747231cf7a1817ada9ac7821fb"
+        },
+        "resume": {
+          "platform": "ios",
+          "mode": "conflict",
+          "stage": "resume",
+          "rootRevision": 2,
+          "versions": 1,
+          "receipts": [
+            {
+              "id": "17f0a292697cd727e37fb35292e9209412f5e74b30dc7560b29288f5309ff4d9",
+              "kind": "program-template-publish",
+              "status": "publication-conflict"
+            },
+            {
+              "id": "e145c97437c1b1a8680027b1cea613839d7e5fbbb3d6d88f6e90f9e71426a2c4",
+              "kind": "program-template-publish",
+              "status": "program-published"
+            }
+          ],
+          "nativeLogSha256": "6def0340e344bb7738b7a07fb3cb918b120fe9a01277a78abc31b534496836fa",
+          "checkpointManifestSha256": "9030d3236625d3e0834fea02e4a5efb95c976d97a55437d3f174b82bd34286cc"
+        },
+        "commandBinding": {
+          "id": "17f0a292697cd727e37fb35292e9209412f5e74b30dc7560b29288f5309ff4d9",
+          "requestHash": "cbccd57e64bce966482770c604ac27161f5b4d374bd1366ffd90c70340884206"
+        }
+      },
+      {
+        "platform": "ios",
+        "case": "proof",
+        "stage": {
+          "platform": "ios",
+          "mode": "proof",
+          "stage": "stage",
+          "rootRevision": 2,
+          "versions": 1,
+          "receipts": [
+            {
+              "id": "4b296563e44b813c290508af5a8ffd3c7290336f5464d2c19fd14b59a157c8f1",
+              "kind": "program-template-publish",
+              "status": "program-published"
+            }
+          ],
+          "nativeLogSha256": "06d4c6cc9ad77db2fa605df756dc169c13100c0d8964acc58c319965e971046e",
+          "checkpointManifestSha256": "3c4498730de65aa829ecd35bbeec309cce40ab1335e10487aa512ba0fb9addf7"
+        },
+        "resume": {
+          "platform": "ios",
+          "mode": "proof",
+          "stage": "resume",
+          "rootRevision": 2,
+          "versions": 1,
+          "receipts": [
+            {
+              "id": "4b296563e44b813c290508af5a8ffd3c7290336f5464d2c19fd14b59a157c8f1",
+              "kind": "program-template-publish",
+              "status": "program-published"
+            }
+          ],
+          "nativeLogSha256": "bcf3decde2f3a85140ce2bc1a4a4d627d3d0b7d213e971164d3421e8b6ecc5ed",
+          "checkpointManifestSha256": "33ec6f3dae1c01436b0d3598161f5f041b1ac712792177293045e06b5b023180"
+        },
+        "commandBinding": {
+          "id": "4b296563e44b813c290508af5a8ffd3c7290336f5464d2c19fd14b59a157c8f1",
+          "requestHash": "d6d12f801e13af98407bd684677b8597c7acb3e51e886651b5a0cb9231c79e32"
+        }
+      },
+      {
+        "platform": "ios",
+        "case": "failure",
+        "stage": {
+          "platform": "ios",
+          "mode": "failure",
+          "stage": "stage",
+          "rootRevision": 2,
+          "versions": 1,
+          "receipts": [
+            {
+              "id": "f183fbe91bfdccc3091385bc68ac81d25f8f0928572eee113d6ad76cb97e7053",
+              "kind": "program-template-publish",
+              "status": "program-published"
+            }
+          ],
+          "nativeLogSha256": "8d35ae4dcd23b836e3b4ae370ad1909e0b365ebddd22984f0312383914b70c81",
+          "checkpointManifestSha256": "c5e2e5d2a52e09a1bc2f573c0a29c7ec0b08d750b27c5da9b30f58af024e1e46"
+        },
+        "resume": {
+          "platform": "ios",
+          "mode": "failure",
+          "stage": "resume",
+          "rootRevision": 2,
+          "versions": 1,
+          "receipts": [
+            {
+              "id": "f183fbe91bfdccc3091385bc68ac81d25f8f0928572eee113d6ad76cb97e7053",
+              "kind": "program-template-publish",
+              "status": "program-published"
+            }
+          ],
+          "nativeLogSha256": "b7033335d7b604acd59acf14ea155742102541557625718aeb7c992cd349d634",
+          "checkpointManifestSha256": "d4c315a6f16279d62631cc781501af8d7cb6dd32bd35322d96b3168e42d3951f"
+        },
+        "commandBinding": {
+          "id": "f183fbe91bfdccc3091385bc68ac81d25f8f0928572eee113d6ad76cb97e7053",
+          "requestHash": "af859fd6507d3de3e361f1c507945008a5778597d8736fac93c26a7222e714e0"
+        }
+      },
+      {
+        "platform": "ios",
+        "case": "settled",
+        "stage": {
+          "platform": "ios",
+          "mode": "settled",
+          "stage": "stage",
+          "rootRevision": 2,
+          "versions": 1,
+          "receipts": [
+            {
+              "id": "92bcba77df377d3e16da52fee976a351a010a2206ca8f2e67fe18aaebeb5aadf",
+              "kind": "program-template-publish",
+              "status": "program-published"
+            }
+          ],
+          "nativeLogSha256": "4a80643bffd219d537d33e908fe157495d4122200482e2a38861c0d5a3651d2f",
+          "checkpointManifestSha256": "40628e8362f6f0cf52efe8d9907a89de1d5a7cb3328d62707051775c4fdc1eba"
+        },
+        "resume": {
+          "platform": "ios",
+          "mode": "settled",
+          "stage": "resume",
+          "rootRevision": 2,
+          "versions": 1,
+          "receipts": [
+            {
+              "id": "92bcba77df377d3e16da52fee976a351a010a2206ca8f2e67fe18aaebeb5aadf",
+              "kind": "program-template-publish",
+              "status": "program-published"
+            }
+          ],
+          "nativeLogSha256": "85a53fb602d8b70f1c8e278d90b9c767af434d16eea527a4bd17deb7d1087134",
+          "checkpointManifestSha256": "8bc30f6a83af2c7ac12096e74e858bebfad35aceca5a0a3795c143895ceea4fe"
+        },
+        "commandBinding": {
+          "id": "92bcba77df377d3e16da52fee976a351a010a2206ca8f2e67fe18aaebeb5aadf",
+          "requestHash": "61a59cfd89f7ce15da1370f19309baff3974c27de7eb3b671644c034c413d0a3"
+        }
+      },
+      {
+        "platform": "ios",
+        "case": "admission",
+        "stage": {
+          "platform": "ios",
+          "mode": "admission",
+          "stage": "stage",
+          "rootRevision": 2,
+          "versions": 1,
+          "receipts": [
+            {
+              "id": "87902a5c56204a592001876a3e04c2be9721b91422e509b321fc2bc449a9de0b",
+              "kind": "program-template-publish",
+              "status": "program-published"
+            }
+          ],
+          "nativeLogSha256": "e781bdeb9f967b1623f43db144f51c0e67278e97ca2c9d56b17f98a10d401811",
+          "checkpointManifestSha256": "691b191c69621c4a465787b781ef556964631abd45afd0918124593c18b9c40e"
+        },
+        "resume": {
+          "platform": "ios",
+          "mode": "admission",
+          "stage": "resume",
+          "rootRevision": 2,
+          "versions": 1,
+          "receipts": [
+            {
+              "id": "87902a5c56204a592001876a3e04c2be9721b91422e509b321fc2bc449a9de0b",
+              "kind": "program-template-publish",
+              "status": "program-published"
+            }
+          ],
+          "nativeLogSha256": "3ed59a2af3b50ddaf26b1c0acc7f96eeccc65c53165c0a3331ee25e9c16aebe3",
+          "checkpointManifestSha256": "b34bd2c84a1f9fe00354971a4d116bcea0544c07473ade4c0b390079a6c95b37"
+        },
+        "commandBinding": {
+          "id": "87902a5c56204a592001876a3e04c2be9721b91422e509b321fc2bc449a9de0b",
+          "requestHash": "2501fe7b4db3a15f1ffbaf56b2a41cf333806d168abb09e94f7a9f3e7326d9c4"
+        }
+      }
+    ],
+    "nativeStageAndColdRestartPasses": 14,
+    "allCheckpointsVerifiedBeforeShutdown": true,
+    "checkpointManifests": {
+      "android-admission-resume": "88334d3a630d68a5872ba1a3aece8c8e3518c3d719439e05cd27a8bc3505293e",
+      "android-admission-stage": "86ad1710ae659d3bdab76a7dad4f34e1181bfefe5b9d48da42911fa070c5288a",
+      "android-applied-resume": "535d1e44c797fb6d72ff70001dc069f96d1917b6fdc855d93fdda13f6556a0b4",
+      "android-applied-stage": "59ae122edaa2f1f1a0f3e3b739f5125598dafc01596bcdc3f3f1d35f77ed3b4e",
+      "android-conflict-resume": "bc5a86b4c85ffa5fa3aa0b95f9ac5219e91ba7e6d448289edd3a1f3455b64904",
+      "android-conflict-stage": "c61dffd078949f3606b67b54a0353298fa3d0dd5323ddb439ce863f1bb07f38c",
+      "android-failure-resume": "d123ab02dcae3bdd58393ab67a28cfcdc02226c9dd6ffcd7c3fab4e0bd58948c",
+      "android-failure-stage": "fcd7379df1d577c18b87ef9d0818471616786c4d76a59426946f280d35e10ecf",
+      "android-fenced-resume": "e65c8fbf23be1ef54443e9f8375ddbb13741c07316eb9497a8ab65e73a06e596",
+      "android-fenced-stage": "d3fe7e6c076a3ee9c992d41b47edd1ef1ad5aa1be89a0a2923a1f8fbe9e57753",
+      "android-proof-resume": "481942a5bc022b05f041666d922bf8742e0e5a03bfc1c5822cc647c519acd0ec",
+      "android-proof-stage": "b7e5659e8db4481b1db55a90bf1957dc100748e524a94cfee46dcea3bc806842",
+      "android-settled-resume": "777ab13def3462a33dfed18e4dbe3d75c3ad9935c876d2e8b5318dd0e2881a62",
+      "android-settled-stage": "7eb72656b5eb0152681904a36e14035cf3ad3266fdfd3813769ab424f24a0417",
+      "before-protected": "aedf0b8822c3edeb9a036a0ec5591465bbe5d8eee0382d11cdfc91fdb57d2fc2",
+      "final-quiet": "4cf82c04cf691fa4e97c88c6c9d9f10cf2af4933cde31183dac549f8b2113f7e",
+      "final": "a2855cc91d67c59de797f8571e097a3908b8a6ffb9c0134d780af539cd678135",
+      "ios-admission-resume": "b34bd2c84a1f9fe00354971a4d116bcea0544c07473ade4c0b390079a6c95b37",
+      "ios-admission-stage": "691b191c69621c4a465787b781ef556964631abd45afd0918124593c18b9c40e",
+      "ios-applied-resume": "5167b6e495178beaf3af0c90a2c52d21474dea28212db6834fb55dd84ac24fc7",
+      "ios-applied-stage": "2b131a9a4b46628419a9383cd6dc9bc10cafb0719a9cfa0eb3e7db6cd29e329e",
+      "ios-conflict-resume": "9030d3236625d3e0834fea02e4a5efb95c976d97a55437d3f174b82bd34286cc",
+      "ios-conflict-stage": "3b995825b7cbd2322934a931626947ca7fd680747231cf7a1817ada9ac7821fb",
+      "ios-failure-resume": "d4c315a6f16279d62631cc781501af8d7cb6dd32bd35322d96b3168e42d3951f",
+      "ios-failure-stage": "c5e2e5d2a52e09a1bc2f573c0a29c7ec0b08d750b27c5da9b30f58af024e1e46",
+      "ios-fenced-resume": "caf9b395642a55b5c1d7073f92ec5b480a6991656dcffe04608e98277ace088e",
+      "ios-fenced-stage": "5c0f2fb021a80a1927753317feedde552c80e4d400fe52698cac100b10125ea7",
+      "ios-proof-resume": "33ec6f3dae1c01436b0d3598161f5f041b1ac712792177293045e06b5b023180",
+      "ios-proof-stage": "3c4498730de65aa829ecd35bbeec309cce40ab1335e10487aa512ba0fb9addf7",
+      "ios-settled-resume": "8bc30f6a83af2c7ac12096e74e858bebfad35aceca5a0a3795c143895ceea4fe",
+      "ios-settled-stage": "40628e8362f6f0cf52efe8d9907a89de1d5a7cb3328d62707051775c4fdc1eba"
+    },
+    "supervisorShutdownLogSha256": "7952e9710f4f1ec2ebec04b30607a7425603f1ece1622da823cec0d637266aa5",
+    "testScripts": {
+      "start.py": "ab7a7b95d3eccbe4bf2e16252a5431f5921c898fe28028405e31b2fa7265ec4c",
+      "matrix.py": "801c35fb4c4eb150998665770d425c171b103807bcb8d983671a139a6de893ad",
+      "admin.mjs": "9f62acb3ce2776f68efb521f2afae67a30738dff2cabe27f7ddf4e47ed0c65d7",
+      "checkpoint.py": "0d5b186d9ef9e742ffba80a83582049dcda5eaca76e04f26227b7c2623c9cc72",
+      "ui-build.py": "b564d7debde3e1f6819524ca703979fae4bf778870577c868e840e8813239fc9",
+      "ios-ui.py": "89ff34cef2816336861aa1663deb1b04cdf2a6125cc8c0f04d8127cbee6c93b9"
+    },
+    "ui": {
+      "candidateFlagRestored": true,
+      "iosDebugExecutableSha256": "a3a539ad29ab370df0d97fb831f1af49d6a1d1016b433c8b51d436caf13731f6",
+      "androidDebugArtifactSha256": "041656c5c0c44f8aab5589766647eae39b5b0fe1940571228381c73da60ff0c6",
+      "iosCancelAudit": {
+        "platform": "ios",
+        "rootRevision": 1,
+        "versions": 0,
+        "receipts": []
+      },
+      "iosPublishAudit": {
+        "platform": "ios",
+        "rootRevision": 2,
+        "versions": 1,
+        "receipts": [
+          {
+            "id": "c9c819df45023a079899c83cba4bd442f4cfb5afafa20affaeafb4cc00195c45",
+            "status": "program-published"
+          }
+        ]
+      },
+      "androidUiAccountBaseline": {
+        "platform": "android",
+        "rootRevision": 1,
+        "versions": 0,
+        "receipts": []
+      },
+      "iosObserved": [
+        "saved draft",
+        "copied content preview",
+        "explicit confirmation",
+        "cancel with zero effects",
+        "confirm and publish",
+        "list and read-only version detail",
+        "back to versions and editable draft",
+        "dirty guard and reload"
+      ],
+      "gaps": [
+        "Android interactive UI",
+        "touch and long-content scroll",
+        "conflict presentation",
+        "large text and assistive technology",
+        "OS interruption and physical devices"
+      ]
+    }
+  }
+}
