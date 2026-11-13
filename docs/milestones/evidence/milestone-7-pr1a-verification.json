@@ -172,6 +172,78 @@
     "version": "22.23.4"
   },
   "olderM6FinalizationExit1": "No identifiable original diagnostic log located; still unexplained. New full-run revocation deadline failure is separately diagnosed, not attributed to the older attempt.",
+  "p2OptInCorrection": {
+    "audit": "No other new ordinary-host/common test requires local exports. Android device and standalone Swift sizing are explicit fixture-consuming probes outside the ordinary host suite. Backend tests generate their inputs in memory.",
+    "deterministicAssignmentContracts": {
+      "executed": 3,
+      "passed": 3,
+      "skipped": 0
+    },
+    "finding": "https://github.com/krajinov/TillFailure/pull/20#discussion_r4568667322",
+    "fixtureRootOverride": "TF_M7_PR1A_FIXTURE_ROOT (contains ts inputs; receives native-fixtures and kotlin-measurements.json)",
+    "localArtifacts": "Task-owned temporary OS directory: mode logs, JUnit XML snapshots, seven copied inputs and generated sizing states; not checked in.",
+    "optIn": "TF_M7_PR1A_FIXTURES=1",
+    "ordinaryEvidenceCase": "Skipped by JUnit assumption before filesystem inspection, not a passing cross-language check.",
+    "preservedEvidence": "No original exports, native partitions, keys, checkpoints or logs deleted, renamed or modified.",
+    "priorSourceManifestSha256": "97c7513dd4700a4dc74fb0142a6131fc31bc636d898e04d6ef1087c60585e60f",
+    "regeneratedStates": {
+      "byteIdenticalToRetainedNativeCheckpoint": true,
+      "files": 1755
+    },
+    "rerun": "All four modes used :shared:testAndroidHostTest --rerun; missing/malformed modes filtered AssignmentFixtureTest.",
+    "retainedEvidence": "Prior backend/shared/native/build results remain attributed to their original runs; no backend, native store, iOS shared or UI rerun for this test-only correction.",
+    "runs": {
+      "absent": {
+        "errors": 0,
+        "exit": 1,
+        "failures": 1,
+        "logSha256": "6875348609e2bf2fb2a10e186a9ae407684e91e19961512d7d38e596180eb2e5",
+        "passed": 0,
+        "skipped": 0,
+        "tests": 1
+      },
+      "malformed": {
+        "errors": 0,
+        "exit": 1,
+        "failures": 1,
+        "logSha256": "61d3cbbf9116ce3192349f33e0550720d34db0d1da9d9278d1a57c3ca6352a4b",
+        "passed": 0,
+        "skipped": 0,
+        "tests": 1
+      },
+      "ordinary": {
+        "errors": 0,
+        "exit": 0,
+        "failures": 0,
+        "logSha256": "29b08c4a04de84b5944136c4775f3101dbbffa853c00123c99873a8bad20706b",
+        "passed": 262,
+        "skipped": 1,
+        "tests": 263
+      },
+      "verified": {
+        "errors": 0,
+        "exit": 0,
+        "failures": 0,
+        "logSha256": "bb2486d04c0cf9aab46245a340a1ca3f0e4341149dfb673169279745eaaa6771",
+        "passed": 263,
+        "skipped": 0,
+        "tests": 263
+      }
+    },
+    "startingHead": "9d3b5714d58685c32fb9f902c9047b725bb414f1",
+    "verifiedInputs": {
+      "files": 7,
+      "sha256": {
+        "ascii.json": "22c9cdb820022570700e1ad7093a9bf1ce0c7410da37150c351f619f578146a7",
+        "boundary-128512.json": "44c63e55fd153b9b7d0cd6a1b76810531e02e10f9e1f5acc5322e26dd5ac6d28",
+        "boundary-30028.json": "cebb8385c2cb7cce024709e19ccd761ce164c70d6149fee19f5e41e0b7367309",
+        "boundary-34.json": "b8fec23458e397b895d3deb9b0d6dd076c5edb7008074402159e12333bd45f5f",
+        "boundary-47.json": "7c841e60a586b754314e234c37db30ad4cf78f4c2bde493ee4cd484d1b3909e7",
+        "boundary-92.json": "d94b11b415d50d0f34e266f6853aca4f5d130a1f64d9b921321b854eba2d5ffd",
+        "escaped.json": "882a6998f6f0ac569772b9772df7a6c2065f9d919281af60f57371fa3c886025"
+      }
+    }
+  },
   "planningCommit": "21633e0656d97e3040070f8b3a8002682953a2f8",
   "release": {
     "androidUnsignedApkSha256": "4a91bcd0adb9261a72c4b471ecd114b1020e25fc73512436a45ae68669ce1476",
@@ -206,7 +278,7 @@
   "sourceInventory": {
     "entries": 17,
     "manifest": "docs/milestones/evidence/milestone-7-pr1a-source-manifest.sha256",
-    "sha256": "97c7513dd4700a4dc74fb0142a6131fc31bc636d898e04d6ef1087c60585e60f",
+    "sha256": "64e0b3cc499410b4055b1189b379a89636a664dc9374c7ca29fa59837378b8e7",
     "unchangedDependency": "iosApp/iosApp/RecoveryPersistenceBridge.swift"
   },
   "status": "isolated-pr1a-feasibility; product issuance absent",

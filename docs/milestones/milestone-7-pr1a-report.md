@@ -14,7 +14,7 @@ The original M6 quarantined dataset and its unknown outcomes remain separate. It
 
 ## Exact inventory and fingerprints
 
-The [source manifest](evidence/milestone-7-pr1a-source-manifest.sha256) has **17 entries**, final-review SHA-256 `97c7513dd4700a4dc74fb0142a6131fc31bc636d898e04d6ef1087c60585e60f`: the following 16 changed source/probe files plus the unchanged production Swift store dependency. The [verification record](evidence/milestone-7-pr1a-verification.json) records individual hashes, frozen production-contract fingerprints, log/checkpoint hashes, measured values and calculated bounds. It separately retains the original source-manifest fingerprint for the earlier runs. Generated payloads, logs, binaries, native data and credentials are excluded from review files.
+The [source manifest](evidence/milestone-7-pr1a-source-manifest.sha256) has **17 entries**, current post-P2 SHA-256 `64e0b3cc499410b4055b1189b379a89636a664dc9374c7ca29fa59837378b8e7`: the following 16 changed source/probe files plus the unchanged production Swift store dependency. The [verification record](evidence/milestone-7-pr1a-verification.json) records individual hashes, frozen production-contract fingerprints, log/checkpoint hashes, measured values and calculated bounds. It separately retains the original and pre-P2 source-manifest fingerprints for the earlier runs. Generated payloads, logs, binaries, native data and credentials are excluded from review files.
 
 | File | Purpose |
 |---|---|
@@ -193,6 +193,23 @@ Fresh setup first hit sandbox `listen EPERM` on loopback port 46799, and the Gra
 
 Final review rechecked sanitized inventory, source and frozen-contract hashes, local links, whitespace/conflict markers and unchanged Release hook/target boundaries. Product exports, Rules/indexes, native ledger dispatch, all twelve existing forms/hashes and disabled Publish remain unchanged. The exact PR 1b blockers below remain open. Final commit and PR identities are recorded by Git/GitHub rather than embedding a self-referential commit hash in this document.
 
+### P2 ordinary-suite isolation correction
+
+[PR #20 finding r4568667322](https://github.com/krajinov/TillFailure/pull/20#discussion_r4568667322) identified an undeclared dependency: the new host fixture test unconditionally required ignored TS exports. Starting at `9d3b5714d58685c32fb9f902c9047b725bb414f1`, only `AssignmentFixtureTest` and this report/evidence/manifest were corrected. Following the existing publication fixture-test separation, cross-language execution now requires **`TF_M7_PR1A_FIXTURES=1`**. Without opt-in, a JUnit assumption reports this one case **skipped before inspecting any fixture files**. The three deterministic `AssignmentContractTest` cases remain active. Opted-in execution requires all seven named TS fixtures; missing files or malformed fixture content fail with an explicit fixture diagnostic.
+
+`TF_M7_PR1A_FIXTURE_ROOT` overrides the root containing `ts/`, and receives `native-fixtures/` and `kotlin-measurements.json`. Its default is the repository's `.firebase/m7-pr1a`, used only after explicit opt-in. Fresh verification instead used task-owned temporary roots with verified copies, an absent input directory and a malformed temporary copy. No preserved evidence was deleted, renamed or modified. Every mode used **`--rerun`** so the test task actually executed rather than reusing an up-to-date result. When changing environment/file inputs, use this explicit rerun option.
+
+| Fresh mode | Result |
+|---|---|
+| Ordinary complete host suite, opt-in unset, configured fixture root has no TS exports | **262 passed, 1 skipped, 0 failures/errors** (263 discovered). The skipped cross-language case supplies no passing evidence. All 3 deterministic assignment contract tests executed and passed. |
+| Opted-in complete host suite with all 7 SHA-verified fixtures | **263 passed, 0 skipped/failures/errors**. The cross-language check executed and regenerated 1748 states plus 7 oversize-prior files, all 1755 byte-identical to the retained native input checkpoint. |
+| Opted-in targeted fixture test with absent required inputs | Expected Gradle exit 1: **1 failed, 0 skipped**; `Opted-in M7 PR1a evidence requires fixture: .../ts/ascii.json`. |
+| Opted-in targeted fixture test with malformed temporary `ascii.json` | Expected Gradle exit 1: **1 failed, 0 skipped**; `Invalid opted-in M7 PR1a fixture: ascii.json`, with the JSON parsing cause. |
+
+The two negative probes demonstrate fail-closed setup, not passing test cases. The older 263/263 host runs above remain attributed to their original execution with exports present. Existing publication response fixtures were present during these fresh runs; that older test's file-based opt-in behavior was inspected and left unchanged. Backend 305/305, iOS shared 261, native store measurements, build/Release checks and both earlier backend failure findings are retained evidence, not reruns for this correction.
+
+The audit found no equivalent local-input dependency in the other new ordinary-host/common tests. The Android device sizing test and standalone Swift executable deliberately consume explicit fixture inputs outside this host suite; backend tests generate their inputs in memory. No additional correction was needed. Temporary mode logs, JUnit XML snapshots, input copies and generated states remain local reproduction artifacts outside source control; sanitized hashes/counts are recorded under `p2OptInCorrection` in the verification JSON.
+
 ## Release isolation and inherited findings
 
 Android Release APK SHA-256 is `4a91bcd0adb9261a72c4b471ecd114b1020e25fc73512436a45ae68669ce1476`. Its DEX audit found none of `AndroidAssignmentSizingTest`, `M7_ANDROID_NATIVE`, `TF_M7_PR1A` or `AssignmentStorageMain`. Pure contract classes are ordinary shared code and may be present; this is not a claim that every assignment string is absent. Existing Debug-only hook boundaries were not widened. Swift sizing sources are outside the product target; `iOSApp.swift` and Xcode project are unchanged. The standalone simulator signature is no physical-device or distribution evidence. No product iOS application Release build is claimed for this prerequisite.
@@ -230,4 +247,16 @@ Use an isolated Node 22 executable (`NODE22_BIN` below), the existing lockfile/i
 ./gradlew :shared:testAndroidHostTest :shared:iosSimulatorArm64Test :shared:linkDebugFrameworkIosSimulatorArm64 :shared:assembleAndroidDeviceTest :androidApp:assembleRelease --console=plain
 ```
 
-The runner checks Auth 46799, Firestore 46780, Functions 5001, Storage 46719, Hub 46700 and Logging 46720 are free before starting one supervisor. Rules experiments use their separate test project. TS evidence export precedes Kotlin host fixture export. Native tests require a **new explicitly task-owned instance**, verified input SHA checkpoint and separate fixture copies. Android runs `com.delminiusapps.tillfailure.assignments.AndroidAssignmentSizingTest` from the shared instrumentation APK after pushing those verified files to its task fixture directory. Swift uses `python3 iosApp/feasibility/run-assignment-storage.py --simulator <TASK_UDID> --framework <FRESH_SHARED_FRAMEWORK>`; `--resume` accepts only identical occupied inputs. Capture and reverify encrypted checkpoints before shutdown. Do not rerun either tool against old users or reuse unknown keys/history to recreate evidence.
+Ordinary host checks do not require any backend/emulator execution or TS export. Cross-language evidence is a separate explicit action:
+
+```sh
+# Self-contained ordinary suite; the assignment cross-language case is reported skipped.
+./gradlew :shared:testAndroidHostTest --rerun --console=plain
+
+# Set M7_FIXTURE_ROOT to a task-owned root with all seven verified exports in ts/.
+# The temporary root also receives the generated Kotlin sizing artifacts.
+TF_M7_PR1A_FIXTURES=1 TF_M7_PR1A_FIXTURE_ROOT="$M7_FIXTURE_ROOT" \
+  ./gradlew :shared:testAndroidHostTest --tests 'com.delminiusapps.tillfailure.assignments.AssignmentFixtureTest' --rerun --console=plain
+```
+
+The runner checks Auth 46799, Firestore 46780, Functions 5001, Storage 46719, Hub 46700 and Logging 46720 are free before starting one supervisor. Rules experiments use their separate test project. TS evidence export precedes **opted-in** Kotlin host fixture export only; no ordinary test task invokes the backend. Native tests require a **new explicitly task-owned instance**, verified input SHA checkpoint and separate fixture copies. Android runs `com.delminiusapps.tillfailure.assignments.AndroidAssignmentSizingTest` from the shared instrumentation APK after pushing those verified files to its task fixture directory. Swift uses `python3 iosApp/feasibility/run-assignment-storage.py --simulator <TASK_UDID> --framework <FRESH_SHARED_FRAMEWORK>`; `--resume` accepts only identical occupied inputs. Capture and reverify encrypted checkpoints before shutdown. Do not rerun either tool against old users or reuse unknown keys/history to recreate evidence.

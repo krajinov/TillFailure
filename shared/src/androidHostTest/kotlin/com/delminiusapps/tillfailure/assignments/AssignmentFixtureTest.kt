@@ -9,17 +9,30 @@ import com.delminiusapps.tillfailure.programs.*
 import kotlinx.serialization.json.*
 import java.nio.file.Files
 import java.nio.file.Path
+import org.junit.Assume.assumeTrue
 import kotlin.test.*
 
 class AssignmentFixtureTest {
     @Test fun actualTsKotlinContractsAndProspectiveStateExport() {
-        val repo=generateSequence(Path.of(System.getProperty("user.dir"))){it.parent}.first{Files.exists(it.resolve("firebase/functions/package.json"))}
-        val root=repo.resolve(".firebase/m7-pr1a")
-        val files=root.resolve("ts").toFile().listFiles().orEmpty().filter{it.extension=="json"}
-        assertTrue(files.size>=7,"Run TS contract evidence export first")
+        // Like publication response evidence, this cross-language probe is opt-in.
+        // Report non-execution as skipped; deterministic common contract tests always run.
+        val optIn=System.getenv("TF_M7_PR1A_FIXTURES")
+        assumeTrue("Cross-language evidence not executed; set TF_M7_PR1A_FIXTURES=1 to opt in",optIn!=null)
+        assertEquals("1",optIn,"TF_M7_PR1A_FIXTURES must be 1 when supplied")
+        val root=System.getenv("TF_M7_PR1A_FIXTURE_ROOT")?.let{Path.of(it)} ?: run {
+            val repo=generateSequence(Path.of(System.getProperty("user.dir"))){it.parent}.first{Files.exists(it.resolve("firebase/functions/package.json"))}
+            repo.resolve(".firebase/m7-pr1a")
+        }
+        val required=listOf("ascii.json","escaped.json","boundary-128512.json","boundary-30028.json","boundary-34.json","boundary-47.json","boundary-92.json")
+        val files=required.sorted().map { name->
+            val file=root.resolve("ts").resolve(name)
+            assertTrue(Files.isRegularFile(file),"Opted-in M7 PR1a evidence requires fixture: $file; run the TS export or supply a verified fixture root")
+            file.toFile()
+        }
         val output=root.resolve("native-fixtures");Files.createDirectories(output)
         var maximum=0;var pendingMaximum=0;var states=0
         for(file in files) {
+            try {
             val f=AssignmentContract.json.parseToJsonElement(file.readText()).jsonObject
             val uid=f.getValue("uid").jsonPrimitive.content
             val wid=f.getValue("wid").jsonPrimitive.content
@@ -101,6 +114,9 @@ class AssignmentFixtureTest {
             val over=clean.copy(preferredWorkspaceId="x".repeat(36500))
             assertFalse(AssignmentProspective.admission(over,d))
             Files.write(output.resolve("${file.nameWithoutExtension}-oversize-prior.json"),DraftBudget.plaintext(over).encodeToByteArray())
+            } catch(error:Throwable) {
+                throw AssertionError("Invalid opted-in M7 PR1a fixture: ${file.name}",error)
+            }
         }
         println("M7_KOTLIN_STATES count=$states pending=$pendingMaximum maximumPlaintext=$maximum swiftBound=${DraftBudget.swiftEncryptedUpperBound(maximum)}")
         Files.write(root.resolve("kotlin-measurements.json"),"{\"states\":$states,\"pending\":$pendingMaximum,\"maximumPlaintext\":$maximum,\"swiftBound\":${DraftBudget.swiftEncryptedUpperBound(maximum)}}".encodeToByteArray())
