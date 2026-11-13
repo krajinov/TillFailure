@@ -1,7 +1,7 @@
 # Implementation roadmap
 
-Status: **Milestone 3 locally accepted; Milestones 4–5 merged with acceptance gates open; Milestone 6 PR 1 implemented for review; later exercises/program-creation slices proposed**
-Review date: **2026-10-26**
+Status: **Milestone 3 locally accepted; Milestones 4–6 implementation merged with acceptance gates open; Milestone 7 bounded policy approved; PR 1a contract/feasibility authorized only**
+Review date: **2026-11-13**
 
 Milestones are ordered, reviewable changes. Foundation work may be horizontal; feature milestones must demonstrate an end-to-end user outcome with authorization and recovery, not just screens or repositories. “Commands” are planned verification and may require files that do not exist yet.
 
@@ -72,21 +72,19 @@ The merged scope is assigned-client name/relationship/onboarding reads, invitati
 
 ## 6. Exercises and program creation
 
-Planning status (2026-10-25): the [Milestone 6 plan](milestones/milestone-6-plan.md) confirms this canonical scope and proposes four reviewable PRs: (1) online read-only system-exercise list/details, (2) bounded custom-exercise creation/correction, (3) explicitly saved single-author template drafts, (4) immutable version publication/browsing. PR 1 uses synthetic original text and existing catalog Rules, with no writes/search/media/offline grant, and is ready only for a separate implementation authorization. PRs 2–4 require their named product/security decisions on fields/ownership, draft persistence/loss, publication limits/lifecycle and exact recovery/retention. No generic journal or broad member grant is preapproved. Pencil transport failed during planning; retained frame references are not fresh visual verification. M5 acceptance remains open.
-
-PR 1 handoff (2026-10-25): Josip separately authorized the exact D3 synthetic online read-only slice and its verification; see the [recorded authorization](milestones/milestone-6-plan.md#pr-1-implementation-authorization-2026-10-25). Later M6 policy proposals remain unapproved.
-
-M6 PR 1 implementation update (2026-10-26): the approved D3 read-only synthetic slice is implemented with qualified verification in the [PR 1 report](milestones/milestone-6-pr1-report.md). Existing catalog Rules/indexes and all eight protected command variants remain unchanged; full acceptance and later M6 decisions remain open. Earlier planning/readiness statements retain their original baseline.
+Implementation status (2026-11-12): **all four slices merged through PR #19 (`de8d725`); Milestone 6 is not fully accepted**. The [closeout](milestones/milestone-6-closeout.md) reconciles the [original plan](milestones/milestone-6-plan.md), named approvals and all four reports. Online synthetic catalog/custom/draft workflows, immutable publication/version readers and twelve protected variants are merged. The committed final Publish action remains disabled by `PublicationProtocol.ISSUANCE_ENABLED=false`; preview and existing-version browsing are implemented. The retained independent 14-case native matrix and 31 verified checkpoints do not accept missing interaction/accessibility/OS/physical checks or resolve the first quarantined dataset. Temporary enabled Debug iOS UI evidence and the separate inherited custom-admission finding retain their qualifications.
 
 - **User outcome:** Trainer browses system/custom exercises and creates/version-publishes a program template.
 - **Affected areas:** `exercises`, `programs` builder/detail.
 - **Domain/data:** Exercise source/type, template draft, immutable published version, ordered workout/exercise items, meaningful publish validation.
-- **Firebase/security:** Global catalog is read-only for active accounts with the fixed trusted catalog entitlement, and only `published` entries are readable/queryable; source templates/versions and every workout/item descendant are trainer-only within the workspace. Client assignment never grants source reads. Publication transaction/Function only if cross-document invariant proves necessary.
+- **Firebase/security:** Global catalog is read-only under the fixed trusted catalog entitlement and published-only Rules. Current original-workspace authors use guarded mediators for custom exercises, drafts and immutable versions; direct template/version/descendant reads and writes remain denied to everyone. Client assignment never grants source reads. Publication atomically creates version/root metadata/receipt in a trusted transaction.
 - **Tests/commands:** Domain builder/version tests, MVI input tests, mapping and emulator permission/index tests, builder screenshot/accessibility checks.
-- **Acceptance:** Published versions cannot mutate; large content uses child docs, not unbounded arrays; custom exercises are tenant-isolated; retries do not create duplicate versions.
+- **Acceptance:** Published versions cannot mutate; content uses a proved bounded representation, never unbounded arrays. Approved M6 drafts and immutable versions are bounded inline documents, superseding the older illustrative child-layout expectation. Custom exercises are author/workspace-isolated; retries do not create duplicate versions. Full committed Publish interaction remains gated.
 - **Dependencies/risks:** Draft storage model, exercise search requirements, catalog/media ownership and licensing.
 
 ## 7. Program assignment
+
+Planning status (2026-11-12): the [Milestone 7 plan](milestones/milestone-7-plan.md) confirms this scope and recommends an initial online synthetic, one-workout/one-occurrence end-to-end slice. Verified immutable fixture versions can supply it without enabling Publish, subject to explicit owner approval. The isolated materializer is not a complete authenticated source-loading endpoint or current protected adapter. Exact authority/copy/timing/expiry/lifecycle/custody, recovery namespace reconciliation, trainer-index correction and real serializer/native/interaction proof gate implementation. The roadmap acceptance below describes the full milestone; the reduced first slice alone cannot satisfy it. No new scheduling, history, retention, offline or access policy is approved.
 
 - **User outcome:** Trainer assigns an exact published version; client sees planned workouts without later template edits changing them.
 - **Affected areas:** `programs`, `workout` planning, client home/workouts.
@@ -156,3 +154,6 @@ Anything outside the stated MVP—payments/invoices/subscriptions/credits, group
 ### Milestone 6 PR 2 approval and bounded implementation
 
 The [approved PR 2 contract](milestones/milestone-6-pr2-plan.md#approval-and-implementation-authorization-2026-10-26) covers synthetic emulator-only author-scoped custom creation/browsing/details/correction and two protected command adapters. It retains system catalog read-only access, all eight older protected variants and existing one-account clean departure. No archive/delete/transfer, broader member visibility, search/media, template references, program builder, assignment, production or offline grant. [Implementation evidence](milestones/milestone-6-pr2-report.md) records exact source and qualifies native/interaction acceptance; approval is not full milestone acceptance.
+
+
+Milestone 7 PR 1a handoff (2026-11-13): Josip approved [M7-D1–D9 and authorized M7-D10 for PR 1a only](milestones/milestone-7-plan.md#approval-and-pr-1a-authorization-2026-11-13). Historical pending-decision wording in the M7 planning paragraph is superseded only for the exact bounded synthetic contract. Executable contract/namespace/isolated Rules/native-storage feasibility is authorized; PR 1b, product endpoints/issuance/UI/Rules/index changes, Publish enablement, real-data/production/offline and assignment-bearing revocation remain excluded.

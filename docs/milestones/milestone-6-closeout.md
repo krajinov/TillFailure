@@ -1,0 +1,88 @@
+# Milestone 6 closeout: implementation merged, acceptance open
+
+Reviewed **2026-11-12**, Europe/Sarajevo. Baseline **`de8d7256a587d8548b3512ac1ffca25fa7fa9c19`**. Documentation branch **`docs/milestone-7-plan`**.
+
+**All four Milestone 6 slices are merged. Milestone 6 is not fully accepted, and the committed product cannot issue Publish.** The next canonical milestone is [Program assignment](milestone-7-plan.md), with its own policy and implementation gates.
+
+## Baseline and review scope
+
+GitHub confirms [PR #19](https://github.com/krajinov/TillFailure/pull/19) merged into `main` at the baseline on **2026-11-11T19:59:02Z**. Its reviewed feature head was `b73f12d4f7a6e4985c3d0c132257e0a992629236`, following planning commit `d37d4466a73b608379f3f068079d7f2099702531`. The initial local feature tree and index were clean. Switched to `main`, ran `git pull --ff-only`, verified merge ancestry, and created the documentation branch. The preceding M6 merges are present in first-parent history. Ignored runtime datasets and recovery partitions were not opened or modified.
+
+Read README/contributor guidance, architecture, the [canonical roadmap](../implementation-plan.md#6-exercises-and-program-creation), [M6 plan](milestone-6-plan.md), every M6 slice plan/report and the sizing scripts, schema/security/Rules/indexes, assignment primitive, protected-command contracts and earlier acceptance registers. No applicable repository or ancestor `AGENTS.md` was found. This review changes documentation only. No application builds, tests, emulators, native harnesses, UI runs or old-export verification were performed.
+
+## Merged scope versus usable behavior
+
+| Slice / merge | Merged implementation | Usable boundary and acceptance |
+|---|---|---|
+| PR 1 / [#16](https://github.com/krajinov/TillFailure/pull/16), `49b97f5` | Online published synthetic system-exercise list/detail through official Android/Swift server reads | Trainer entry, bounded paging, fresh details and transient state. Existing global catalog entitlement remains independent of selected workspace authority. No search/media/offline cache. Platform interaction qualifications remain in the [report](milestone-6-pr1-report.md). |
+| PR 2 / [#17](https://github.com/krajinov/TillFailure/pull/17), `b67c5a5` | Author-only synthetic custom create/browse/detail/correct and two protected variants | Current original-workspace author access, explicit correction, no owner override/client grant/archive/delete/transfer. Submitted custody and same-author restoration follow C1–C6. Actual Save/correction journeys remain incompletely exercised. [Report](milestone-6-pr2-report.md). |
+| PR 3 / [#18](https://github.com/krajinov/TillFailure/pull/18), `de301d3` | Online explicit draft Save, bounded builder/picker and eleventh protected variant | One author, three workouts/twelve items, 650 combined draft-text scalars, incomplete drafts allowed. Unsent edits are transient. Actual Android editor and lower picker/numeric/reorder journeys remain open. [Report](milestone-6-pr3-report.md). |
+| PR 4 / [#19](https://github.com/krajinov/TillFailure/pull/19), `de8d725` | Source-bound preparation, atomic immutable version/root/receipt, schema-2 Save preservation, exact replay, version readers and twelfth protected variant | **`PublicationProtocol.ISSUANCE_ENABLED=false` in merged source.** Preview is available, but its final Publish control and submission guard are disabled. Version browsing exists for already-published synthetic versions through author-only mediation. The complete create → publish user outcome is therefore unavailable from committed product controls. [Flag](../../shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/programs/ProgramPublication.kt), [editor](../../shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/programs/DraftsScreen.kt), [report](milestone-6-pr4-report.md). |
+
+The disabled shared UI flag is not a server authorization control. The guarded loopback publication mediator and native protected adapter exist and were exercised by harnesses. No production permission follows from their merge. All template/version descendants remain directly Rules-denied, including to authors and assigned clients. Publication copies exact authorized instructions/taxonomy/prescriptions and source fingerprints. Save/Publish share the root revision, and Save derives publication metadata from the stored schema-2 root. Prior versions remain immutable. [Implemented mediator](../../firebase/functions/src/program-publications.ts), [Save](../../firebase/functions/src/program-drafts.ts), [Rules](../../firebase/firestore.rules).
+
+U1–U8 and separate U9 approval cover only the named synthetic emulator publication slice, including the narrow 192 KiB preview/version-get response allowance. They do not accept all interactions, authorize assignment, or establish real-data/offline/production policy. Earlier report statements such as “uncommitted,” “no PR/merge,” eleven kinds, or publication policy still pending describe their dated baselines. This closeout supplies current integration status without rewriting that evidence. The PR 4 JSON's `git.implementationCommitted=false` is also historical. [Approval](milestone-6-pr4-plan.md#approval-and-implementation-authorization-2026-11-02), [verification summary](evidence/milestone-6-pr4-verification.json).
+
+## Evidence attribution
+
+**Fresh here:** Git/PR metadata and ancestry inspection, current flag/contract inspection, source-manifest checksum verification and documentation checks. All **32** manifest entries match baseline files. Manifest SHA-256 is **`19e24d9e1829ffa51032bb1c30203b6a27c6142e3fa9b740a7bab541b9e0c336`**. This verifies source identity, not executable behavior. No historical totals were rerun or added together. [Manifest](evidence/milestone-6-pr4-source-manifest.sha256).
+
+| Retained evidence | Original attribution and limits |
+|---|---|
+| PRs 1–3 | Their [PR 1](milestone-6-pr1-report.md#verification-ledger), [PR 2](milestone-6-pr2-report.md#verification-ledger) and [PR 3](milestone-6-pr3-report.md#verification-attribution) ledgers retain distinct backend/shared/build/native runs and later presentation corrections. Earlier source fingerprints and interaction qualifications remain attached to each run. No combined M6 pass total is meaningful. |
+| PR 4 backend/shared/builds | The 2026-11-03 report records Node 22.23.4 backend 289/289, shared Android-host 259 and iOS-simulator 258, Debug/Release builds, Release isolation, canonical vectors, actual callable parsing and transactional/race tests. These are retained report results, not a new clean-suite assertion. A separate user-supplied finalization transcript records a backend rerun exiting 1 without diagnostic detail. That attempt remains unresolved and does not invalidate or refresh the earlier reported run. |
+| PR 4 sizing | Forty production-serialized native-store fixtures per platform, byte-preserving oversize refusal and deterministic wrapper bounds. Measured version DTO 135,372 bytes, complete preview packet 135,554, Admin commit 146,344 and largest prospective envelope 21,427. Calculated version/response/commit bounds are 153,456 /161,648 /220,528. The 36,500-byte new-kind admission gives Swift bound 97,517 under 98,304. These are different measurement/bound categories, scoped to the reviewed emulator/SDK/layout. [Details](milestone-6-pr4-report.md#actual-measurements-versus-calculated-bounds). |
+| Independent native matrix | **14 actual stage/cold-restart cases**, seven Android and seven Swift, on 2026-11-03. This is command/storage/recovery evidence, not fourteen UI walkthroughs. Original ID/hash binding, server effects, proof/retirement, clean departure and A→B isolation were checked. |
+| Checkpoint custody | **31 verified checkpoints** in that independent run. One supervisor, 18 new Auth accounts, 16 new draft roots, successful Auth and mediator preflight and complete explicit export with zero protected receipts before commands. Each checkpoint contained six checksummed Auth/Firestore files. All manifests/files were byte-verified before shutdown in that run. This closeout did not re-open raw exports or prove their present availability. |
+
+### Independent native matrix
+
+The independent dataset was separately authorized after the first dataset failed. It used distinct create-only identities/keys and separate task-owned Android/iOS instances. Reset suites ran separately. Each case had an export after its staged server audit, before stopping the process, and another after cold resume. Thus the 28 case checkpoints plus initial, final and quiescent-final checkpoints make the recorded 31. [Independent-run report](milestone-6-pr4-report.md#independent-native-verification-on-2026-11-03), [sanitized records](evidence/milestone-6-pr4-verification.json).
+
+| Case, executed on both platforms | Recorded server result and recovery |
+|---|---|
+| Commit with lost acknowledgment | Root revision 2, version 1, original applied receipt. Restart resolves the original command without a duplicate version. |
+| Resolver-first fence | Root revision 1, no version. Initially no receipt, then one whole-key fence. Delayed original cannot publish. |
+| Stale confirmation conflict | Competitor creates version 1 and root revision 2. Original receives its immutable conflict receipt. Two decisions, one version. |
+| Durable proof before retirement interruption | Root revision 2, one version/applied receipt. Cold start finishes retirement from the matching durable full proof. |
+| Injected proof-write failure | Same committed server effect. Original pending command survives and later resolves before retirement. |
+| Compacted cold restart | Same server effect, matching content-free consumed-key marker after restart. |
+| Freeze and drain | Fresh preparation refused after freeze. Already-admitted command settles despite canceled presentation, followed by clean departure. |
+
+Every resume checked original binding, clean recovery and B's empty recovery state plus denial of A's version list. This run does not establish an assignment adapter, every malformed legacy recovery path, controlled OS connectivity behavior, or physical-device security.
+
+### Quarantined first dataset
+
+The first native attempt seeded 18 synthetic identities but failed export-on-exit with **`Did not find any running emulators for project demo-tillfailure-m3`** during correction of a Functions source path. Overlapping same-project CLI discovery was the likely cause, not independently established. iOS sign-in returned `UNKNOWN` and Android timed out without a successful stage marker. **Its command/fence outcomes remain unknown.** Neither those errors nor the later independent passes prove no command committed. [Original finding](milestone-6-pr4-report.md#quarantined-first-native-dataset).
+
+Its UID-inventory digest is `d1be5433279ef2d5fd8df146ba986db0ae9a78ac68718f4756e6d35bc28833c3`, provenance digest `797e30bd3fe45967374f3e29f27dbdd0a16966bac621a62c1bb45d4c80605e43`. Keep it quarantined. Do not reuse identities/keys, reconstruct empty history, fence/replay against substitute history, reset/rekey or touch its pending partitions. The independent dataset supplies evidence only for itself. Earlier M5 missing-history findings also retain their own provenance and locks.
+
+### Temporary enabled Debug interaction
+
+After both matrices passed, temporary enabled Debug artifacts were built, with candidate source bytes restored afterward. On signed iOS 26.2/iPhone 17 the actual Programs UI displayed saved draft and copied preview, opened confirmation, canceled with zero versions/receipts at revision 1, then confirmed with one version/receipt at revision 2. List/detail/Back and dirty-edit refusal/discard Reload were exercised. The temporary Android artifact was built, but its publication UI was not exercised. [Interaction report](milestone-6-pr4-report.md#synthetic-ui-verification-and-interaction-gaps).
+
+The iOS run used keyboard navigation after pointer scroll/drag failed with `-10005: noWindowsAvailable`; intermittent capture errors `-3811`/`-3812` also occurred. It does not establish full touch scrolling, long-content reachability, conflict presentation, large text or assistive-technology acceptance. The enabled artifact is separate from merged behavior. No enabled Release or fresh committed-build Publish walkthrough is claimed.
+
+## Remaining acceptance and release gates
+
+Classes refer to the [recommended first M7 slice](milestone-7-plan.md#recommended-first-end-to-end-slice). **A** blocks that slice. **B** can remain open for bounded emulator-only work, while the affected feature remains unaccepted. **C** blocks affected real-data/production/release use. Multiple classes are intentional.
+
+| Gate | Class / owner / disposition |
+|---|---|
+| M6-G1 Publish issuance and interaction | B, C. Product/native QA must decide enablement separately and complete Android actual preview/Publish/Cancel/Back/reopen/conflict plus final iOS touch/lower-action checks. Verified synthetic published versions can supply a separately approved M7 slice. This is not full M6 acceptance. |
+| M6-G2 Earlier builder/custom/catalog journeys | B, C. QA retains exact PR 1–3 Android/iOS gaps, especially custom Save/correct, picker/numeric/reorder/keyboard and lower actions. An assignment fixture does not close them. |
+| M6-G3 Accessibility/design | B, C, and required for acceptance of new M7 screens. Design/QA owns TalkBack/VoiceOver traversal, labels/roles, focus/errors/announcements, normal/200% Android and OS Dynamic Type, touch scrolling with maximum text, keyboard/safe areas, localization/reduced motion, effective targets and fresh design comparison. AX inspection and Compose scale are separately attributed. |
+| M6-G4 OS events | B, C, and new-slice lifecycle acceptance. Native QA needs controlled connectivity/reconnect/offline cold startup, OS background/foreground/interruptions and live authority loss on both hosts. SDK toggles/model injection and incidental gates do not supply that evidence. |
+| M6-G5 Physical identity/storage/history | B, C. Security/native QA retains physical Keystore/Keychain/Data Protection, lock/backup/restore/power-loss/shared-device checks. Quarantined/absent-history, unavailable identity, legacy binding and damaged stores remain locked. Never clean them to pass a new test. A new mutation's own recovery coverage is A. |
+| M6-G6 Inherited custom admission | B for a separately bounded new assignment kind, C for affected acceptance/release. Existing custom admission accepts a 51,966-byte state with conservative Swift bound **138,757 >98,304**. Recorded sample 70,569 stayed below budget. No actual overflow/storage failure was observed. Product/security/engineering must separately approve and verify prospective native-bound checks for new custom admissions, preserving old recovery. Draft/publication admission does not repair this. [Finding](milestone-6-pr4-report.md#separate-inherited-custom-admission-finding). |
+| M6-G7 Assignment authority/namespace/index/lifecycle | A. Josip/product/security and engineering must settle the [M7 decisions](milestone-7-plan.md#owner-decisions-required) and prove source loading, atomic materialization, whole-key coverage, native bounds/recovery and current relationship discovery. Existing primitive receipt/index behavior is insufficient. |
+| M6-G8 Real content, privacy and operations | B for synthetic online work, C for affected release. Retain catalog rights/curation, lawful purpose/age/jurisdiction, retention/export/deletion/support/backup custody, environments/IAM/regions/indexes/provenance/signing/App Check and release approval. No real data, offline grants, media or deployment is authorized. |
+| M6-G9 Finalization verification uncertainty | B, C for a current clean verification claim. Engineering must diagnose or replace the separately reported exit-1 backend attempt with attributable affected verification in a later authorized task. The retained passing report is not evidence that this later attempt passed. Documentation planning can proceed. |
+
+Earlier [M2 acceptance](milestone-2-report.md#acceptance-assessment), [M3 ledger](milestone-3-report.md#verification-ledger), [M4 G1–G11](milestone-4-closeout.md#remaining-gates-and-classification) and [M5 H1–H11](milestone-5-closeout.md#remaining-gates-and-dependencies) stay attributed to their original checks. Later named approvals supersede only their exact old policy/start blockers. No blanket deferral or acceptance waiver was found.
+
+## Disposition
+
+Close M6 implementation tracking as **merged with qualified synthetic emulator evidence**. Keep milestone acceptance and the complete committed trainer publish journey open. The roadmap's old illustrative child-layout acceptance wording is reconciled to the approved bounded inline representation, without changing the original evidence. M7 may be planned independently using verified synthetic immutable versions, subject to its new decisions and technical gates. This closeout grants no implementation or policy approval.
+
+Documentation validation covered the two new documents plus README, implementation roadmap and open questions: **130 local file/anchor links**, final newlines, whitespace, conflict markers, source/status consistency and review for credentials, generated output and machine-specific paths. The working diff contains only those five Markdown files, with an empty index. Historical reports/evidence and all application/Rules/index/dependency/flag files remain at baseline. No commit, push, PR, deployment or runtime enablement was performed.
