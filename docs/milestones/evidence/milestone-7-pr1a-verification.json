@@ -1,0 +1,227 @@
+{
+  "actualAdminModeledSerialization": {
+    "commit": 177638,
+    "largestDocument": 13205,
+    "request": 2533,
+    "resolverUnits": 2559,
+    "version": 136741,
+    "writes": 20
+  },
+  "actualInterceptedTransaction": {
+    "commit": 157767,
+    "writes": 20
+  },
+  "actualKotlin": {
+    "maximumPlaintext": 36500,
+    "pending": 3468,
+    "states": 1748,
+    "swiftBound": 97517
+  },
+  "approval": {
+    "authorization": "M7-D10 PR1a only",
+    "policy": [
+      "M7-D1",
+      "M7-D2",
+      "M7-D3",
+      "M7-D4",
+      "M7-D5",
+      "M7-D6",
+      "M7-D7",
+      "M7-D8",
+      "M7-D9"
+    ],
+    "pr1bAuthorized": false
+  },
+  "backend": {
+    "final-backend.log": {
+      "fail": 0,
+      "pass": 305,
+      "sha256": "ce3dc08fef1d794989245fe138e7f40eea04e6c182a0d55dcef1d0e2cf4393d7",
+      "tests": 305
+    },
+    "focused-backend.log": {
+      "fail": 0,
+      "pass": 54,
+      "sha256": "ca01f76826a2e79436a18a6b060593701e38cfa74f021fa35dc384560df5de75",
+      "tests": 54
+    },
+    "full-backend.log": {
+      "fail": 1,
+      "pass": 303,
+      "sha256": "7fcb83c644bce1145803fea66b9cf614ddde097f49f9e1ce97a5c704b6226847",
+      "tests": 304
+    },
+    "prerequisite-backend.log": {
+      "fail": 0,
+      "pass": 15,
+      "sha256": "e39666607cb8eba830af144d1129f38bfff85f9169034f7c76b8793ef4b0cd8b",
+      "tests": 15
+    }
+  },
+  "baseline": "de8d7256a587d8548b3512ac1ffca25fa7fa9c19",
+  "branch": "feature/milestone-7-pr1a-assignment-contracts",
+  "calculatedBounds": {
+    "acceptedReadJson": 348160,
+    "android": 48796,
+    "changedIndexBytes": 5767168,
+    "classification": "deterministic bounds, not measured network traffic or production index internals",
+    "commit": 461312,
+    "committedWritesIncludingAdmission": 21,
+    "logicalWriteJson": 348160,
+    "maxReadAttempts": 51,
+    "maxWriteAttempts": 63,
+    "mutation": 32768,
+    "packet": 65536,
+    "pending": 16384,
+    "plaintext": 36500,
+    "protobufReserve": 113152,
+    "readsIncludingAdmission": 17,
+    "requestAndIndexReserve": 6228480,
+    "resolverBytes": 24576,
+    "resolverUnits": 8192,
+    "swift": 97517
+  },
+  "finalReview": {
+    "authorization": "Bounded prerequisite corrections, one commit, normal push and PR against main; no PR1b or product enablement.",
+    "corrections": [
+      "Reject non-string TypeScript idempotency keys before regex coercion.",
+      "Align Kotlin source author/client/trainer/workspace path validation and explicit source byte admission with TypeScript.",
+      "Add invalid-key/path regression assertions; valid descriptors, hashes and prospective serialized states unchanged."
+    ],
+    "failedSandboxSetups": [
+      "Node localhost preflight EPERM on 127.0.0.1:46799; authorized retry outside sandbox passed.",
+      "Gradle wrapper cache lock operation not permitted; authorized retry outside sandbox passed."
+    ],
+    "freshBackend": {
+      "fail": 0,
+      "node": "22.23.4",
+      "pass": 16,
+      "sha256": "d855f987f6a13cb71f4142f0548c859ca1406b2dd7d8ccbd99cfcb953f188f32",
+      "tests": 16
+    },
+    "freshFixtureComparison": {
+      "byteIdenticalToRetainedNativeCheckpoint": true,
+      "files": 1755
+    },
+    "freshShared": {
+      "androidHost": 263,
+      "errors": 0,
+      "failures": 0,
+      "iosSimulator": 261,
+      "logSha256": "08db173f890773eb5a3a3c385d285eb318bfad322de41f4a8e27d82b0f714b9e",
+      "skipped": 0
+    },
+    "ignoredReproductionArtifacts": ".firebase/m7-pr1a/final-review; original evidence remains under .firebase/m7-pr1a.",
+    "originalSourceManifestSha256": "1ed3ac8a8666e04de95d35a72eec1c0cfda90f8a5534603f10de7d2933d258e3",
+    "retainedEvidence": [
+      "Final full backend 305/305 before validation tightening.",
+      "Prior 1748-state Android/Swift store runs and byte-identical refusal; not rerun.",
+      "Prior native framework/device-test/Android Release builds and isolation audit; no iOS product Release build."
+    ],
+    "startingHead": "21633e0656d97e3040070f8b3a8002682953a2f8"
+  },
+  "git": {
+    "indexEmpty": true,
+    "prerequisiteCommitted": false,
+    "pushPrOrDeployment": false,
+    "scope": "Retained prerequisite handoff before finalization authorization; not the final commit/push state."
+  },
+  "native": {
+    "android": {
+      "archiveSha256": "3d8ad357e504105d1531ace0133492ff424cb584c4f4ce738b8c44ae6c6327be",
+      "checkpoint": {
+        "files": 1749,
+        "sha256": "12c2e4c2726f5fb264b2911a633d138b7f00fb88ac9abee4faa783261cc1de18"
+      },
+      "instrumentationPassed": true,
+      "instrumentationTests": 1,
+      "logSha256": "1c4a558072db4a3b03b583dde623f48edad05c5df396f44eabe14ff6f52284ab",
+      "maximumAdmittedEncryptedBytes": 48796,
+      "oversizeByteIdentical": true,
+      "prospectiveStates": 1748
+    },
+    "authAccountsOrProtectedCommandsIssued": 0,
+    "beforeShutdown": {
+      "allBytesVerified": true,
+      "androidFiles": 1749,
+      "swiftFiles": 1749
+    },
+    "currentTwelveKindReadersStillRejectAssignment": true,
+    "existingDataRekeyedOrReset": false,
+    "fixtureCheckpoint": {
+      "files": 1755,
+      "sha256": "0e40adcafd86beb99bbbe874a2079d7f3598a36f0f30853b1d5515b3f5a4fdde"
+    },
+    "futureEnvelopesArePrototypeJson": true,
+    "newTaskOwnedInstances": true,
+    "swift": {
+      "checkpoint": {
+        "files": 1749,
+        "sha256": "95fda243698c96210f222ef4e292f780ef1260f5f9aa73e30abe0eb171f83503"
+      },
+      "fixtures": 1748,
+      "logSha256": "9b08621b206f2cc0186df2a70bdcf1f7e19fb7b1f90ba4e7f69b61a8e07fb5b0",
+      "maximumEncrypted": 49625,
+      "maximumPlaintext": 36500,
+      "oversizeByteIdentical": true
+    }
+  },
+  "node": {
+    "lockfileSha256": "0636bb6977fb17302dd896a4c9da281dfa73f478456b60b57a7ef24d9d4f6e04",
+    "officialArchiveSha256": "c9e1dbc748b33ed2d14f42445191ecaf14c56259c7a9a26d0042c49ec2b66428",
+    "version": "22.23.4"
+  },
+  "olderM6FinalizationExit1": "No identifiable original diagnostic log located; still unexplained. New full-run revocation deadline failure is separately diagnosed, not attributed to the older attempt.",
+  "planningCommit": "21633e0656d97e3040070f8b3a8002682953a2f8",
+  "release": {
+    "androidUnsignedApkSha256": "4a91bcd0adb9261a72c4b471ecd114b1020e25fc73512436a45ae68669ce1476",
+    "newSizingMarkersAbsent": true,
+    "swiftSizingSourceOutsideProductTarget": true,
+    "swiftStandaloneExecutableSha256": "c96bde23e3b32946919667fd515ed7f0bc516039b28e62cfe69f03b032e7f280"
+  },
+  "remainingPr1bGates": [
+    "legacy-prefix-reservation-and-dual-namespace-guards-not-landed",
+    "history-coverage-must-be-established-without-fabrication",
+    "trainer-index-rules-denial-and-production-query-index-patch-not-landed",
+    "fresh-authenticated-product-boundary-and-rate-admission-absent",
+    "native-kind-ownership-freeze-persist-proof-retire-restart-integration-absent",
+    "actual-assignment-interaction-accessibility-os-events-unverified",
+    "separate-pr1b-authorization-required"
+  ],
+  "reviewDate": "2026-11-13",
+  "shared": {
+    "iosSimulatorArm64Test": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 261
+    },
+    "testAndroidHostTest": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 263
+    }
+  },
+  "sourceInventory": {
+    "entries": 17,
+    "manifest": "docs/milestones/evidence/milestone-7-pr1a-source-manifest.sha256",
+    "sha256": "97c7513dd4700a4dc74fb0142a6131fc31bc636d898e04d6ef1087c60585e60f",
+    "unchangedDependency": "iosApp/iosApp/RecoveryPersistenceBridge.swift"
+  },
+  "status": "isolated-pr1a-feasibility; product issuance absent",
+  "unchangedContracts": {
+    "firebase/firestore.indexes.json": "f76d0e0cdc3cf3b710f8e5eb6e37609ae525537b8d6af65d412ad0c21e31d8d4",
+    "firebase/firestore.rules": "2d791cf2dc27b4cc6a1e0139f0e278767ac9357eb749811af1750d3cd14c1a6b",
+    "firebase/functions/package-lock.json": "0636bb6977fb17302dd896a4c9da281dfa73f478456b60b57a7ef24d9d4f6e04",
+    "firebase/functions/package.json": "254b61175db338ec478da8a07a11f44dc6dba979a94228950851c1cd501d0576",
+    "firebase/functions/src/assigned-program.ts": "f230d8f4da8859a1cb2a1dba977110aff5d7435822c98a97212fb0eb5e2ac411",
+    "firebase/functions/src/command-identity.ts": "025b6b55ed56c24209bb3ab3571547f290e83b1f8c262191c6a2d2f0e20477f1",
+    "firebase/functions/src/command-resolution.ts": "b25810cf0f67d8ee8131acf4914d8e5722ea6615213176b15825056027731e7e",
+    "firebase/functions/src/index.ts": "d6983b9cc9963621497273163faaf25b02a1dcc679cd38f552035f76af2cccfb",
+    "iosApp/iosApp/iOSApp.swift": "428907cc5fed46153706b45ab05cd4e1db0c5f00a7cf0018a8d8bc507d6ca4fd",
+    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/invitations/CommandResolution.kt": "092c7be61830ed4f4ec3056f9bbeab7717ee487851c4928615a0eacf8776c970",
+    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/invitations/InvitationClient.kt": "4da8db549b67678f50efd67a256fa8ce82433aeab7c8381b21ac48f42ff555e2",
+    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/programs/ProgramPublication.kt": "28b39b0daf7731433e9bf5ebbef9b124c07ba822323aeee4da95e3d8ded5d8da"
+  }
+}
