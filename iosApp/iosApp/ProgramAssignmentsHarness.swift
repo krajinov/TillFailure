@@ -56,6 +56,25 @@ enum ProgramAssignmentsHarness {
     }
     @MainActor private static func run(_ phase:String,_ prefix:String,_ password:String) async {
         guard prefix.range(of:"^m7p1br[a-f0-9]{8}$",options:.regularExpression) != nil else{exit(1)}
+        if phase=="trainer-expiry" {
+            let uid="\(prefix)_ios_trainer_expiry",wid="\(uid)_ws",other=uid+"_client"
+            bridge=FirebaseNativeBridge(productMemoryCache:true,identityDefaults:UserDefaults(suiteName:uid)!)
+            let path=FileManager.default.urls(for:.applicationSupportDirectory,in:.userDomainMask)[0].appendingPathComponent(uid)
+            client=IosProductIdentityClient(bridge:bridge,recoveryBridge:RecoveryPersistenceBridge(rootURL:path))
+            check(await signIn(client,uid,password)==nil,"trainer-expiry-auth")
+            root=NativeClientsModels(client:client);await until{root.identity.currentState().status == .trainerhome}
+            let r=AssignmentReadRequest(action:"assignment-get",workspaceId:wid,clientUid:other,templateId:nil,versionId:nil,scheduledInstantMillis:nil,assignment:nil,itemId:nil,assignmentId:"00000000-0000-4000-8000-000000000003",relativePath:nil,after:nil,afterId:nil)
+            let detail=await read(uid,r);check(detail.error==nil && detail.serverNowMillis != nil,"trainer-server-bound-packet")
+            let model=AssignmentViewModel(repository:client.assignments,drafts:nil)
+            model.attach(scope:AssignmentScope(uid:uid,workspaceId:wid,clientUid:other,role:"trainer",epoch:1));await until{!modelState(model).busy}
+            model.onEvent(event:AssignmentEventOpen(id:r.assignmentId!));await until{!modelState(model).busy}
+            check(modelState(model).content != nil && modelState(model).error==nil,"trainer-complete-copy")
+            await until{modelState(model).content==nil}
+            check(modelState(model).detail==nil && modelState(model).plan==nil && modelState(model).error?.contains("expired")==true,"trainer-server-expiry-clears-detail")
+            model.clear();check(client.invitations.pending(uid:uid)==nil,"trainer-read-no-command")
+            print("M7P1B_IOS_TRAINER_EXPIRY");fflush(stdout)
+            while true {try? await Task.sleep(nanoseconds:100_000_000)}
+        }
         if ["read-header-good","read-header-bad"].contains(phase) {
             let mode=phase.hasSuffix("good") ? "good" : "bad"
             let uid="\(prefix)_ios_header_\(mode)_client",wid="\(prefix)_ios_header_\(mode)_ws"

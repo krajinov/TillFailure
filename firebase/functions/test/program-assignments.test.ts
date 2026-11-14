@@ -104,6 +104,17 @@ describe('M7 PR1b installed online assignment',()=>{
   await assert.rejects(operation(db,'A',{action:'assignment-get',workspaceId:'w',clientUid:'B',assignmentId:f.descriptor.assignment.assignmentId},()=>expires));
   const indexes=JSON.parse(await readFile('../firestore.indexes.json','utf8'));assert.ok(indexes.indexes.some((i:any)=>i.collectionGroup==='assignedPrograms' && i.fields.map((x:any)=>x.fieldPath).join()==='trainerId,accessStatus,accessExpiresAt,__name__'));
  });
+ it('trainer detail and final header carry server time and refuse expiry during the request',async()=>{
+  await run();const now=f.descriptor.assignment.scheduledInstantMillis+1000,expires=f.descriptor.assignment.accessExpiresAtMillis;
+  for(const request of [{action:'assignment-get'},...['','snapshots/content'].map(relativePath=>({action:'assignment-document',relativePath}))]) {
+    const data={...request,workspaceId:f.wid,clientUid:f.client,assignmentId:f.descriptor.assignment.assignmentId};
+    const result=await operation(db,f.uid,data,()=>now);assert.equal(result.serverNowMillis,now);
+    assert.ok(Number.isSafeInteger(result.serverNowMillis) && result.serverNowMillis<expires);
+    let ticks=0;await assert.rejects(operation(db,f.uid,data,()=>expires-4+ticks++));
+  }
+  await db.doc('workspaces/w/clientProfiles/B').update({trainerId:'C'});
+  await assert.rejects(fresh('assignment-document',{assignmentId:f.descriptor.assignment.assignmentId,relativePath:''}),/unauthorized/);
+ });
 
  it('actual membership revocation and Assign serialize in both orderings and under concurrent requests',async()=>{
   const prepared=await clientRevocationOperation(db,'A',{action:'prepare-client-revocation',workspaceId:'w',clientUid:'B'});

@@ -135,13 +135,14 @@ export async function programAssignmentOperation(db: Firestore, caller: string |
       const snapshots=await tx.getAll(...manifest!.requiredPaths.map((p:string)=>db.doc(`${base}/${p}`)));
       const docs=new Map<string,Data>([[base,h],[manifestPath,manifest!]]);
       for(const s of snapshots) { if(!s.exists || bytes(s.data())>24576)fail(); docs.set(s.ref.path,assignmentDocumentDto(s.data()!)); }
-      if(!validateClientAssignmentDocuments(client,wid,d.assignmentId,docs) || h.accessExpiresAtMillis<=clock())fail();
+      const serverNowMillis=clock();
+      if(!millis(serverNowMillis) || serverNowMillis<started || !validateClientAssignmentDocuments(client,wid,d.assignmentId,docs) || h.accessExpiresAtMillis<=serverNowMillis)fail();
       // Per-document packets preserve the generic transport cap. No aggregate snapshot response.
       if(d.action==='assignment-document') {
         const value=docs.get(d.relativePath===''?base:`${base}/${d.relativePath}`);
         if(!value)fail();
-        result={workspaceId:wid,clientUid:client,assignmentId:d.assignmentId,relativePath:d.relativePath,document:value};
-      } else result={workspaceId:wid,clientUid:client,header:h,inventory:manifest};
+        result={workspaceId:wid,clientUid:client,assignmentId:d.assignmentId,relativePath:d.relativePath,document:value,serverNowMillis};
+      } else result={workspaceId:wid,clientUid:client,header:h,inventory:manifest,serverNowMillis};
     } else {
       const a = mutation || d.action==='assignment-preview-item' ? d.assignment : null;
       if (mutation) {

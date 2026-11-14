@@ -15,6 +15,9 @@ import kotlinx.serialization.json.*
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.time.TimeSource
+import kotlin.time.TimeMark
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 
 data class AssignmentScope(val uid:String,val workspaceId:String,val clientUid:String,val role:String,val epoch:Long) {
     fun read()=ExerciseScope(uid,workspaceId,epoch)
@@ -41,16 +44,21 @@ sealed interface AssignmentEvent {
 
 /** All unsent content is destination memory. UID/role/workspace/epoch and generation fence
  * every callback. Transport cancellation never cancels an admitted protected command. */
-class AssignmentViewModel(private val repository:AssignmentRepository,private val drafts:DraftRepository?=null):ViewModel() {
+class AssignmentViewModel internal constructor(private val repository:AssignmentRepository,private val drafts:DraftRepository?,
+    private val wallClock:Clock,private val timeSource:TimeSource):ViewModel() {
+    constructor(repository:AssignmentRepository,drafts:DraftRepository?=null):this(repository,drafts,Clock.System,TimeSource.Monotonic)
     private val mutable=MutableStateFlow(AssignmentState());val state=mutable.asStateFlow()
     private var generation=0L;private var active=false;private val operations=mutableListOf<FirebaseCancellation>();private var expiry:Job?=null
     private fun invalidate(){generation++;operations.forEach{it.cancel()};operations.clear();expiry?.cancel();expiry=null}
-    fun attach(scope:AssignmentScope) {invalidate();active=true;mutable.value=AssignmentState(scope=scope,schedule=Instant.fromEpochMilliseconds(Clock.System.now().toEpochMilliseconds()+3600000).toString());refresh()}
+    fun attach(scope:AssignmentScope) {invalidate();active=true;mutable.value=AssignmentState(scope=scope,schedule=Instant.fromEpochMilliseconds(wallClock.now().toEpochMilliseconds()+3600000).toString());refresh()}
     fun clear(){invalidate();active=false;mutable.value=AssignmentState()}
     private fun owned(scope:AssignmentScope,g:Long)=active && mutable.value.scope==scope && generation==g
+    private fun elapsedMillis(mark:TimeMark):Long {val elapsed=mark.elapsedNow();val whole=elapsed.inWholeMilliseconds
+        return if(elapsed<Duration.ZERO || elapsed.isInfinite())-1 else if(elapsed>whole.milliseconds)whole+1 else whole}
+    private fun fail(message:String){invalidate();mutable.value=mutable.value.copy(busy=false,error=message,content=null,detail=null,plan=null,preview=null,preparation=null,confirm=false)}
     private fun read(r:AssignmentReadRequest,block:(AssignmentReadResult)->Unit) {
         val scope=mutable.value.scope?:return;val g=generation
-        operations+=repository.read(scope.read(),r) { result->if(owned(scope,g)) {if(result.error!=null)mutable.value=mutable.value.copy(busy=false,error="Content unavailable. Refresh to recheck access.",content=null,preview=null,confirm=false) else block(result)} }
+        operations+=repository.read(scope.read(),r) { result->if(owned(scope,g)) {if(result.error!=null)fail("Content unavailable. Refresh to recheck access.") else block(result)} }
     }
     private fun refresh() {
         val scope=mutable.value.scope?:return;invalidate();mutable.value=mutable.value.copy(busy=true,error=null,content=null,detail=null,preview=null,preparation=null,confirm=false,pending=repository.commands.pending(scope.uid))
@@ -111,22 +119,30 @@ class AssignmentViewModel(private val repository:AssignmentRepository,private va
             if(!AssignmentReads.inventory(inventory,scope.clientUid,scope.workspaceId,aid,h.snapshotHash)){mutable.value=mutable.value.copy(busy=false,error="Incomplete assignment.");return}
             val paths=inventory.requiredPaths
             fun finish() {
-                document(""){last->if(last!=docs[base]){mutable.value=mutable.value.copy(busy=false,error="Assignment changed. Refresh.",content=null);return@document}
-                    if(!AssignmentClientDocuments.valid(scope.clientUid,scope.workspaceId,aid,docs)){mutable.value=mutable.value.copy(busy=false,error="Complete assignment could not be verified.",content=null);return@document}
+                val headerStarted=timeSource.markNow()
+                read(AssignmentReadRequest(if(own)"client-assignment-document" else "assignment-document",scope.workspaceId,scope.clientUid,assignmentId=aid,relativePath="")){lastRead->
+                    if(lastRead.document!=docs[base]){fail("Assignment changed. Refresh.");return@read}
+                    if(!AssignmentClientDocuments.valid(scope.clientUid,scope.workspaceId,aid,docs)){fail("Complete assignment could not be verified.");return@read}
                     val snapshot=AssignmentContract.json.decodeFromJsonElement<AssignmentSnapshot>(docs.getValue("$base/snapshots/content"));val wid=snapshot.workoutIds.single();val workout=AssignmentContract.json.decodeFromJsonElement<AssignmentWorkoutDocument>(docs.getValue("$base/snapshots/content/workouts/$wid"))
                     val items=workout.itemIds.map{AssignmentContract.json.decodeFromJsonElement<AssignmentItemDocument>(docs.getValue("$base/snapshots/content/workouts/$wid/exercises/$it")).item()}
                     val copied=AssignmentCopy(1,snapshot.title,snapshot.description,listOf(PublicationWorkout(wid,workout.title,items)))
                     val plan=docs.filterKeys{it.startsWith("$base/plannedWorkouts/")}.values.single().let{AssignmentContract.json.decodeFromJsonElement<AssignmentPlanDocument>(it)}
                     fun display(remaining:Long) {
-                        if(remaining<=0){mutable.value=mutable.value.copy(busy=false,error="Assignment expired.",content=null);return}
+                        if(remaining<=0){fail("Assignment expired.");return}
                         mutable.value=mutable.value.copy(busy=false,detail=h,content=copied,plan=plan)
-                        expiry=viewModelScope.launch{delay(remaining.coerceAtMost(86400000L*2));mutable.value=mutable.value.copy(content=null,detail=null,plan=null,error="Assignment expired. Refresh to recheck access.")}
+                        val g=generation
+                        expiry=viewModelScope.launch{delay(remaining.coerceAtMost(86400000L*2));if(owned(scope,g))fail("Assignment expired. Refresh to recheck access.")}
                     }
-                    if(own){val started=TimeSource.Monotonic.markNow();read(AssignmentReadRequest("client-assignment-time",scope.workspaceId,scope.clientUid,assignmentId=aid)){time->
+                    fun remaining(now:Long?,elapsed:Long):Long?=now?.takeIf{AssignmentContract.millis(it) && it<h.accessExpiresAtMillis && elapsed>=0}?.let{h.accessExpiresAtMillis-it-elapsed}
+                    if(own){val started=timeSource.markNow();read(AssignmentReadRequest("client-assignment-time",scope.workspaceId,scope.clientUid,assignmentId=aid)){time->
                         val o=time.document;val now=time.serverNowMillis
-                        if(now==null || o?.get("snapshotHash")!=JsonPrimitive(h.snapshotHash) || o["accessExpiresAtMillis"]!=JsonPrimitive(h.accessExpiresAtMillis)){mutable.value=mutable.value.copy(busy=false,error="Assignment unavailable.",content=null);return@read}
-                        display(h.accessExpiresAtMillis-now-started.elapsedNow().inWholeMilliseconds)
-                    }}else display(h.accessExpiresAtMillis-Clock.System.now().toEpochMilliseconds())
+                        val bound=remaining(now,elapsedMillis(started))
+                        if(bound==null || o?.get("snapshotHash")!=JsonPrimitive(h.snapshotHash) || o["accessExpiresAtMillis"]!=JsonPrimitive(h.accessExpiresAtMillis)){fail("Assignment unavailable.");return@read}
+                        display(bound)
+                    }}else {
+                        val bound=remaining(lastRead.serverNowMillis,elapsedMillis(headerStarted))
+                        if(bound==null)fail("Assignment unavailable.") else display(bound)
+                    }
                 }
             }
             fun next(index:Int){if(index==paths.size){finish();return};document(paths[index]){value->docs["$base/${paths[index]}"]=value;next(index+1)}};next(0)

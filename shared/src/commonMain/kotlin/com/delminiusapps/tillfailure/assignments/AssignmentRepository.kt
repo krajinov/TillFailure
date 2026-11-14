@@ -95,15 +95,21 @@ object AssignmentReads {
                     "client-assignment-time"->{require(scope.uid==r.clientUid && o.keys==setOf("workspaceId","clientUid","assignmentId","snapshotHash","accessExpiresAtMillis","serverNowMillis") && o["assignmentId"]==JsonPrimitive(r.assignmentId))
                         val now=o.getValue("serverNowMillis").jsonPrimitive.long;val expiry=o.getValue("accessExpiresAtMillis").jsonPrimitive.long
                         require(o["serverNowMillis"]==JsonPrimitive(now) && o["accessExpiresAtMillis"]==JsonPrimitive(expiry) && AssignmentContract.millis(now) && AssignmentContract.millis(expiry) && now<expiry && PublicationProtocol.hash(o.getValue("snapshotHash").jsonPrimitive.content));AssignmentReadResult(serverNowMillis=now,document=o)}
-                    "assignment-get"->{require(o.keys==setOf("workspaceId","clientUid","header","inventory"));val h=header(o.getValue("header"),r.clientUid,r.workspaceId,r.assignmentId)
-                        require(h.trainerId==scope.uid);val inv=json.decodeFromJsonElement<AssignmentInventory>(o.getValue("inventory"));require(json.encodeToJsonElement(inv)==o["inventory"] && inventory(inv,r.clientUid,r.workspaceId,h.assignmentId,h.snapshotHash));AssignmentReadResult(headers=listOf(h),inventory=inv)}
-                    else->{require(o.keys==setOf("workspaceId","clientUid","assignmentId","relativePath","document") && o["assignmentId"]==JsonPrimitive(r.assignmentId) && o["relativePath"]==JsonPrimitive(r.relativePath))
+                    "assignment-get"->{require(o.keys==setOf("workspaceId","clientUid","header","inventory","serverNowMillis"));val h=header(o.getValue("header"),r.clientUid,r.workspaceId,r.assignmentId)
+                        val now=serverTime(o);require(h.trainerId==scope.uid && now<h.accessExpiresAtMillis);val inv=json.decodeFromJsonElement<AssignmentInventory>(o.getValue("inventory"));require(json.encodeToJsonElement(inv)==o["inventory"] && inventory(inv,r.clientUid,r.workspaceId,h.assignmentId,h.snapshotHash));AssignmentReadResult(headers=listOf(h),inventory=inv,serverNowMillis=now)}
+                    else->{val trainer=r.action=="assignment-document"
+                        require(o.keys==setOf("workspaceId","clientUid","assignmentId","relativePath","document")+(if(trainer)setOf("serverNowMillis") else emptySet()) && o["assignmentId"]==JsonPrimitive(r.assignmentId) && o["relativePath"]==JsonPrimitive(r.relativePath))
                         if(r.action.startsWith("client-"))require(scope.uid==r.clientUid)
-                        val document=o.getValue("document").jsonObject;require(document.toString().encodeToByteArray().size<=24576);AssignmentReadResult(document=document)}
+                        val document=o.getValue("document").jsonObject;require(document.toString().encodeToByteArray().size<=24576)
+                        val now=if(trainer)serverTime(o) else null
+                        if(trainer && r.relativePath==""){val h=header(document,r.clientUid,r.workspaceId,r.assignmentId);require(h.trainerId==scope.uid && now!!<h.accessExpiresAtMillis)}
+                        AssignmentReadResult(document=document,serverNowMillis=now)}
                 }
             }
         }.getOrDefault(AssignmentReadResult(error="unavailable"))
     }
+    private fun serverTime(o:JsonObject):Long {val now=o.getValue("serverNowMillis").jsonPrimitive.long
+        require(o["serverNowMillis"]==JsonPrimitive(now) && AssignmentContract.millis(now));return now}
     fun inventory(v:AssignmentInventory,client:String,wid:String,aid:String,hash:String)=v.schemaVersion==1 && v.workspaceId==wid && v.clientId==client && v.assignmentId==aid && v.snapshotId=="content" && v.assignmentRevision==1 && v.snapshotHash==hash &&
         v.requiredPaths.size in 4..15 && v.requiredPaths==v.requiredPaths.distinct().sorted() && v.requiredPaths.all{it.isNotEmpty() && it!="manifests/download" && relative(it)}
     fun callable(s:ExerciseScope,r:AssignmentReadRequest,status:Int,body:String)=runCatching {

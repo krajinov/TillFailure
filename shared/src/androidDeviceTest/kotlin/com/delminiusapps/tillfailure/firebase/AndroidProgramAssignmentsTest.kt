@@ -21,6 +21,22 @@ class AndroidProgramAssignmentsTest {
     private fun main(block:()->Unit)=host.runOnMainSync(block)
     private fun until(check:()->Boolean){val end=System.nanoTime()+TimeUnit.SECONDS.toNanos(45);while(!check() && System.nanoTime()<end)Thread.sleep(50);assertTrue(check(),"Draft native state timeout")}
     private fun <T> await(start:((T)->Unit)->Unit):T {val latch=CountDownLatch(1);val result=AtomicReference<T>();start{result.set(it);latch.countDown()};assertTrue(latch.await(45,TimeUnit.SECONDS));return result.get()}
+    @Test fun trainerDetailExpiresUsingServerBound() {
+        val args=InstrumentationRegistry.getArguments();val prefix=requireNotNull(args.getString("m7p1bPrefix"));require(Regex("m7p1br[a-f0-9]{8}").matches(prefix))
+        val password=requireNotNull(args.getString("m7p1bPassword"));val uid="${prefix}_android_trainer_expiry";val wid="${uid}_ws";val other="${uid}_client"
+        val context=object:ContextWrapper(host.targetContext){override fun getSharedPreferences(name:String,mode:Int)=super.getSharedPreferences("${uid}_$name",mode);override fun getNoBackupFilesDir()=java.io.File(super.getNoBackupFilesDir(),uid).apply{mkdirs()}}
+        val client=AndroidFirebaseSpikeClient(host.targetContext,FirebaseEmulatorConfiguration(host="10.0.2.2",authPort=50799,firestorePort=50780,functionsPort=50701),AccountCallbackFence(),productMemoryCache=true,overrideProductAppName=uid,protectedContextForTest=context)
+        assertNull(await<StableFirebaseFailure?>{client.signIn("$uid@example.invalid",password,0,it)})
+        lateinit var root:NativeClientsModels;main{root=NativeClientsModels(client)};until{root.identity.currentState().status==GateStatus.TrainerHome}
+        val request=AssignmentReadRequest("assignment-get",wid,other,assignmentId="00000000-0000-4000-8000-000000000003")
+        val detail=await<AssignmentReadResult>{client.assignments.read(ExerciseScope(uid,wid,1),request,it)};assertNull(detail.error);assertNotNull(detail.serverNowMillis)
+        lateinit var model:AssignmentViewModel;main{model=AssignmentViewModel(client.assignments).also{it.attach(AssignmentScope(uid,wid,other,"trainer",1))}};until{!model.state.value.busy}
+        main{model.onEvent(AssignmentEvent.Open(request.assignmentId!!))};until{!model.state.value.busy}
+        assertNotNull(model.state.value.content);assertNull(model.state.value.error)
+        until{model.state.value.content==null};assertNull(model.state.value.detail);assertNull(model.state.value.plan);assertTrue(model.state.value.error!!.contains("expired"));main{model.clear()}
+        assertNull(client.invitations.pending(uid));println("M7P1B_ANDROID_TRAINER_EXPIRY")
+        CountDownLatch(1).await(180,TimeUnit.SECONDS);error("Host checkpoints before stopping this read-only probe")
+    }
     @Test fun commandsAcrossProcessRestart() {
         val args=InstrumentationRegistry.getArguments();val phase=requireNotNull(args.getString("m7p1bPhase"));val prefix=requireNotNull(args.getString("m7p1bPrefix"));val password=requireNotNull(args.getString("m7p1bPassword"))
         require(Regex("m7p1br[a-f0-9]{8}").matches(prefix));val parts=phase.split('-');val kind=parts[0];val mode=parts[1];val base="${prefix}_android_${kind}_$mode";val uid=base;val wid="${uid}_ws";val other="${uid}_client"

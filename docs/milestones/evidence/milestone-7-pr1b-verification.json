@@ -113,31 +113,31 @@
     "firebase/functions/src/command-identity.ts": "025b6b55ed56c24209bb3ab3571547f290e83b1f8c262191c6a2d2f0e20477f1",
     "firebase/functions/src/command-resolution.ts": "ecdf97b60f04c2d872becbf993945e0e6aa2af7f52a28cd6e141ec3dbb11a1fc",
     "firebase/functions/src/index.ts": "afcbd0b76d2a20b846d2f4e65842e98c21a2ad0bb887cb17f3f08e42ba2f2f4e",
-    "firebase/functions/src/program-assignments.ts": "4c4125ccbdcdf773c3cfed6c0c5e4f2094ebed7841e5d7c3422d92cdd85c3b5c",
+    "firebase/functions/src/program-assignments.ts": "c267ceda80453a49f23c32264f03c0658a4fd4fdd0b3cc2a052d16ff71597bda",
     "firebase/functions/src/program-publication-contract.ts": "c6f60398360742dfb7ae5cf608a6e919d734ac4c1c8176f68cd60be5253c6aec",
     "firebase/functions/test/assignment-pr1a-transactions.test.ts": "8df14d66a4fe3d594afa79bd67fb183b4f843078890431d80e2b08104a8b21ba",
     "firebase/functions/test/assignment-pr1b-fixture.ts": "e6f58183ff8f1aaf324001b352208b3f9c332f7d238a89996432c8e27d8dde60",
     "firebase/functions/test/assignment-pr1b-rules.test.ts": "6e6a9a0e38795ba043db3623465cf559a7664486f1a631ab7268012af1d5f5ac",
-    "firebase/functions/test/program-assignments.test.ts": "2e0cac7cc9350b04aea9187a076cfb89bc99351b9599024b3107b3018dcd3d42",
+    "firebase/functions/test/program-assignments.test.ts": "fd9db596abb610f9028df7995ec1f69f71829b12946203252d3ce30fce57a052",
     "firebase/functions/test/rules.test.ts": "daa6165b7163317367c0a078df861201f90b2c1379c419308b5f551cab772afb",
     "gradle/libs.versions.toml": "74d10fa0885e2ad933f4c64f51961226b440e516089a9ce622d4d92d4d2dacc5",
     "iosApp/feasibility/AssignmentAdmissionMain.swift": "c52ed826466e55ca26df690f7b8981608a7045489a9345764324a68b130acd79",
     "iosApp/feasibility/run-assignment-admission.py": "d66e7970a8ba0b90730799b636a6d8366af599f420e6264e113a76c5599733af",
     "iosApp/iosApp/FirebaseNativeBridge.swift": "2c48045c8ce85195d2f8a05cbbb1cd00f546ae6283f144e5553b95eb8e93b5b7",
-    "iosApp/iosApp/ProgramAssignmentsHarness.swift": "e7b9bf1ad413a3f8e4d6ac67bf21e1a4198e7b054c43eccb243bf6a22ef37e9d",
+    "iosApp/iosApp/ProgramAssignmentsHarness.swift": "0a45b1a82a132c07ec6a35866734903fe025b4b4c638f315ae0daa9d3f9d1bc5",
     "iosApp/iosApp/RecoveryPersistenceBridge.swift": "21e27e77b4797eaa4c1d9ca6e86558b15ab9da13655e914701e24095032a6af3",
     "iosApp/iosApp/iOSApp.swift": "03cd8f7f711c441e215b274a10092c1ad6ae7b3ed1af3190f7b4328cd37cd863",
     "shared/src/androidDeviceTest/kotlin/com/delminiusapps/tillfailure/assignments/AndroidAssignmentAdmissionTest.kt": "66aa68e574072922cb340c9f5222d2270aa623880368b2894539fe8d80d29b55",
-    "shared/src/androidDeviceTest/kotlin/com/delminiusapps/tillfailure/firebase/AndroidProgramAssignmentsTest.kt": "e279a8e730ac50cec7f4cdc5375fd074897305b286b29c8846016f3352cf1c12",
+    "shared/src/androidDeviceTest/kotlin/com/delminiusapps/tillfailure/firebase/AndroidProgramAssignmentsTest.kt": "462208f7ac1b876fd8d2e5ac9161e5e61026159566ac642ff5b1ab80f54ca8b7",
     "shared/src/androidHostTest/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentFixtureTest.kt": "fe6e88ba3bd8bad463702ae6e571b0ed9f60fb33511f664638dba6e949b745d8",
     "shared/src/androidMain/kotlin/com/delminiusapps/tillfailure/firebase/AndroidFirebaseSpikeClient.kt": "38f75c56a0ff5a6bdf7b868f25f3fc911f9191216333771eae76f9dd5dba8237",
     "shared/src/androidMain/kotlin/com/delminiusapps/tillfailure/persistence/AndroidAtomicFilePersistence.kt": "73b3613d9abd61bd0b0b4a5c54c5aef49a4b00f03b8fa320d56a280db43af08d",
     "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentClientDocuments.kt": "9da64a28e82bbb026350b02225e3183253855c60c33893c96458d191dbcf4e9b",
     "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentContract.kt": "6936f0153c5acb328cc6ba9a0f20906a8c65f1083d972dba263061b12ea347dd",
     "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentProtocol.kt": "eedf9d37c964be01a06d98036a8d725e0a1422006bfbb2d3fc7a60e44ebc6fe1",
-    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentRepository.kt": "5ff625c4f5d699d6523fd0053eb860eb3320c8ea7f79d733daeada071c4b04a5",
+    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentRepository.kt": "fce939006dfc486a6737baa6d45eecaf9afa946e957b86f9753f7a93aabfc0fb",
     "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentScreen.kt": "7478bce93dff9b549fc010445ec7edf408093399476acd030463c59f73e40649",
-    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentViewModel.kt": "a29afd28b13bb29799febdeecf474d30a9400fc2d399ec054be7996f8bb5cc16",
+    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentViewModel.kt": "53516f91cd2bd7b305a333703213367abf29356b8b778bdcb406dad028be8129",
     "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/clients/ClientsScreen.kt": "4a46276acbb9929fc9ad27e608cd747c68af19339bca441202c3731b194b0bd6",
     "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/identity/IdentityRoot.kt": "2b481a62198e291bdb126594fb9880f854606f1716a162dc316b03f4c8e5a30f",
     "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/identity/ProductIdentityClient.kt": "aab78dcde056fd1c17c16b858ec40f8bd4bbc0b27d3eddd126033795daa2f539",
@@ -148,6 +148,7 @@
     "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/persistence/PersistencePrototype.kt": "d538b4e4dbef895ed1d23da1bf52ef738675770b93df103964ce5638979d1000",
     "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/programs/ProgramPublication.kt": "28b39b0daf7731433e9bf5ebbef9b124c07ba822323aeee4da95e3d8ded5d8da",
     "shared/src/commonTest/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentContractTest.kt": "139e04504effac8d9101514978d0ce1a465cf53e072ed1f89eaec6ee1013e3f6",
+    "shared/src/commonTest/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentExpiryTest.kt": "220b38541e5cd147f78e8d076197be9b48d6442e279d29c3353e1de2c4b6db9a",
     "shared/src/commonTest/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentRecoveryTest.kt": "f0f9afd99df78346206da48a76e86f68535d69badffdb86399eb45e192439e4b",
     "shared/src/iosMain/kotlin/com/delminiusapps/tillfailure/firebase/IosFirebaseBridge.kt": "687a0e830ebd04e6ac1ed38067a3bee6215e8e0f47ac37b4f9c67f6944995f88"
   },
@@ -2510,12 +2511,316 @@
       "shared/src/commonTest/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentRecoveryTest.kt": "f0f9afd99df78346206da48a76e86f68535d69badffdb86399eb45e192439e4b",
       "shared/src/iosMain/kotlin/com/delminiusapps/tillfailure/firebase/IosFirebaseBridge.kt": "687a0e830ebd04e6ac1ed38067a3bee6215e8e0f47ac37b4f9c67f6944995f88"
     },
+    "historicalBuildOutputNote": "Original native APK bytes archived before new installation, original iOS hosts retained. Shared framework/build-output locations are mutable and were rebuilt; historical digests record original bytes, not current paths. All native ciphertext, source/export/checkpoint manifests and device keys remain preserved.",
     "path": ".firebase/m7-pr1b-native-final/source-before-native.sha256.json",
     "postMatrixTrainerReadFix": {
       "firebase/functions/src/program-assignments.ts": "4c4125ccbdcdf773c3cfed6c0c5e4f2094ebed7841e5d7c3422d92cdd85c3b5c",
       "firebase/functions/test/program-assignments.test.ts": "2e0cac7cc9350b04aea9187a076cfb89bc99351b9599024b3107b3018dcd3d42"
     },
     "sha256": "975d160b88fcce6b3e814c589edbf8acc957787cdbb18d10950febc9efc8da5b"
+  },
+  "p2TrainerExpiryCorrection": {
+    "branch": "feature/milestone-7-pr1b-program-assignment",
+    "cleanLocalAndRemoteHeadVerifiedBeforeEditing": true,
+    "commitMessage": "fix(assignments): bound trainer detail expiry by server time",
+    "commonExpiryRegressionCount": 9,
+    "currentUnresolvedFindingVerifiedBeforeEditing": true,
+    "displayTiming": {
+      "clientOwnTimeEndpointPreserved": true,
+      "deviceWallClockUsedForDetail": false,
+      "expiryAndDenialInvalidateCallbacksAndTimers": true,
+      "finalSecondHeaderBound": true,
+      "fractionalLatencyRoundsUp": true,
+      "monotonicRequestLatencyDeducted": true
+    },
+    "failedAttempts": [
+      {
+        "log": {
+          "path": ".firebase/m7-pr1b-p2/shared-builds.log",
+          "sha256": "2235b571e3b627a17f973541b2ee2f8f0ab598fdc99043f0df87b6a95602c2b7"
+        },
+        "reason": "Nested test class compilation; corrected placement before passing runs"
+      },
+      {
+        "evidence": "Tool transcript and this explicit record",
+        "reason": "First native command referenced driver before it was written after seed. No native/protected command ran; same unchanged read-only fixture used for successful explicit export/probes"
+      }
+    ],
+    "finding": "https://github.com/krajinov/TillFailure/pull/21#discussion_r4574821119",
+    "focusedNative": {
+      "actualPlatforms": [
+        "android",
+        "ios"
+      ],
+      "androidTermination": "Host intentionally stopped the held probe after success marker and verified checkpoints; not a completed ordinary JUnit run",
+      "beforeNativeExport": {
+        "path": ".firebase/m7-pr1b-p2/native/before-native-export.sha256.json",
+        "sha256": "cbafd41da2e8695c0d098ef533cdf58c2c0d5079c6b61a1d8d1a36c9f7f74abf"
+      },
+      "cases": [
+        {
+          "ciphertextCheckpoint": {
+            "path": ".firebase/m7-pr1b-p2/native/android-native.sha256.json",
+            "sha256": "ff8a27383acf1b6f336e387c1e13a6878f12e8c93600a265422ed060ccbe3596"
+          },
+          "completeExport": {
+            "path": ".firebase/m7-pr1b-p2/native/android-export.sha256.json",
+            "sha256": "0f68fb405fdfa7b9524c6ff2f230a40e610e750eaf2b9600bae87a8b58219c11"
+          },
+          "log": {
+            "path": ".firebase/m7-pr1b-p2/native/android.log",
+            "sha256": "9c052cb8d1719510fc617a207f02a9103f411dc7be644a04313639cd18d3448b"
+          },
+          "platform": "android"
+        },
+        {
+          "ciphertextCheckpoint": {
+            "path": ".firebase/m7-pr1b-p2/native/ios-native.sha256.json",
+            "sha256": "8c4d8b72b761f3776d193ed30c0d21eee2e7f229fd4de881bd71ea73ce3bdec2"
+          },
+          "completeExport": {
+            "path": ".firebase/m7-pr1b-p2/native/ios-export.sha256.json",
+            "sha256": "b7959b7737bad58daacfa705a9a07ed3dd25499d2ef4d37150eac40a8b0ac2c4"
+          },
+          "log": {
+            "path": ".firebase/m7-pr1b-p2/native/ios.log",
+            "sha256": "8f3dc4069dd490123d3ff2bd09b05bb322383eacbc102fceac2251ffdc06443e"
+          },
+          "platform": "ios"
+        }
+      ],
+      "finalExport": {
+        "path": ".firebase/m7-pr1b-p2/native/final-export.sha256.json",
+        "sha256": "0400ca423d0ad9e5eca071ea2c1c733e3e690d44b0cded7db0d72386a7e599cf"
+      },
+      "noProtectedCommandsOrCoverage": {
+        "counts": {
+          "assignmentCommands": 0,
+          "commandResolutionConfig": 0,
+          "commandResolutionCoverage": 0,
+          "lifecycleCommands": 0
+        },
+        "verified": true
+      },
+      "readOnlyCreateOnlyFixtures": {
+        "path": ".firebase/m7-pr1b-p2/native/fixtures.json",
+        "sha256": "15ec13fd101dd9baaa3866fb228888f34c247194a07601f95c54f05c4fa0b94b"
+      },
+      "shutdown": {
+        "completeExportVerified": true,
+        "focusedNativeCases": 2,
+        "keysAndDatasetsPreserved": true,
+        "protectedCommands": 0,
+        "supervisorExitCode": 0,
+        "supervisorPid": 44728,
+        "taskDevicesStopped": true
+      },
+      "verifiedServerBoundCompleteContentAndAutomaticExpiry": true
+    },
+    "freshBackend": {
+      "fail": 0,
+      "pass": 331,
+      "path": ".firebase/m7-pr1b-p2/backend.log",
+      "sha256": "53de8d5df10607f09fcf39850049f0d80f5d7c9624766f70865f8f5c65043b1e",
+      "skipped": 0,
+      "tests": 331
+    },
+    "freshBuildLogs": [
+      {
+        "path": ".firebase/m7-pr1b-p2/shared-builds-final.log",
+        "sha256": "292bd3a351bc8243198ab9cb5d42d39b57ffea00641d719394f9156c50a4ce24"
+      },
+      {
+        "path": ".firebase/m7-pr1b-p2/ios-debug.log",
+        "sha256": "91239c53eba9f5f62e8f1b317ef5c49f2790c62f10fd9192a6d7aa4336149816"
+      },
+      {
+        "path": ".firebase/m7-pr1b-p2/ios-release.log",
+        "sha256": "b95f09cae83912a641ff5ecf8384f9dbb2eeaaec2cab643ce4d2cba63671e8b5"
+      }
+    ],
+    "freshResultFiles": {
+      "iosSimulatorArm64Test": {
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.AppSurfaceTest.xml": "d59121d94e10e9c68eb926d4c72cc249cbbeaf11fc4a2e4277dfe8b409935a99",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.app.AuthFixtureDraftTest.xml": "373307f89ad66d1fabe296efde22847ac9f749db5bce680b22102556efa46b95",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.app.FoundationSnackbarHostTest.xml": "c96a80eece50258ecd523471bf0810b064cd56b99e37f620d33269efcdeb52d1",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.assignments.AssignmentContractTest.xml": "f0babc3dae24f00d4cadb6cc8afa68e9f35a8fa6a1f417e8e5f35cecd83e6720",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.assignments.AssignmentExpiryTest.xml": "82922d84462e7ce0d0415ab4fc9a3961b9cf38a49f7b25e734f2b2457028d0f9",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.assignments.AssignmentRecoveryTest.xml": "bf54a807dcafa089b2d1985ca6c1ad01add8d393cd50090307285155fd89991a",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.clients.ClientInvitationsTest.xml": "9cedb1302fba0c8ce5839a5a96da4ae17bc34b910e12de2a9f426ba2211a0c28",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.clients.ClientRevocationTest.xml": "c9e9a0dc9682e00fa17ae53beec0dd1bae94af6825d20ed879dc91c6fb8143a0",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.clients.ClientsTest.xml": "8b1971d17c695a12a7e55041022287895b4345b776271358430d4b40513d66f8",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.clients.TrainerNotesTest.xml": "7bfe3f468a481f00c570d899651f407794905e394633ca693e3107620bba73c0",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.core.designsystem.DesignSystemContractTest.xml": "c9bd4168515608cd6632a8b797aa94112de2ddcdaacaec3724b23f4d1c519caf",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.designcatalog.Milestone2ReviewRegressionTest.xml": "b5ac04c404ee9846725bba620f2d3e9d74b1f70472696f879804909fe48e3b68",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.exercises.CustomExercisesTest.xml": "13818a0245301f2823d0daaa5f1ec1c14c79b626c9d7f6af6c2e8c615ea2e925",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.exercises.CustomExercisesViewModelTest.xml": "ece32fa8c11830be85fffd848f3d054c20e36664d5c64fac35c1db2b2600b44c",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.exercises.SystemExercisesTest.xml": "6074d59d4a44d8f80cf4905d779b32e8639602ef539667c7a6017d7e80e94f22",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.firebase.CounterValueContractTest.xml": "e519aa73ae1e0dc426c8437b83e5a8a475d56992d101f1d7be3f5ab9f8b492a5",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.firebase.FirebaseContractsTest.xml": "1e4baddb3b498b4ecb928494815322b06e8eae5d5ab317f1a92aea7086ace170",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.foundation.details.FoundationDetailsViewModelTest.xml": "e3b73df4bfa5cf84a7f3ba9a480a46ff5a56d0838cdc73f9dfd352313633f80b",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.foundation.home.FoundationHomeViewModelTest.xml": "2ba4a3f4e5d1ec7663010792f38d149e82972eff84423f1055429f2b15e35053",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.identity.CleanDepartureTest.xml": "3e4dc4dbdcdc7d11abef3ee7c92dfa1c56697272ae761788e0a9c93c924b2683",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.identity.IdentityGateTest.xml": "a7321bb7458449769f7ff8576a02eceba686f4e4991db05d0d883494abd4a38a",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.identity.IdentityViewModelTest.xml": "19d48f6f8304bf16dc8ea83f9e5a3e7b084597bac516685a279e92880e13f5a7",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.identity.NavigationStoresTest.xml": "0832b69714074b4790a4ee078ff456710c7b00c6efdc7f83d5c9a0229ba40c47",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.invitations.CommandResolutionTest.xml": "b24fa57d91b4fef7f3c0e3982a35ff10faa6260f51ef7596626669a72fe9f316",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.invitations.InvitationTest.xml": "7273474a94a4f85797f54a02180accf5f9f68d3e17e379c655ad637ce5cca1e6",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.invitations.RecoveryHardeningTest.xml": "5b380792377b11cdd5b22b14d95c091c634483b932760b51866ad8796c45b6c1",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.invitations.SettledCommandMarkerTest.xml": "334762c6b30cee8f74042c5119696074ed023e3e55a9216c176da2c0a4eb05e1",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.onboarding.OnboardingTest.xml": "2212f3e4d292033d65adc0de5e6a03a8364d0a3cdacdd24b538bf0ffd9efc97a",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.persistence.IosAtomicFilePersistenceTest.xml": "b3f7548887c8ffbfa348df87d4fc962cc3003f95af4cf26cd3ecf0e07e46cc52",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.persistence.RecoveryUidContractTest.xml": "dd9f907b53b6cf25a641603adc3dff66d1d6bc56e98e419a2cdd7c0331f342ef",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.profile.ProfileTest.xml": "282c5ff24933178afff66c596552efb1fca834f979d2dae05067c5a0de79a3a7",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.programs.DraftsViewModelTest.xml": "3269672c32274fa73c00cf1a7165460bebb8168a249a0c86d354266e5cdba763",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.programs.ProgramDraftTest.xml": "ac4391a707b0fa740452a1857e54820d73da11aa9366719d013618540deaf571",
+        "fresh-final-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.programs.ProgramPublicationTest.xml": "1a92961bba249c5ae0fef62b438925785c791db94970da9d5e2af4170990f028"
+      },
+      "testAndroidHostTest": {
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.AppSurfaceTest.xml": "1b641ebde7d37b0a6a331cd45aad12705e2d043c13eb6c972e9bde1dd3d304a8",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.app.AuthFixtureDraftTest.xml": "24f77daabd9c2dd79b9f56b8c3c38aa55a890155a6dfeacf7318239dd494394d",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.app.FoundationSnackbarHostTest.xml": "afed9a0a8145438b906aa680e4102f73e12f5162210b9bbc70ae9d37c937dc99",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.assignments.AssignmentContractTest.xml": "a793e83489325fd3a30f59c98f838a44ea72744fbeebd6fdca1c289c885a0813",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.assignments.AssignmentExpiryTest.xml": "992cb14234025d5657f5dcef5563b659f080eccc81b129bddcbc5ec04282417b",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.assignments.AssignmentFixtureTest.xml": "296ea09ade1fcf5d6c875c4e4f465de08db0f8b213bbb8c17535e2128654cb6d",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.assignments.AssignmentRecoveryTest.xml": "6211dbe3343fabcf379e96ab8b585081c176b587b2b58cebed70c6bd32244d3e",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.clients.ClientInvitationsTest.xml": "568c67d7523ab30434051985be258178a158df36858ed5b286dc94f62ed0c79e",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.clients.ClientRevocationTest.xml": "d504518ff6a0cd9de09bf1822de57dce2affb5948001339f29d428acc57b07b4",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.clients.ClientsTest.xml": "cf796974abc73d61a59bc86291d7f5c72dab940f9020554c8de63eac46b07ba4",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.clients.TrainerNotesTest.xml": "c8ecfbce9f962575e48d61dcdadb11b5c1554e51cb0337eb2b1b86ce77ec01bc",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.core.designsystem.DesignSystemContractTest.xml": "17fdfad14c15efec3fb8754d7e5e3525c6e2e322a3ce2c87e627fb51906d73a8",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.designcatalog.Milestone2ReviewRegressionTest.xml": "a41aca98f153aaf2d9976d3010f3ed4ced7f3aad85e143a0dd7ddf23ce94c7cc",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.exercises.CustomExercisesTest.xml": "9c8ae57d877792d78a5aac9090dac17520984982b5912caf33c96d884b1ef4de",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.exercises.CustomExercisesViewModelTest.xml": "375dd30492f39adb3938bbe7ab3536c1f823b20f5139327c50d0ab7af7bf4063",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.exercises.SystemExercisesTest.xml": "8f6fb1c42ccaf1e2557a368347848c997551782c807a2f893aaa8c5b6092bd70",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.firebase.CounterValueContractTest.xml": "8145c1c722e4846f70a58e79ce4db844bc61a3409518ad61ea670eb36cb61b30",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.firebase.FirebaseContractsTest.xml": "45b2a7a78192a3b5420724fcf0748f09e9e59980ea8bf09a4bc1d7064132d5f3",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.foundation.details.FoundationDetailsViewModelTest.xml": "0e0a4e88b664a4291e0d9b906e029dc8445b50fe1c833eb76cb1582628e5d260",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.foundation.home.FoundationHomeViewModelTest.xml": "6e5f1e4cb52b339a8079b96360793252d6e15f1d153bc5dd45c032dee2f8b18d",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.foundation.scoping.FoundationViewModelStoreTest.xml": "11e64fb80b1d4fb4057cc62d04e12590e358bc2bd08404b03bf7e555d52c13dd",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.identity.CleanDepartureTest.xml": "cf800f421bc0fca7a91443f09d95dcd988273398f42041347ce1b788ac5dfed2",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.identity.IdentityGateTest.xml": "edbff0835eb7e6e49b576ff410f5f0fef8f82a4aa9fa60a95dc066077f1e4c5b",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.identity.IdentityViewModelTest.xml": "1932fe685c11309c301bdafbb476d0cbc40640d47f4b1cd87d4f66ef33cc48ef",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.invitations.CommandResolutionTest.xml": "ca77d9a1e1a47f36a4088319bd5573a773024b503464c7c68dd615fe83336ded",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.invitations.InvitationTest.xml": "205753e283b9d03af5282ee70d68b348e1f457036171efc89be8229358fb0b4c",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.invitations.RecoveryHardeningTest.xml": "35df0e990446fc223f71437e5d35a4aa2409fd5a777393ec2208a7c9e97d34e1",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.invitations.SettledCommandMarkerTest.xml": "a2feb90657c615d694f715aea605f68f7c7350ee950f859999dea819d9138575",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.onboarding.OnboardingTest.xml": "d00ec8f4ded9111ddba36a3d8f14998b8e5d84c2ba0b9200b04c02d799f3fb1c",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.persistence.RecoveryUidContractTest.xml": "08a44b132e0b1d4b02a221c48b2c232e1b61a8749f448241bc3f8d035fe11d71",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.profile.ProfileTest.xml": "ee027f469e8a1defd87dda7f022c78eec360f125d3a6ebbe1c2c86274d92a704",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.programs.DraftNativeFixtureTest.xml": "d8496cb13befa11821c7c570aaf5a171da93b61cdec5045af30ed012643bdf00",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.programs.DraftsViewModelTest.xml": "aaaef41549d8d16d80c40897d08f15d453f61ba388941de01d7beeee63e81455",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.programs.ProgramDraftTest.xml": "af62ed067c8b7b4bb2b79f6556d4fd67599f73a6dbe666f3dfd0a31a0d7e7612",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.programs.ProgramPublicationTest.xml": "f7fa5ac5c1a0f2e54e383c6aab83fe7c908525e612c38e7d18e2271b1974ba7c",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.programs.PublicationNativeFixtureTest.xml": "48d466ac5a7db4e77e4efc2ef85960110aad33971b6907004755617c42eda0e0",
+        "fresh-final-testAndroidHostTest/TEST-com.delminiusapps.tillfailure.programs.PublicationResponseFixtureTest.xml": "0f35b886ba0e670f3246f3f80e1f800d9d5b1baa6f111e9bbe54fc60321eef9c"
+      }
+    },
+    "freshShared": {
+      "iosSimulatorArm64Test": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 275
+      },
+      "testAndroidHostTest": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 1,
+        "tests": 277
+      }
+    },
+    "freshSharedLog": {
+      "path": ".firebase/m7-pr1b-p2/shared-tests-client-regression.log",
+      "sha256": "b5b9146bb9bfc9ab56f9451caed073046eb9202c0d9a6fde8041a29760cd2c1c"
+    },
+    "noMergeDeployResetRekeyHistoryRewriteOrPublishEnablement": true,
+    "priorArtifactLocations": {
+      "androidApp/build/outputs/apk/debug/androidApp-debug.apk": {
+        "path": ".firebase/m7-pr1b-p2/retained-artifacts/com.delminiusapps.tillfailure.apk",
+        "sha256": "a2b8203ec5680fdbf887e3fbc5b33b9c8a32809fbc96a29e3831cf57cc80ddcd"
+      },
+      "shared/build/outputs/apk/androidTest/shared-androidTest.apk": {
+        "path": ".firebase/m7-pr1b-p2/retained-artifacts/com.delminiusapps.tillfailure.shared.test.apk",
+        "sha256": "ece3ac1d4569fbb18775f913fe06cd4e02f04a07cb4d4d47719f2575c22be853"
+      }
+    },
+    "priorBuildOutputAttribution": "Original native APK bytes archived before new installation, original iOS hosts retained. Shared framework/build-output locations are mutable and were rebuilt; historical digests record original bytes, not current paths. All native ciphertext, source/export/checkpoint manifests and device keys remain preserved.",
+    "releaseIsolation": {
+      "android": {
+        "excluded": [
+          "AndroidProgramAssignmentsTest",
+          "AndroidAssignmentAdmissionTest",
+          "AssignmentExpiryTest",
+          "M7P1B_",
+          "TF_M7P1B"
+        ],
+        "path": "androidApp/build/outputs/apk/release/androidApp-release-unsigned.apk",
+        "sha256": "3f9ed03464fa9d889b5932a96df65dc489349913d2961cba0ee689d7ed5fe144"
+      },
+      "ios": {
+        "excluded": [
+          "ProgramAssignmentsHarness",
+          "TF_M7P1B",
+          "M7P1B_IOS",
+          "AssignmentNative",
+          "trainer-server-expiry-clears-detail"
+        ],
+        "path": ".firebase/m7-pr1b-p2/xcode/Build/Products/Release-iphonesimulator/TillFailure.app/TillFailure",
+        "sha256": "56df145616a63c8b57d8a07dfc508f1da89862f9a7e66722c1f1063b5e8216dd"
+      }
+    },
+    "retainedEvidence": "Prior protected recovery/admission cohorts and two-role UI/200% text remain retained, not rerun or claimed against these later bytes. New checks are affected suites/builds and two focused read/expiry probes.",
+    "reviewActionAuthorization": "After verified normal push, reply to finding, resolve it, and post exactly one fresh @codex review request",
+    "serverTimeContract": {
+      "actions": [
+        "assignment-get",
+        "assignment-document"
+      ],
+      "headerBoundBeforeExpiry": true,
+      "protectedProtocolStorageAndTimingPolicyUnchanged": true,
+      "requiredField": "serverNowMillis",
+      "sameAuthorizedCompleteGraphTransaction": true,
+      "strictIntegerRange": [
+        0,
+        253402300799999
+      ],
+      "transportAdaptersUnchanged": true
+    },
+    "sourceChanges": {
+      "firebase/functions/src/program-assignments.ts": "c267ceda80453a49f23c32264f03c0658a4fd4fdd0b3cc2a052d16ff71597bda",
+      "firebase/functions/test/program-assignments.test.ts": "fd9db596abb610f9028df7995ec1f69f71829b12946203252d3ce30fce57a052",
+      "iosApp/iosApp/ProgramAssignmentsHarness.swift": "0a45b1a82a132c07ec6a35866734903fe025b4b4c638f315ae0daa9d3f9d1bc5",
+      "shared/src/androidDeviceTest/kotlin/com/delminiusapps/tillfailure/firebase/AndroidProgramAssignmentsTest.kt": "462208f7ac1b876fd8d2e5ac9161e5e61026159566ac642ff5b1ab80f54ca8b7",
+      "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentRepository.kt": "fce939006dfc486a6737baa6d45eecaf9afa946e957b86f9753f7a93aabfc0fb",
+      "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentViewModel.kt": "53516f91cd2bd7b305a333703213367abf29356b8b778bdcb406dad028be8129",
+      "shared/src/commonTest/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentExpiryTest.kt": "220b38541e5cd147f78e8d076197be9b48d6442e279d29c3353e1de2c4b6db9a"
+    },
+    "startingHead": "e711017759dfb2d956fd8b6e485b774209b3f5ef",
+    "startingManifest": {
+      "path": ".firebase/m7-pr1b-p2/starting-documents/evidence/milestone-7-pr1b-source-manifest.sha256",
+      "sha256": "73c503517d82d4c1b0453395ae5b62c97efc9bd35e17e0aee81290d1a63e80c1"
+    },
+    "startingReport": {
+      "path": ".firebase/m7-pr1b-p2/starting-documents/milestone-7-pr1b-report.md",
+      "sha256": "d405703fdba5f8ff0bf4f76161035309b13e04a56e53ab17e9f24cc0943c8735"
+    },
+    "startingVerification": {
+      "path": ".firebase/m7-pr1b-p2/starting-verification.json",
+      "sha256": "40b0b9f262c25c37c1685aaf5b14c0c5f9485976e555c8a861bcc2cba7da90f4"
+    },
+    "testCoverage": [
+      "ahead/behind wall clocks",
+      "wall clock changes during display",
+      "response latency and fractional milliseconds",
+      "expiry during request and duplicate callbacks",
+      "missing/malformed/expired bounds on both trainer packet types",
+      "background/disposal clear and fresh reentry",
+      "authority loss and stale response",
+      "old epoch timer vs new visit",
+      "unchanged client copied-document/time endpoint"
+    ],
+    "threadId": "PRRT_kwDOUKords63g8_r"
   },
   "releaseAudit": {
     "android": {
@@ -2547,7 +2852,7 @@
   ],
   "report": {
     "path": "docs/milestones/milestone-7-pr1b-report.md",
-    "sha256": "d405703fdba5f8ff0bf4f76161035309b13e04a56e53ab17e9f24cc0943c8735"
+    "sha256": "b654a27034e3e7d7614f7ba5012b22bf543b92088f5c22ceace8bf0c98925863"
   },
   "review": {
     "dependencyPinsUnchanged": true,
@@ -2561,7 +2866,7 @@
     "taskCredentialsAbsent": true
   },
   "schemaVersion": 1,
-  "scope": "M7-D1\u2013D9 synthetic emulator-only implementation; separate finalization authorizes bounded corrections, one implementation commit, normal push and PR against main; no merge/deployment/later scope",
+  "scope": "Approved synthetic emulator-only M7 PR1b plus authorized PR21 P2 trainer expiry correction; no protected protocol/storage/later lifecycle or deployment changes",
   "shared": {
     "iosSimulatorArm64Test": {
       "errors": 0,
@@ -2585,9 +2890,9 @@
     }
   },
   "sourceManifest": {
-    "entries": 58,
+    "entries": 59,
     "path": "docs/milestones/evidence/milestone-7-pr1b-source-manifest.sha256",
-    "sha256": "73c503517d82d4c1b0453395ae5b62c97efc9bd35e17e0aee81290d1a63e80c1"
+    "sha256": "ecf0aad921d5475b2e4cd40bd6af88262e756289da59b390df54f07e15d4d644"
   },
   "typedNativeCheckpoints": [
     {
