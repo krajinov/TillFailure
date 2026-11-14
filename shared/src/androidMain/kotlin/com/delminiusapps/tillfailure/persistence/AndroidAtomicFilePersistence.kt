@@ -86,6 +86,13 @@ class AndroidAtomicFilePersistence(
     }
 
     private fun writeLocked(envelope: AccountPersistenceEnvelope) {
+        writePlaintextLocked(envelope) { PersistenceJson.format.encodeToString(envelope) }
+    }
+
+    // Keep the production atomic/encryption path separate from typed encoding. PR 1a's
+    // device-test reflection exercises future-format bytes here without adding a public API.
+    // Normal callers still enter only through write()/the unchanged twelve-kind envelope.
+    private fun writePlaintextLocked(envelope: AccountPersistenceEnvelope, encodedPlaintext: () -> String) {
         try {
             check(rootDirectory.mkdirs() || rootDirectory.isDirectory) { "Unable to create recovery directory" }
             val target = fileFor(envelope.uid)
@@ -93,7 +100,7 @@ class AndroidAtomicFilePersistence(
             val cipher = Cipher.getInstance(TRANSFORMATION)
             cipher.init(Cipher.ENCRYPT_MODE, encryptionKey(createIfMissing = true))
             cipher.updateAAD(associatedData(envelope.uid))
-            val plaintext = PersistenceJson.format.encodeToString(envelope).encodeToByteArray()
+            val plaintext = encodedPlaintext().encodeToByteArray()
             val encrypted = AndroidEncryptedEnvelope(
                 encryptionVersion = RECOVERY_ENCRYPTION_VERSION,
                 keyIdentifier = keyIdentifier,
