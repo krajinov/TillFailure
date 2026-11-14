@@ -172,6 +172,54 @@
     "version": "22.23.4"
   },
   "olderM6FinalizationExit1": "No identifiable original diagnostic log located; still unexplained. New full-run revocation deadline failure is separately diagnosed, not attributed to the older attempt.",
+  "p2LiveRulesTimeCorrection": {
+    "audit": "All new live Rules assertions use fresh relative fixtures. Fixed dates in Admin transaction probes use explicitly supplied logical time and do not depend on live request.time; unchanged.",
+    "canonicalExports": {
+      "byteIdenticalToPreserved": true,
+      "expectedAsciiAndEscapedHashesUnchanged": true,
+      "files": 7,
+      "frozenFunctionBodyUnchanged": true,
+      "sha256": {
+        "ascii.json": "22c9cdb820022570700e1ad7093a9bf1ce0c7410da37150c351f619f578146a7",
+        "boundary-128512.json": "44c63e55fd153b9b7d0cd6a1b76810531e02e10f9e1f5acc5322e26dd5ac6d28",
+        "boundary-30028.json": "cebb8385c2cb7cce024709e19ccd761ce164c70d6149fee19f5e41e0b7367309",
+        "boundary-34.json": "b8fec23458e397b895d3deb9b0d6dd076c5edb7008074402159e12333bd45f5f",
+        "boundary-47.json": "7c841e60a586b754314e234c37db30ad4cf78f4c2bde493ee4cd484d1b3909e7",
+        "boundary-92.json": "d94b11b415d50d0f34e266f6853aca4f5d130a1f64d9b921321b854eba2d5ffd",
+        "escaped.json": "882a6998f6f0ac569772b9772df7a6c2065f9d919281af60f57371fa3c886025"
+      }
+    },
+    "emulatorShutdown": "graceful; task ports verified closed",
+    "failedAttempt": "Initial TypeScript TS2345: modular Firestore parameter incompatible with Rules SDK compat Firestore. Corrected seed helper parameter to ReturnType<RulesTestContext[firestore]>; compile and tests then passed.",
+    "finding": "https://github.com/krajinov/TillFailure/pull/20#discussion_r4568807270",
+    "fixturePolicy": {
+      "activeReadMarginMillis": 172800000,
+      "activeScheduleOffsetMillis": 86400000,
+      "expiredReadOffsetMillis": -86400000,
+      "expiryAfterScheduleMillis": 86400000,
+      "referenceCapturedOnce": true,
+      "requestBinding": "recomputed through existing assignmentBinding"
+    },
+    "freshVerification": {
+      "deterministicContractCases": 5,
+      "fail": 0,
+      "logSha256": "6d70b30f89eab95b5b6ce743b53b413f4e4ddb246904142a532223d76c627a65",
+      "node": "22.23.4",
+      "pass": 9,
+      "rulesCases": 4,
+      "skipped": 0,
+      "tests": 9,
+      "typescriptCompile": "passed"
+    },
+    "localArtifacts": ".firebase/m7-pr1a/live-rules-review: ignored disposable config, copied Rules/indexes, logs and canonical export comparison; no retained dataset import/export/reset.",
+    "postExpiryReference": "2030-01-01T00:00:00.000Z",
+    "priorSourceManifestSha256": "64e0b3cc499410b4055b1189b379a89636a664dc9374c7ca29fa59837378b8e7",
+    "productRulesPolicyClocksDeadlines": "unchanged",
+    "referenceEvidence": "Pure descriptor/time/binding/materialization validation at the supplied reference; live Rules run used current time. No system/emulator clock alteration.",
+    "retainedEvidence": "Prior full backend/shared/native/build/Release/opt-in results and earlier failure attribution remain retained, not rerun.",
+    "reviewDate": "2026-11-14",
+    "startingHead": "abbeedb64d3a0e9b68ceb71bd4b667d3531de2e8"
+  },
   "p2OptInCorrection": {
     "audit": "No other new ordinary-host/common test requires local exports. Android device and standalone Swift sizing are explicit fixture-consuming probes outside the ordinary host suite. Backend tests generate their inputs in memory.",
     "deterministicAssignmentContracts": {
@@ -278,7 +326,7 @@
   "sourceInventory": {
     "entries": 17,
     "manifest": "docs/milestones/evidence/milestone-7-pr1a-source-manifest.sha256",
-    "sha256": "64e0b3cc499410b4055b1189b379a89636a664dc9374c7ca29fa59837378b8e7",
+    "sha256": "3ff59ac2e16384e660be6595fcce00a95d329c95c91ffc5590891fdf32083610",
     "unchangedDependency": "iosApp/iosApp/RecoveryPersistenceBridge.swift"
   },
   "status": "isolated-pr1a-feasibility; product issuance absent",

@@ -1,6 +1,6 @@
 import { sourceIdentity } from '../src/program-drafts.js';
 import { publicationDraftHash, publicationContentHash } from '../src/program-publication-contract.js';
-import { assignmentCopy, assignmentCopyHash } from '../src/assignment-feasibility-contract.js';
+import { assignmentBinding, assignmentCopy, assignmentCopyHash, DAY_MS } from '../src/assignment-feasibility-contract.js';
 export const assignmentUuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 export function assignmentFixture(character = 'S', count = 1, wide = false, widePath = false) {
   const uid = wide ? (widePath ? '界' : '\u0001').repeat(128) : 'A', wid = wide ? (widePath ? '節' : '\u0002').repeat(128) : 'w', client = wide ? (widePath ? '語' : '\u0003').repeat(128) : 'B';
@@ -35,4 +35,16 @@ export function assignmentFixture(character = 'S', count = 1, wide = false, wide
       scheduledInstantMillis: wide ? 253402214399999 : 1800000000001,
       accessExpiresAtMillis: wide ? 253402300799999 : 1800086400001 } };
   return { uid, wid, client, version, copy, descriptor };
+}
+
+// Live Rules authorization must not inherit the canonical vectors' frozen clock.
+// Capture the reference once; keep the approved schedule/expiry arithmetic and
+// revalidate/rebind the changed descriptor through the existing contract helper.
+export function assignmentRulesFixture(now = Date.now(), state: 'active' | 'expired' = 'active') {
+  const f = assignmentFixture();
+  const preparedAtMillis = now - (state === 'expired' ? 3 * DAY_MS : 0);
+  const scheduledInstantMillis = preparedAtMillis + DAY_MS;
+  const descriptor = { ...f.descriptor, assignment: { ...f.descriptor.assignment,
+    preparedAtMillis, scheduledInstantMillis, accessExpiresAtMillis: scheduledInstantMillis + DAY_MS } };
+  return { ...f, descriptor, binding: assignmentBinding(f.uid, descriptor) };
 }
