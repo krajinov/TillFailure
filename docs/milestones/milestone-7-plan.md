@@ -1,6 +1,6 @@
 # Milestone 7 plan: program assignment
 
-Status: **M7-D1–D9 approved; M7-D10 authorized for PR 1a contract/feasibility only on 2026-11-13. PR 1b remains unauthorized.**
+Status: **M7-D1–D9 approved; M7-D10 authorized for PR 1a contract/feasibility only on 2026-11-13. PR 1b separately authorized on 2026-11-14; issuance remains subject to technical/native gates.**
 Reviewed **2026-11-12**, Europe/Sarajevo. Baseline **`de8d7256a587d8548b3512ac1ffca25fa7fa9c19`**, branch **`docs/milestone-7-plan`**.
 
 ## Canonical scope and inspected baseline
@@ -190,3 +190,12 @@ Use isolated Node 22 and the unchanged lockfile. Diagnose the recorded M6 finali
 PR 1a local handoff (2026-11-13): the authorized isolated contracts, serializers, namespace/Rules experiments and native sizing probes are implemented with attributable evidence in the [PR 1a report](milestone-7-pr1a-report.md). Product endpoints, native command dispatch, Assign UI, production Rules/indexes and Publish enablement remain unchanged. The report identifies the exact later namespace/Rules patches and new-kind recovery/interaction gates before PR 1b, which remains unauthorized. Prerequisite changes remain uncommitted and unstaged.
 
 Subsequent finalization authorization permits bounded review/corrections, affected checks, one separate prerequisite commit (`test(assignments): prove bounded assignment contract feasibility`), normal push and a review PR against main. It supersedes the handoff's uncommitted/no-push/no-PR instruction only for PR 1a publication. The [final review record](milestone-7-pr1a-report.md#final-review-and-fresh-verification) distinguishes fresh checks from retained native/full-backend evidence. No merge, deployment, product assignment issuance, Rules/index change, Publish enablement or PR 1b implementation is authorized.
+
+## Separate PR 1b authorization (2026-11-14)
+
+Josip separately authorized bounded online assignment and client readback, implementation and verification on synthetic emulators only, with independent create-only fixtures. PR #20 was verified merged into main at `3146c7621111ee872a102c2e66f0162a4a9a3357`; the clean working tree/index was fast-forwarded and branch `feature/milestone-7-pr1b-program-assignment` created at that exact baseline. This supersedes prior PR 1b authorization wording only. D1–D9 remain unchanged. Install and verify namespace/index/Auth/admission prerequisites before protected issuance and complete both actual native recovery matrices before enabling Assign UI. Publish stays disabled. No later lifecycle, offline, production, dependency upgrades or publication actions. Leave all work uncommitted and unstaged. See the [PR 1b report](milestone-7-pr1b-report.md) for attributable implementation and gates.
+
+
+## PR 1b finalization authorization (2026-11-14)
+
+Josip separately authorized bounded final review and necessary in-scope corrections from HEAD `3146c7621111ee872a102c2e66f0162a4a9a3357` on `feature/milestone-7-pr1b-program-assignment`, appropriate verification, one implementation commit (`feat(assignments): add protected program assignment and client readback`), normal push and a review PR against main. This supersedes the earlier uncommitted/no-push/no-PR handoff only for this PR 1b publication. No merge, deployment, dependency upgrade, history rewrite, later lifecycle, offline/production or Publish enablement is authorized. The [final-review record](milestone-7-pr1b-report.md#finalization-review-and-publication-authorization) preserves fresh-versus-retained verification and remaining gates.

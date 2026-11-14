@@ -21,6 +21,7 @@ import com.delminiusapps.tillfailure.invitations.TrainerInvitationPresentation
 import com.delminiusapps.tillfailure.clients.*
 import com.delminiusapps.tillfailure.exercises.*
 import com.delminiusapps.tillfailure.programs.*
+import com.delminiusapps.tillfailure.assignments.*
 import com.delminiusapps.tillfailure.clients.ClientRepository
 import com.delminiusapps.tillfailure.clients.ClientsRoute
 import com.delminiusapps.tillfailure.clients.ClientScope
@@ -35,7 +36,7 @@ import kotlinx.serialization.modules.*
 @Serializable internal data class ShellOwner(val uid: String?, val workspace: String?, val trainer: String?, val role: String?, val epoch: Long)
 @Serializable internal data class ShellDestination(val page: ShellPage, val clientId: String? = null, val owner: ShellOwner? = null,
     val invitationEntry: InvitationEntry? = null, val refreshVersion: Long = 0, val exerciseId: String? = null) : NavKey
-@Serializable internal enum class ShellPage { Home, Programs, Profile, Invitations, Clients, ClientDetails, EditProfile, TrainerNote, Exercises, ExerciseDetails, CustomExercises, CustomExerciseDetails, CustomExerciseEditor }
+@Serializable internal enum class ShellPage { Assignments, Home, Programs, Profile, Invitations, Clients, ClientDetails, EditProfile, TrainerNote, Exercises, ExerciseDetails, CustomExercises, CustomExerciseDetails, CustomExerciseEditor }
 private val shellSavedState = SavedStateConfiguration {
     serializersModule = SerializersModule { polymorphic(NavKey::class) { subclass(ShellDestination::class, ShellDestination.serializer()) } }
 }
@@ -43,7 +44,7 @@ private val shellSavedState = SavedStateConfiguration {
 /** No catalog fixtures or future tabs. The caller supplies a current, server-verified root. */
 @Composable
 internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
-    invitations: (@Composable (TrainerInvitationPresentation?, (() -> Unit)?) -> Unit)?, onboardingRecovery: (@Composable () -> Unit)?, clients: ClientRepository?, profile: ProfileViewModel? = null, exercises: SystemExerciseRepository? = null, customExercises: CustomExerciseRepository? = null, drafts: DraftRepository? = null) {
+    invitations: (@Composable (TrainerInvitationPresentation?, (() -> Unit)?) -> Unit)?, onboardingRecovery: (@Composable () -> Unit)?, clients: ClientRepository?, profile: ProfileViewModel? = null, exercises: SystemExerciseRepository? = null, customExercises: CustomExerciseRepository? = null, drafts: DraftRepository? = null, assignments: AssignmentRepository? = null) {
     val owner = ShellOwner(state.accountUid, state.verifiedWorkspaceId, state.accountUid.takeIf { state.verifiedRole == "trainer" }, state.verifiedRole, state.authorityEpoch)
     val stack = rememberNavBackStack(shellSavedState, ShellDestination(ShellPage.Home, owner = owner))
     LaunchedEffect(owner, stack.lastOrNull()) {
@@ -97,7 +98,14 @@ internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
         }, modifier = Modifier.weight(1f), entryDecorators = listOf(rememberSaveableStateHolderNavEntryDecorator(), rememberProductViewModelStoreDecorator()), entryProvider = entryProvider {
             entry<ShellDestination> { destination ->
                 if (destination.owner != owner) return@entry
-                if(destination.page==ShellPage.Programs) {
+                if(destination.page==ShellPage.Assignments) {
+                    if(assignments!=null && owner.uid!=null && owner.workspace!=null && owner.role!=null) {
+                        val clientId=if(owner.role=="client")owner.uid else destination.clientId
+                        if(clientId!=null)AssignmentRoute(assignments,drafts,AssignmentScope(owner.uid,owner.workspace,clientId,owner.role,owner.epoch),
+                            {if(stack.lastOrNull()==destination && stack.size>1)stack.removeLastOrNull()},
+                            {if(stack.lastOrNull()==destination)openClientInvitations(stack,owner,InvitationEntry.Manage,destination)})
+                    }
+                } else if(destination.page==ShellPage.Programs) {
                     if(owner.role=="trainer" && drafts!=null && owner.uid!=null && owner.workspace!=null) {
                         DraftsRoute(drafts,DraftVisit(ExerciseScope(owner.uid,owner.workspace,owner.epoch),destination.refreshVersion),
                             {ownsClientDestination(stack,owner,currentOwner,destination)},
@@ -151,7 +159,7 @@ internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
                                     val roster = stack.lastOrNull() as? ShellDestination
                                     if (roster?.page == ShellPage.Clients) stack[stack.lastIndex] = roster.copy(refreshVersion = roster.refreshVersion + 1)
                                 }
-                            }, workspaceName = state.verifiedWorkspaceName ?: state.verifiedWorkspaceId, completedRevocation = revocationNotice,onNotes={ target ->
+                            }, onAssignments={ target -> if(ownsClientDestination(stack,owner,currentOwner,destination))stack.add(ShellDestination(ShellPage.Assignments,target,owner)) }, workspaceName = state.verifiedWorkspaceName ?: state.verifiedWorkspaceId, completedRevocation = revocationNotice,onNotes={ target ->
                                 if(ownsClientDestination(stack,owner,currentOwner,destination)) {
                                     val visit=stack.filterIsInstance<ShellDestination>().maxOf { it.refreshVersion }+1
                                     stack.add(ShellDestination(ShellPage.TrainerNote,target,owner,refreshVersion=visit))
@@ -160,6 +168,7 @@ internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
                     }
                 } else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(TillFailureSpacing.xl),
                     verticalArrangement = Arrangement.spacedBy(TillFailureSpacing.lg)) {
+                    if(state.verifiedRole=="client" && assignments!=null)TillFailureSecondaryButton("Planned workouts",{open(ShellPage.Assignments,destination)})
                     Text(if (state.verifiedRole == "trainer") "Trainer workspace" else "Your workspace",
                         style = MaterialTheme.typography.labelLarge, color = TillFailureTheme.colors.secondaryText)
                     when (destination.page) {
@@ -199,7 +208,7 @@ internal fun RoleShell(state: IdentityState, onEvent: (IdentityEvent) -> Unit,
                             if (profileState?.scope == expected && profileState.visit == destination.refreshVersion)
                                 ProfileScreen(profileState, { profile?.onEvent(expected, destination.refreshVersion, profileState.promptId, it) }, { onEvent(IdentityEvent.Retry) })
                         }
-                        ShellPage.Programs, ShellPage.Clients, ShellPage.ClientDetails, ShellPage.TrainerNote, ShellPage.Exercises, ShellPage.ExerciseDetails, ShellPage.CustomExercises, ShellPage.CustomExerciseDetails, ShellPage.CustomExerciseEditor -> Unit
+                        ShellPage.Assignments, ShellPage.Programs, ShellPage.Clients, ShellPage.ClientDetails, ShellPage.TrainerNote, ShellPage.Exercises, ShellPage.ExerciseDetails, ShellPage.CustomExercises, ShellPage.CustomExerciseDetails, ShellPage.CustomExerciseEditor -> Unit
                         ShellPage.Invitations -> {
                             invitations?.invoke(destination.invitationEntry?.let { TrainerInvitationPresentation(it, destination.refreshVersion) }) { backFromInvitations(stack, destination) }
                             onboardingRecovery?.invoke()

@@ -1,6 +1,7 @@
 package com.delminiusapps.tillfailure.firebase
 
 import com.delminiusapps.tillfailure.programs.*
+import com.delminiusapps.tillfailure.assignments.*
 
 import com.delminiusapps.tillfailure.clients.*
 import com.delminiusapps.tillfailure.exercises.*
@@ -76,6 +77,7 @@ class AndroidFirebaseSpikeClient(
         override fun recoveryState(uid: String) = synchronized(callbackLock) { invitationLedger.recoveryState(uid) }
         override val memory get() = PendingInvitationLinks.memory
         override fun draftAdmission(uid:String,request:InvitationRequest)=synchronized(callbackLock) { !terminated.get() && !accountFrozen && auth.currentUser?.uid==uid && invitationLedger.draftAdmission(uid,request) }
+        override fun assignmentAdmission(uid:String,request:InvitationRequest)=synchronized(callbackLock) { !terminated.get() && !accountFrozen && auth.currentUser?.uid==uid && invitationLedger.assignmentAdmission(uid,request) }
         override fun publicationAdmission(uid:String,request:InvitationRequest)=synchronized(callbackLock) { !terminated.get() && !accountFrozen && auth.currentUser?.uid==uid && invitationLedger.publicationAdmission(uid,request) }
         override fun customExerciseAdmission(uid:String,request:InvitationRequest)=synchronized(callbackLock) { !terminated.get() && !accountFrozen && auth.currentUser?.uid==uid && invitationLedger.customExerciseAdmission(uid,request) }
         override fun newNoteBindingNonce(): String = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it.toInt() and 255) }
@@ -121,6 +123,7 @@ class AndroidFirebaseSpikeClient(
                         val valid = synchronized(callbackLock) { !terminated.get() && auth.currentUser?.uid == uid && issuedEpoch == invitationAuthEpoch }
                         check(valid && identity.token != null)
                         val callable = when (request.action) {
+                            "assign-program-version" -> "programAssignmentsEmulator"
                             "publish-program-template" -> "programPublicationsEmulator"
                             "save-program-draft" -> "programDraftsEmulator"
                             "create-custom-exercise", "correct-custom-exercise" -> "customExercisesEmulator"
@@ -168,6 +171,97 @@ class AndroidFirebaseSpikeClient(
                 beforeInvitationTransportForTest?.invoke(transport) ?: transport()
             }.addOnFailureListener { settle(InvitationOutcome(error = "unavailable", ambiguous = true)) }
             return FirebaseCancellation { cancelled.set(true) }
+        }
+    }
+    override val assignments: AssignmentRepository = object : AssignmentRepository {
+        override val issuanceEnabled get()=AssignmentProtocol.ISSUANCE_ENABLED && productMemoryCache && configuration.projectId=="demo-tillfailure-m3" && configuration.host in setOf("10.0.2.2","127.0.0.1","localhost")
+        override val commands get() = invitations
+        override fun read(scope: ExerciseScope, request: AssignmentReadRequest, callback: (AssignmentReadResult) -> Unit): FirebaseCancellation {
+            val cancelled = AtomicBoolean(false)
+            val connection = AtomicReference<HttpURLConnection?>()
+            val uid = scope.uid
+            val issuedEpoch = synchronized(callbackLock) { invitationAuthEpoch }
+            fun allowed() = synchronized(callbackLock) {
+                !cancelled.get() && !terminated.get() && !accountFrozen && auth.currentUser?.uid == uid &&
+                    issuedEpoch == invitationAuthEpoch && fence.accepts(0L)
+            }
+            // Freeze/retirement and token issuance share the existing native admission lock.
+            val task = synchronized(callbackLock) {
+                if (!allowed() || configuration.projectId != "demo-tillfailure-m3" || !request.valid() || request.workspaceId != scope.workspaceId) null
+                else auth.currentUser!!.getIdToken(true)
+            }
+            if (task == null) {
+                callback(AssignmentReadResult(error = "unavailable")); return FirebaseCancellation {}
+            }
+            fun deliver(result: AssignmentReadResult) = synchronized(callbackLock) { if (allowed()) callback(result) }
+            task.addOnSuccessListener { identity ->
+                if(request.action in setOf("client-assignment-list","client-assignment-document")) {
+                    fun dto(d:DocumentSnapshot):JSONObject {
+                        check(d.exists() && !d.metadata.isFromCache && !d.metadata.hasPendingWrites())
+                        val data=requireNotNull(d.data).toMutableMap()
+                        for(k in listOf("scheduledInstant","accessExpiresAt"))if(data.containsKey(k)) {
+                            val t=data.remove(k) as com.google.firebase.Timestamp
+                            check(t.nanoseconds%1000000==0);data["${k}Millis"]=t.seconds*1000+t.nanoseconds/1000000
+                        }
+                        return JSONObject(data)
+                    }
+                    fun failed()=deliver(AssignmentReadResult(error="unavailable"))
+                    if(uid!=request.clientUid){failed();return@addOnSuccessListener}
+                    val base="users/$uid/workspaces/${request.workspaceId}/assignedPrograms"
+                    if(request.action=="client-assignment-list") {
+                        var q=firestore.collection(base).orderBy(FieldPath.documentId()).limit(6)
+                        request.afterId?.let{q=q.startAfter(it)}
+                        val ownQueryTask=synchronized(callbackLock){if(allowed())q.get(Source.SERVER) else null}?:return@addOnSuccessListener
+                        ownQueryTask.addOnSuccessListener { rows->runCatching {
+                            check(allowed() && !rows.metadata.isFromCache && !rows.metadata.hasPendingWrites())
+                            val values=rows.documents.map { d->dto(d).also { AssignmentReads.header(AssignmentContract.json.parseToJsonElement(it.toString()),uid,request.workspaceId,d.id) } }
+                            val data=JSONObject().put("workspaceId",request.workspaceId).put("clientUid",uid).put("items",JSONArray(values.take(5)))
+                                .put("afterId",if(values.size>5)rows.documents[4].id else JSONObject.NULL)
+                            deliver(AssignmentReads.result(scope,request,data.toString(),null))
+                        }.onFailure{failed()} }.addOnFailureListener{failed()}
+                    } else {
+                        val path="$base/${request.assignmentId}"+(if(request.relativePath!!.isEmpty())"" else "/${request.relativePath}")
+                        val ownDocumentTask=synchronized(callbackLock){if(allowed())firestore.document(path).get(Source.SERVER) else null}?:return@addOnSuccessListener
+                        ownDocumentTask.addOnSuccessListener { document->runCatching {
+                            check(allowed());val data=JSONObject().put("workspaceId",request.workspaceId).put("clientUid",uid).put("assignmentId",request.assignmentId)
+                                .put("relativePath",request.relativePath).put("document",dto(document))
+                            deliver(AssignmentReads.result(scope,request,data.toString(),null))
+                        }.onFailure{failed()} }.addOnFailureListener{failed()}
+                    }
+                    return@addOnSuccessListener
+                }
+                Thread {
+                    val result = runCatching {
+                        check(allowed() && identity.token != null)
+                        val c = URL("http://${configuration.host}:${configuration.functionsPort}/demo-tillfailure-m3/europe-west1/programAssignmentsEmulator").openConnection() as HttpURLConnection
+                        synchronized(callbackLock) {
+                            check(allowed())
+                            connection.set(c)
+                        }
+                        try {
+                            c.requestMethod = "POST"; c.instanceFollowRedirects = false
+                            c.connectTimeout = 10_000; c.readTimeout = 10_000; c.doOutput = true
+                            c.setRequestProperty("Content-Type", "application/json")
+                            c.setRequestProperty("Authorization", "Bearer ${identity.token}")
+                            c.outputStream.use { it.write(("{\"data\":" + AssignmentReads.request(request) + "}").toByteArray(Charsets.UTF_8)) }
+                            val status = c.responseCode
+                            val bytes = (if (status == 200) c.inputStream else c.errorStream).use { input ->
+                                val output = java.io.ByteArrayOutputStream(); val buffer = ByteArray(8192)
+                                while (true) { val count = input.read(buffer); if (count < 0) break
+                                    check(output.size() + count <= 64 * 1024); output.write(buffer, 0, count) }
+                                output.toByteArray()
+                            }
+                            check(bytes.size <= 64 * 1024)
+                            AssignmentReads.callable(scope, request, status, bytes.toString(Charsets.UTF_8))
+                        } finally { c.disconnect(); connection.compareAndSet(c, null) }
+                    }.getOrDefault(AssignmentReadResult(error = "unavailable"))
+                    Handler(Looper.getMainLooper()).post { deliver(result) }
+                }.start()
+            }.addOnFailureListener { deliver(AssignmentReadResult(error = "unavailable")) }
+            return FirebaseCancellation {
+                val active = synchronized(callbackLock) { cancelled.set(true); connection.getAndSet(null) }
+                active?.disconnect()
+            }
         }
     }
     override val drafts: DraftRepository = object : DraftRepository {

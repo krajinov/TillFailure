@@ -1,6 +1,7 @@
 package com.delminiusapps.tillfailure.firebase
 
 import com.delminiusapps.tillfailure.programs.*
+import com.delminiusapps.tillfailure.assignments.*
 
 import com.delminiusapps.tillfailure.identity.MembershipDiscoveryResult
 import com.delminiusapps.tillfailure.identity.ProductIdentityClient
@@ -77,6 +78,8 @@ class NativeClientOutcome(val json: String?, val error: String?)
 class NativeInvitationOutcome(val json: String?, val error: String?, val ambiguous: Boolean)
 
 interface NativeIdentityBridge : NativeFirebaseBridge {
+    fun assignmentIssuanceEnabled():Boolean=false
+    fun callProgramAssignments(uid:String,json:String,callback:(NativeClientOutcome)->Unit):String { callback(NativeClientOutcome(null,"unavailable"));return "" }
     fun callProgramDrafts(uid:String,json:String,callback:(NativeClientOutcome)->Unit):String { callback(NativeClientOutcome(null,"unavailable"));return "" }
     fun callProgramPublications(uid:String,json:String,callback:(NativeClientOutcome)->Unit):String { callback(NativeClientOutcome(null,"unavailable"));return "" }
     fun callCustomExercises(uid:String,json:String,callback:(NativeClientOutcome)->Unit):String { callback(NativeClientOutcome(null,"unavailable"));return "" }
@@ -140,6 +143,7 @@ class IosProductIdentityClient(
         override fun recoveryState(uid: String) = protectedRead { invitationLedger.recoveryState(uid) }
         override val memory get() = PendingInvitationLinks.memory
         override fun draftAdmission(uid:String,request:InvitationRequest)=bridge.withWritableAccount(uid) { invitationLedger.draftAdmission(uid,request) }
+        override fun assignmentAdmission(uid:String,request:InvitationRequest)=bridge.withWritableAccount(uid) { invitationLedger.assignmentAdmission(uid,request) }
         override fun publicationAdmission(uid:String,request:InvitationRequest)=bridge.withWritableAccount(uid) { invitationLedger.publicationAdmission(uid,request) }
         override fun customExerciseAdmission(uid:String,request:InvitationRequest)=bridge.withWritableAccount(uid) { invitationLedger.customExerciseAdmission(uid,request) }
         override fun newNoteBindingNonce(): String = bridge.noteBindingNonce()
@@ -169,6 +173,20 @@ class IosProductIdentityClient(
             var cancelled = false
             val token = bridge.readSystemExercises(uid, afterId, exerciseId) { result ->
                 if (!cancelled) callback(SystemExerciseProtocol.result(afterId, exerciseId, result.json, result.error))
+            }
+            return FirebaseCancellation { cancelled = true; bridge.cancel(token) }
+        }
+    }
+    override val assignments: AssignmentRepository = object : AssignmentRepository {
+        override val issuanceEnabled get()=AssignmentProtocol.ISSUANCE_ENABLED && bridge.assignmentIssuanceEnabled()
+        override val commands get() = invitations
+        override fun read(scope: ExerciseScope, request: AssignmentReadRequest, callback: (AssignmentReadResult) -> Unit): FirebaseCancellation {
+            if (!request.valid() || request.workspaceId != scope.workspaceId) {
+                callback(AssignmentReadResult(error = "unavailable")); return FirebaseCancellation {}
+            }
+            var cancelled = false
+            val token = bridge.callProgramAssignments(scope.uid, AssignmentReads.request(request)) { result ->
+                if (!cancelled) callback(AssignmentReads.result(scope, request, result.json, result.error))
             }
             return FirebaseCancellation { cancelled = true; bridge.cancel(token) }
         }

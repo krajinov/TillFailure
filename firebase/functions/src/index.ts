@@ -1,3 +1,4 @@
+import { programAssignmentOperation } from './program-assignments.js';
 import { programPublicationOperation } from "./program-publications.js";
 import { programDraftOperation } from "./program-drafts.js";
 import { customExerciseOperation } from "./custom-exercises.js";
@@ -200,5 +201,21 @@ export const programPublicationsEmulator = onCall(async request => {
     const reason = error instanceof Error ? error.message : "";
     const denied = ["unauthorized", "unauthenticated", "unverified-email"].includes(reason);
     throw new HttpsError(denied ? "permission-denied" : reason === "rate-limited" ? "resource-exhausted" : "failed-precondition", denied ? "unauthorized" : reason === "rate-limited" ? reason : "publication-unavailable");
+  }
+});
+
+export const programAssignmentsEmulator = onCall(async request => {
+  try {
+    requireProvisioningEmulators(); const db = emulatorFirestore();
+    const header = request.rawRequest.get('authorization');
+    if (!header?.startsWith('Bearer ') || !request.auth) throw new Error('unauthorized');
+    const token = await getAuth().verifyIdToken(header.slice(7), true).catch(() => { throw new Error('unauthorized'); });
+    if (token.uid !== request.auth.uid || token.firebase.sign_in_provider === 'anonymous' || token.email_verified !== true) throw new Error('unauthorized');
+    return await programAssignmentOperation(db, request.auth.uid, request.data);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : '';
+    const denied = ['unauthorized','unauthenticated','unverified-email'].includes(reason);
+    throw new HttpsError(denied ? 'permission-denied' : reason === 'rate-limited' ? 'resource-exhausted' : 'failed-precondition',
+      denied ? 'unauthorized' : reason === 'rate-limited' ? reason : 'assignment-unavailable');
   }
 });

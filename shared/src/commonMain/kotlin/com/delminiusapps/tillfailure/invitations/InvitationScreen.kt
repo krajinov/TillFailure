@@ -20,6 +20,7 @@ import com.delminiusapps.tillfailure.identity.IdentityState
 @Composable
 fun InvitationScreen(state: InvitationState, gate: IdentityState, onEvent: (InvitationEvent) -> Unit, onBack: (() -> Unit)? = null) {
     if (state.pending != null) {
+        state.pending.assignment?.let { a -> Text("Original assignment to ${a.clientUid} · version ${a.versionNumber}\nScheduled ${kotlin.time.Instant.fromEpochMilliseconds(a.scheduledInstantMillis)} UTC\nExpires ${kotlin.time.Instant.fromEpochMilliseconds(a.accessExpiresAtMillis)} UTC",color=TillFailureTheme.colors.primaryText) }
         Text("Retry resubmits the original request. Resolve determines its outcome and can prevent an uncommitted request from executing.", color=TillFailureTheme.colors.warning)
         TillFailureSecondaryButton("Resolve original command", { onEvent(InvitationEvent.Resolve) }, enabled=!state.busy && state.resolutionEligibility == "ready")
         if (state.resolutionEligibility != "ready") Text(when(state.resolutionEligibility) {

@@ -1,0 +1,130 @@
+# Milestone 7 PR 1b: bounded online assignment and client readback
+
+Status: finalized for review within the approved synthetic emulator-only slice. Synthetic Assign is enabled after native gates; M6 Publish remains disabled. One implementation commit, normal push and a review PR are separately authorized below.
+
+## Authorization and baseline
+
+Josip separately authorized this PR 1b implementation and verification on 2026-11-14. The working tree and index were clean. PR [#20](https://github.com/krajinov/TillFailure/pull/20) was verified merged via GitHub; main was updated with `pull --ff-only` to `3146c7621111ee872a102c2e66f0162a4a9a3357`. Branch: `feature/milestone-7-pr1b-program-assignment`. At the implementation handoff, work was uncommitted and unstaged; no push, PR, merge, deployment or dependency upgrade had occurred. The separate finalization authorization below permits one commit, normal push and a review PR.
+
+The [separate authorization](milestone-7-plan.md#separate-pr-1b-authorization-2026-11-14) supersedes earlier PR 1b authorization wording only. Approved [M7-D1–D9](../open-questions.md) and the [PR 1a frozen contracts](milestone-7-pr1a-report.md) remain the policy and contract baseline. Native matrices ran with direct protected issuance before enabling the synthetic UI; a second pre-finalization cohort verified the then-current native artifacts after moving test conveniences out of common production code. Final-review corrections have separate evidence below.
+
+## Exact inventory and source fingerprints
+
+The [58-entry source manifest](evidence/milestone-7-pr1b-source-manifest.sha256) has SHA-256 `73c503517d82d4c1b0453395ae5b62c97efc9bd35e17e0aee81290d1a63e80c1`. It covers **41 changed source/test/probe files, seven changed supporting documents and ten unchanged contract/store/dependency anchors**. The report and its two evidence files are excluded from that manifest to avoid a self-reference; the [verification record](evidence/milestone-7-pr1b-verification.json) separately fingerprints this report, final sources, pre-matrix sources, native artifacts, Release artifacts, test logs, export manifests and case/checkpoint evidence. There are 51 changed/new review files overall. Finalization stages only this reviewed inventory.
+
+| Area | Review inventory / purpose |
+| --- | --- |
+| Backend and Rules | New assignment/coverage modules, emulator-only callable, legacy guards, resolver integration, exact trainer-index denial and one composite index |
+| Shared product | Frozen contract extension; assignment protocol/admission, repository, state model and screen; existing ledger/resolver integration; client/detail/Home wiring |
+| Native product | Android and Swift fixed SDK/server adapters, current-session locks and capability fencing; existing stores unchanged |
+| Native probes and tests | Seven-case Android/Swift harnesses, typed native admission probes, fixture/coverage/Rules/race tests and guarded independent-fixture/checkpoint runners |
+| Documentation | README, schema, security, offline/recovery, ADR-002, decision register and M7 plan; this report plus source/verification records |
+
+The final native matrix snapshot has 42 entries including the unchanged Node lockfile. A later two-file backend header-read correction is identified separately below. The pure TypeScript assignment feasibility/materialization contract, client document validator, existing native atomic stores, command generation, publication contract and dependency pins are unchanged from baseline. `AssignmentContract.kt` adds only optional omitted-by-default replay encoding for the normal response; frozen descriptors/hash vectors remain unchanged.
+
+## Implemented behavior and boundaries
+
+An eligible verified author can prepare and explicitly confirm one exact immutable version with one workout and 1–12 exercises for their currently assigned, eligible, onboarded client in the same active workspace. Preparation binds current authority, exact version/content/copy hashes, original IDs, UTC schedule within the approved 24-hour window and fixed expiry one day after that schedule. Selected v1 never resolves through the mutable root or `currentVersionId`. Preview assembles every bounded item and verifies both complete hashes before confirmation. Cancellation issues no protected command. A newly confirmed repeat creates an independent assignment.
+
+The writer atomically creates the immutable header, snapshot, workout/items, planned occurrence, inventory, current trainer index and lifecycle receipt, while incrementing the workspace fence. Every intended child uses a create precondition; an orphan collision aborts the entire commit. Exact replay and typed conflicts preserve the original binding. Preparation, writing and mediated trainer reads require fresh Auth and current authoritative relationship documents. Queries use fixed limits and configured ordering/indexes; the extra row is validated before pagination.
+
+Legacy publish/close writers reject reserved `or1-` keys before replay or transaction. The new writer and every resolver variant check both receipt namespaces transactionally. Occupancy or corruption cannot be interpreted as absence. Existing twelve protected variants and hashes remain compatible; no old receipt is migrated or rehashed. Trainer SDK index reads and writes are denied. Current trainer discovery/detail is a bounded authenticated mediator operation, without historical access.
+
+`assign-program-version` is the thirteenth protected variant in the existing encrypted ledger. Persist-before-send, original-key recovery, freeze/admitted-command drain, callback/account/workspace generation fences, durable full proof before retirement and content-free compaction use the existing stores. Pending recovery displays the original target, version and UTC timing. No second store or content journal was added.
+
+Trainer UI is reached from current client details. Client Home exposes Planned workouts. Client SDK reads only its own server-backed header and copied documents, verifies exact inventory/completeness/hash and rereads the header before rendering. A fresh authenticated server-time bound and monotonic timer clear content at expiry; request latency is deducted. Malformed, denied, incomplete, inconsistent or expired reads fail closed. Background/disposal and identity changes clear in-memory content. No trainer-source fetch or disk/offline grant is introduced.
+
+Assignment issuance is restricted to the product memory-cache, fixed demo-project, loopback Debug paths. Release product providers remain unavailable; Swift Release rejects the new assignment operation. M6 Publish remains `false`. Active execution, logs, recurrence, rescheduling, replacement/cancellation, assignment-bearing membership revocation, historical trainer access, media, real data, production and offline enablement remain outside this change.
+
+## Coverage and independent history
+
+Issuance requires an immutable operator-created coverage record, exact barrier version, generation/provenance, source fingerprint, complete export SHA, independent-empty-history assertion and matching digest. A configuration boolean alone fails. Fixture attestation recursively enumerates all Firestore descendants, including missing-parent paths, and all Auth users twice; it rejects any existing lifecycle/legacy receipt, coverage/config or assigned-program artifact. No callable manufactures coverage. Unknown histories and earlier quarantined partitions remain locked and untouched.
+
+Reset suites use separate emulator ports and no retained-data import. The retained native supervisor uses demo project `demo-tillfailure-m3` on task-owned ports 48799/48780/48701/48719 (Auth/Firestore/Functions/Storage). Both native cohorts use independent create-only synthetic identities and immutable versions. Auth and actual callable preparation succeeded, then a complete explicit Auth/Firestore/Storage export and hashes were verified before the first protected command. The final cohort also includes create-only v2 UI fixtures with unchanged v1 fingerprints. Earlier datasets, keys, occupied partitions and exports remain preserved.
+
+The first final-cohort attestation attempt failed resolving a source path from the repository working directory, after fixture/Auth/preparation setup and before coverage or any protected command. Its logs/export remain retained. Module-relative fingerprint paths fixed this. The same known independent-empty history was explicitly re-enumerated and attested, without reseeding, resetting or replacing documents; `initial-export-verified` is the complete attested pre-command checkpoint. The earlier pre-attestation export is retained separately and is not coverage proof.
+
+## Verification and budgets
+
+Isolated Node 22.23.4 and the unchanged dependency lockfile were used. Final backend/Rules regression: **330 tests, 330 passed, zero failed/skipped**. Coverage includes actual installed Rules, both legacy guards, all resolver namespaces, corrupt/unknown-history locks, callable authentication, current relationship and tenant/author/client isolation, expiry, rate limits, v1 pinning, exact replay, concurrency, revocation/lifecycle orderings, resolver races, create-only orphan rollback and measured maximal writes. The reset suite is distinct from native retained histories.
+
+Shared host verification: **268 tests, zero failures, one explicitly opt-in fixture test skipped** (267 passed). That fixture test was run separately with exported inputs and passed. Shared iOS simulator verification: **266 passed, zero failures/skips**. The seven original cross-language assignment hash vectors remain unchanged. All 1,748 prospective typed states use the actual production serializer, preserve the previous twelve histories, match the frozen structural fixtures and exact byte lengths, and are tested before persistence.
+
+| Quantity | Result | Evidence type |
+| --- | ---: | --- |
+| Largest exact source fixture | 136,741 bytes | Frozen validated source serialization |
+| Maximal modeled Firestore commit | 177,638 bytes / 20 writes | Actual Admin object serialization, calculated allowance |
+| PR 1b intercepted maximal commit | 147,610 bytes / 20 writes | Actual transaction request |
+| Document reads in maximal invocation | 17 including admission | Actual SDK interception; assignment-writer business transaction bound 16 |
+| Actual source DTO in intercepted invocation | 135,201 bytes | Measured |
+| Assignment pending | 3,468 bytes | Actual typed production serializer |
+| Largest prospective plaintext | 36,500 bytes | 1,748 actual typed states |
+| Conservative Swift ciphertext bound | 97,517 bytes | Deterministic, below 98,304 |
+| Android maximum native ciphertext | 48,796 bytes | Actual encrypted native store, 1,748 states |
+| Swift maximum native ciphertext | 49,608 bytes | Actual encrypted native store, 1,748 states |
+
+The final helper-free Swift rerun again passed all 1,748 states (49,595-byte sampled maximum; the earlier independent sample maximum was 49,608). Both native stores refuse the oversized prospective state with byte-identical prior storage. Android inputs are SHA-verified on-device before writes; each run uses a separate retained UUID partition. Swift probe uses the production atomic store/keychain path in a separate simulator executable. No source/payload is truncated or split into new commands. Generic 65,536-byte response, 32,768-byte mutation request, 16,384-byte pending and 98,304-byte encrypted recovery limits stay intact; new-kind plaintext admission is at most 36,500. Publication’s 192 KiB exception stays restricted to publication.
+
+Android Debug/Release and iOS Debug/Release builds passed. iOS Debug uses normal simulator signing for Firebase Auth/keychain access. Android Release DEX excludes the two new instrumentation tests, `M7P1B_`, `TF_M7P1B` and `AssignmentNative`. Swift Release binary strings exclude `ProgramAssignmentsHarness`, `TF_M7P1B`, `M7P1B_IOS` and `AssignmentNative`; its product bridge remains unavailable. Debug-only SDK sign-in/harness variables and generated credentials are absent from Release. The verification record contains both Release SHA-256 values. These are simulator/local Release builds, not distribution or production deployment evidence.
+
+## Actual native recovery and interaction evidence
+
+Both actual production Android and Swift paths completed each of the following seven process-termination/cold-resume cases. Each case verifies original command ID/hash, server receipt/outcome, the full copied graph (or absence), workspace revision, encrypted native checkpoints and complete Auth/Firestore/Storage export before stopping only its task process.
+
+| Case | Android | Swift | Verified terminal behavior |
+| --- | --- | --- | --- |
+| Commit with lost acknowledgment | Pass | Pass | Original applied outcome, one exact copy |
+| Resolver-first fence | Pass | Pass | Original key fenced, no copy |
+| Durable conflict | Pass | Pass | Original copy-hash conflict, no copy |
+| Proof-write failure | Pass | Pass | Pending bytes retained; cold resolution settles original |
+| Full proof / interrupted retirement | Pass | Pass | Full durable proof precedes retirement; cold recovery compacts |
+| Compacted cold restart | Pass | Pass | Content-free marker retained without reissuance |
+| Freeze / admitted-command drain | Pass | Pass | New admission freezes; original drains; 12-item copy verified |
+
+Each resume also cleanly departs trainer A, signs into client B through the native SDK and reads the complete copied content through the actual production assignment ViewModel and SDK. No trainer source is fetched for client rendering. Each cohort has **14 cases / 28 audited stage-resume checkpoints**, with complete exports and hashes at every checkpoint. The first implementation cohort and second final-native-artifact cohort have distinct synthetic identities and preserved directories; they are not one reused/reset history. Final native binaries and the 42-file pre-matrix source snapshot are fingerprinted separately.
+
+A subsequent actual iOS trainer detail check exposed a trailing-slash header lookup in the mediator's per-document read. It failed closed, with no incorrect content. The two-file correction changes only the empty relative-path selection and adds a complete mediated graph traversal regression. Final backend/Rules **330/330** passed again, and actual iOS and Android trainer details then rendered complete v1. At that checkpoint native binaries, command writes/resolution, persistence and shared code remained unchanged from the final native matrix. The later final-review Swift read guard is attributed separately below. The verification record preserves both the pre-matrix source snapshot and this exact post-matrix read fix; it does not claim the matrix ran against the later backend bytes.
+
+Actual UI uses the signed iOS simulator app and Android API 34 app, not injected screen models. iOS setup uses a Debug-only synthetic Auth SDK sign-in helper; Android credentials are entered through real focused login controls. Both show current roster → client detail → program → older v1 alongside current v2 → complete preview → explicit target/version/UTC confirmation. Cancel produces zero receipt/header; a later confirmation produces exactly one. Independent Admin audits verify the entire copied graph, source/copy hashes, workspace increment and unchanged immutable v1 fingerprint. Both platforms then show complete mediated trainer detail. iOS normal clean sign-out → client Home → Planned workouts → exact read-only v1 detail → refresh/reopen → clean sign-out passed, with no stale trainer controls/content.
+
+Android clean trainer departure → real client login → Home Planned workouts → complete read-only v1 passed. The screenshot and loaded tree show the exact prescriptions, schedule and expiry. A verified ciphertext/server checkpoint preceded a cold process restart at **200% text** using the existing Debug font-scale parameter. The same client identity bootstrapped, discovered and rendered v1; text wrapped, slow scrolling exposed all UTC timing and navigation controls, and Back returned to discovery. Client sign-out completed cleanly. This is one larger-text sample, not all text/device sizes. iOS visual inspection showed the complete read-only content and navigation at normal text. Accessibility-tree observations are evidence of those interactions only; TalkBack/VoiceOver, keyboard-only navigation, switch access and physical-device acceptance remain open.
+
+Both task-owned cohorts retain all raw logs, synthetic credentials, exports, keys and native partitions under ignored `.firebase/m7-pr1b-native*`; reset/native sizing evidence stays in `.firebase/m7-pr1b-reset`. Raw payloads, credentials, binaries, exports and machine paths are excluded from review files. Final `final-shutdown-export` contains verified Auth/Firestore/Storage data. After verifying all 28 final native audits, ciphertext archives and complete export hashes, only the matching Firebase supervisor received SIGINT (exit 0); only the named task Android AVD and task iOS simulator were shut down. No reset, import, erase, rekey, deletion of earlier/quarantined history or global daemon shutdown occurred.
+
+## Failed attempts and attribution
+
+Earlier backend attempts failed because the reset runner used a nonstandard Functions port while inherited tests expected 5001, and reused short fixture emails collided. The isolated reset runner now uses 5001 and independent reset-email prefixes. Those failed logs remain retained; only the final 330/330 run is the final regression result. Development compilation failures included an invalid Gradle task, sandboxed Gradle-cache access, fixture TypeScript typings, raw JSON key-order comparison and an incorrect SDK stream-interception signature. These were corrected before final builds/tests. A coverage regression now explicitly rejects an unknown retained assignment artifact.
+
+An initial unavailable Android system-image name was corrected to the already-installed API 34 Play Store image. Initial unsigned iOS Debug Auth failed with keychain error 17995 before a protected command; normal signed simulator builds fixed it. Native typed Android’s first cold run took 783 seconds; the separate SHA-verified input run completed in about 40 seconds with the same bounds. No failed or slow attempt was counted as a pass, erased, reset, rekeyed or silently relabeled.
+
+During Android UI setup, fast shell typing truncated credentials; slow focused-field key input succeeded. The Android CLI inspection helper also stalled after native instrumentation; only the task-owned helper process was restarted. These are tool/setup limitations, not successful accessibility evidence.
+
+## Remaining acceptance gates
+
+The inherited [M6 closeout](milestone-6-closeout.md) and [PR 1a remaining gates](milestone-7-pr1a-report.md#remaining-gates-and-ordered-handoff) remain authoritative outside this synthetic slice. In particular, the separate custom-admission finding is unchanged: a valid accepted 51,966-byte plaintext had conservative Swift bound 138,757 above 98,304, while sampled ciphertext 70,569 fit. This is an unresolved universal-bound finding, not an observed overflow, and this PR changes neither custom admission nor encoder/caps.
+
+Production/real-data acceptance still requires separate authorization, operational index/deployment readiness, retention/privacy review and physical-device/OS key-loss, power-loss, backup and shared-device evidence. Simulator process termination is not power-loss evidence. Accessibility traversal and supported manual UI checks do not establish TalkBack/VoiceOver, switch access, all text sizes, all OS/device combinations or physical security. No later lifecycle or assignment-bearing membership revocation is enabled to bypass these gates.
+
+## Final review and handoff
+
+Affected checks were `:shared:testAndroidHostTest`, separately opted-in typed fixture export/comparison, `:shared:iosSimulatorArm64Test`, Android Debug/Release and instrumentation assembly, iOS simulator Debug/Release builds, native typed probes and the retained native driver. The final Node 22 runner completed `--regression` after the trainer-read correction. Installed emulator Rules/indexes and real callables/SDK queries were exercised; production index readiness is not inferred from emulator success.
+
+Source/Release audits found no generated task credentials, private-key/API-key material, absolute machine paths, conflict markers or unintended generated artifacts in review files. Local Markdown links resolve, whitespace checks pass, dependency lock/pins match baseline and the Git index is empty. Historical documents/evidence remain historical; this report does not promote earlier M6/PR 1a runs into fresh PR 1b evidence.
+
+The approved synthetic assignment/readback implementation and required local verification are complete. Remaining acceptance work is the separately scoped screen-reader/device/physical/production and inherited custom-admission work above. The earlier unstaged handoff is superseded only by the explicit finalization authorization below. No merge, deployment, Publish enablement, later lifecycle or production grant is authorized or performed.
+
+## Finalization review and publication authorization
+
+Josip authorized bounded review of all 51 files, in-scope corrections, proportionate verification, one implementation commit with message `feat(assignments): add protected program assignment and client readback`, normal push and a PR titled `Milestone 7 PR 1b: program assignment and client readback` against main. Starting branch and HEAD matched the expected branch and `3146c7621111ee872a102c2e66f0162a4a9a3357`; index was empty, remote main matched that HEAD and neither the remote feature branch nor a PR existed. No unrelated tracked work was present. Source/report fingerprints and all 307 local evidence references matched at review start.
+
+Final review found and corrected a Swift-only list integrity gap: the SDK adapter now compares every returned header's `assignmentId` with its actual Firestore document ID before passing even lookahead rows to the shared parser, matching Android's existing check. A Debug-only native regression uses independent create-only positive/corrupt read fixtures, actual Auth and mediator preflight, production SDK SERVER queries and the shared parser. Valid discovery succeeds; a structurally valid header with another UUID at its path fails the entire read. Native identity pinning uses the production path. Each run verifies no pending command and checkpoints its encrypted partition and complete explicit Auth/Firestore/Storage export before process stop. Both receipt namespaces and coverage/config stay empty; these are read-integrity fixtures, not a third protected recovery cohort or coverage attestation.
+
+The general Rules suite also inherited fixed 2030 expiry values. All live assignment fixtures in that suite now derive expiry from one per-test `Date.now()` reference plus 48 hours, including the trusted legacy writer fixture. Existing M7 live Rules fixtures already used the relative contract helper; frozen canonical vectors and their fixed arithmetic tests remain unchanged. Ordinary host tests were freshly run with opt-in unset and a nonexistent fixture root: 267 passed, one explicit skip. The fixture test was separately opted in against SHA-recorded copies and passed, again exporting 1,748 states / 36,500-byte plaintext / 97,517-byte conservative Swift bound.
+
+Fresh final-review backend/Rules initially passed 330/330; the post-relative-fixture full regression also passed **330/330**, with zero failures/skips. Corrected iOS Debug/Release builds and actual native positive/negative header reads passed. Fresh iOS Release excludes the new harness, credential/fixture switches and header-test labels. Android Release isolation and original native artifact hashes were reverified. Android Debug/Release, shared iOS 266/266, full native admission, both seven-case-per-platform recovery cohorts, two-role UI and Android 200% evidence are retained and fingerprint-verified, not rerun or relabeled fresh. The original final native matrix predates **both** the two-file backend header correction and these final-review Swift/read-test changes. No protocol, hash, budget, store, command mutation or settlement logic changed during final review, so repeating those large matrices was unnecessary.
+
+The measured 17 document reads include admission for the assignment writer; its transaction uses at most 16 business reads. Trainer detail mediation separately reads at most nine authority documents plus header, inventory and 15 required copied documents (26), with a fresh bounded response for each requested document. This clarifies read-operation attribution without widening any limit.
+
+One pre-native export attempt could not discover a hub after the separate reset supervisor shutdown removed the CLI's shared project locator. No dataset/process was reset or replaced. The verified task-specific hub's export API supplied the complete explicit export instead; the failed CLI log is retained. New outputs are under ignored `.firebase/m7-pr1b-final-review` and `.firebase/m7-pr1b-review-reset`, separate from both retained cohorts and all earlier reset/native sizing evidence.
+
+Final publication includes only reviewed source, Rules/indexes, tests/probes and sanitized documents/evidence. Raw payloads/exports, credentials, native ciphertext, binaries and machine paths remain local-only. This report describes the reviewed pre-commit tree; final commit and PR identifiers are returned in the publication handoff. No merge, deployment, history rewrite, dependency upgrade, Publish, offline/production enablement or later lifecycle is included. All remaining acceptance gates above retain their attribution.

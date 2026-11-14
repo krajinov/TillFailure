@@ -11,6 +11,7 @@ import { commandId } from "../src/hashing.js";
 import { provisionTrainer } from "../src/provisioning.js";
 
 let environment: RulesTestEnvironment;
+let assignmentFixtureNowMillis: number;
 
 function verifiedContext(uid: string) {
   return environment.authenticatedContext(uid, {
@@ -29,6 +30,8 @@ before(async () => {
 });
 
 beforeEach(async () => {
+  // Live authorization fixtures stay valid relative to each test, never a calendar cutoff.
+  assignmentFixtureNowMillis = Date.now();
   await environment.clearFirestore();
   await environment.clearStorage();
 });
@@ -46,7 +49,7 @@ async function seedEligibleAssignment(): Promise<void> {
     await setDoc(doc(db, "workspaces/ws/memberships/client"), { schemaVersion: 1, workspaceId: "ws", userId: "client", role: "client", status: "active" });
     await setDoc(doc(db, "systemExercises/published"), { schemaVersion: 1, name: "Squat", status: "published" });
     await setDoc(doc(db, "systemExercises/draft"), { schemaVersion: 1, name: "Draft", status: "draft" });
-    await setDoc(doc(db, "users/client/workspaces/ws/assignedPrograms/asg"), { schemaVersion: 1, clientId: "client", workspaceId: "ws", assignmentId: "asg", snapshotId: "content", lifecycleState: "ready", accessStatus: "active", accessExpiresAt: new Date("2030-01-01T00:00:00Z") });
+    await setDoc(doc(db, "users/client/workspaces/ws/assignedPrograms/asg"), { schemaVersion: 1, clientId: "client", workspaceId: "ws", assignmentId: "asg", snapshotId: "content", lifecycleState: "ready", accessStatus: "active", accessExpiresAt: new Date(assignmentFixtureNowMillis + 48 * 60 * 60 * 1000) });
     await setDoc(doc(db, "users/client/workspaces/ws/assignedPrograms/asg/snapshots/content"), { schemaVersion: 1, clientId: "client", workspaceId: "ws", assignmentId: "asg", snapshotId: "content", title: "Safe copy" });
     await setDoc(doc(db, "users/client/workspaces/ws/assignedPrograms/asg/snapshots/content/workouts/day/exercises/item"), { schemaVersion: 1, clientId: "client", workspaceId: "ws", assignmentId: "asg", snapshotId: "content", displayName: "Squat" });
     await setDoc(doc(db, "workspaces/ws/programTemplates/template/versions/v1"), { title: "Secret source" });
@@ -870,7 +873,7 @@ describe("Firestore and Storage rules", () => {
     await assertFails(getDoc(doc(client, "workspaces/ws/programTemplates/template/versions/v1")));
     await assertFails(setDoc(doc(client, snapshotPath), { clientId: "client", workspaceId: "ws", assignmentId: "asg", snapshotId: "content" }));
     await environment.withSecurityRulesDisabled(async (context) => {
-      await setDoc(doc(context.firestore(), "users/client/workspaces/ws/assignedPrograms/asg"), { schemaVersion: 1, clientId: "client", workspaceId: "ws", assignmentId: "asg", snapshotId: "content", lifecycleState: "terminal", accessStatus: "revoked", accessExpiresAt: new Date("2030-01-01T00:00:00Z") });
+      await setDoc(doc(context.firestore(), "users/client/workspaces/ws/assignedPrograms/asg"), { schemaVersion: 1, clientId: "client", workspaceId: "ws", assignmentId: "asg", snapshotId: "content", lifecycleState: "terminal", accessStatus: "revoked", accessExpiresAt: new Date(assignmentFixtureNowMillis + 48 * 60 * 60 * 1000) });
     });
     await assertFails(getDoc(doc(client, snapshotPath)));
   });
@@ -925,7 +928,7 @@ describe("Firestore and Storage rules", () => {
     assert.equal((await adminDb.doc(`lifecycleCommands/${commandId("admin", "missing-authorization-enable")}`).get()).exists, false);
   });
 
-  it("retains the existing trainer assignment-index predicate gap after client membership loss", async () => {
+  it("denies direct trainer assignment indexes after client membership loss", async () => {
     await seedEligibleAssignment();
     const admin=emulatorFirestore();
     await admin.doc("users/trainer").set({schemaVersion:1,accountStatus:"active"});
@@ -933,7 +936,7 @@ describe("Firestore and Storage rules", () => {
     await admin.doc("workspaces/ws/assignedPrograms/asg").set({schemaVersion:1,workspaceId:"ws",assignmentId:"asg",clientId:"client",trainerId:"trainer",status:"archived",revision:2});
     await admin.doc("workspaces/ws/memberships/client").update({status:"revoked"});
     const trainer=verifiedContext("trainer").firestore(),client=verifiedContext("client").firestore();
-    await assertSucceeds(getDoc(doc(trainer,"workspaces/ws/assignedPrograms/asg")));
+    await assertFails(getDoc(doc(trainer,"workspaces/ws/assignedPrograms/asg")));
     await assertFails(getDoc(doc(client,"users/client/workspaces/ws/assignedPrograms/asg")));
     await assertFails(getDocs(collection(client,"users/client/workspaces/ws/assignedPrograms")));
     await assertFails(updateDoc(doc(trainer,"workspaces/ws/memberships/client"),{status:"active"}));
@@ -945,8 +948,8 @@ describe("Firestore and Storage rules", () => {
     const collectionPath = "users/client/workspaces/ws/assignedPrograms";
     await environment.withSecurityRulesDisabled(async (context) => {
       const db = context.firestore();
-      await setDoc(doc(db, `${collectionPath}/asg-ready-2`), { schemaVersion: 1, clientId: "client", workspaceId: "ws", assignmentId: "asg-ready-2", snapshotId: "content", lifecycleState: "ready", accessStatus: "active", accessExpiresAt: new Date("2030-01-01T00:00:00Z") });
-      await setDoc(doc(db, `${collectionPath}/asg-terminal`), { schemaVersion: 1, clientId: "client", workspaceId: "ws", assignmentId: "asg-terminal", snapshotId: "content", lifecycleState: "terminal", accessStatus: "replaced", accessExpiresAt: new Date("2030-01-01T00:00:00Z") });
+      await setDoc(doc(db, `${collectionPath}/asg-ready-2`), { schemaVersion: 1, clientId: "client", workspaceId: "ws", assignmentId: "asg-ready-2", snapshotId: "content", lifecycleState: "ready", accessStatus: "active", accessExpiresAt: new Date(assignmentFixtureNowMillis + 48 * 60 * 60 * 1000) });
+      await setDoc(doc(db, `${collectionPath}/asg-terminal`), { schemaVersion: 1, clientId: "client", workspaceId: "ws", assignmentId: "asg-terminal", snapshotId: "content", lifecycleState: "terminal", accessStatus: "replaced", accessExpiresAt: new Date(assignmentFixtureNowMillis + 48 * 60 * 60 * 1000) });
       await setDoc(doc(db, `${collectionPath}/asg-terminal/snapshots/content`), { schemaVersion: 1, clientId: "client", workspaceId: "ws", assignmentId: "asg-terminal", snapshotId: "content", title: "Retired copy" });
       await setDoc(doc(db, "users/other"), { schemaVersion: 1, accountStatus: "active" });
     });
@@ -970,7 +973,7 @@ describe("Firestore and Storage rules", () => {
       sourceVersionNumber: 1,
       sourceContentHash: "sha256:source",
       snapshotHash: "sha256:snapshot",
-      accessExpiresAtMillis: Date.UTC(2030, 0, 1),
+      accessExpiresAtMillis: assignmentFixtureNowMillis + 48 * 60 * 60 * 1000,
       workouts: [{ id: "day-one", position: 0, title: "Day one", exercises: [{ id: "squat", position: 0, displayName: "Squat", prescription: "3 x 5" }] }],
       plans: [],
       maxWrites: 200
@@ -1025,10 +1028,10 @@ describe("Firestore and Storage rules", () => {
 
     // Forged or malformed headers are never client-writable and stay denied to a direct get, while a
     // trusted header for the same owner stays readable.
-    await assertFails(setDoc(doc(client, `${collectionPath}/asg-forged`), { schemaVersion: 1, clientId: "client", workspaceId: "ws", assignmentId: "asg-forged", snapshotId: "content", lifecycleState: "ready", accessStatus: "active", accessExpiresAt: new Date("2030-01-01T00:00:00Z") }));
+    await assertFails(setDoc(doc(client, `${collectionPath}/asg-forged`), { schemaVersion: 1, clientId: "client", workspaceId: "ws", assignmentId: "asg-forged", snapshotId: "content", lifecycleState: "ready", accessStatus: "active", accessExpiresAt: new Date(assignmentFixtureNowMillis + 48 * 60 * 60 * 1000) }));
     await environment.withSecurityRulesDisabled(async (context) => {
       const db = context.firestore();
-      await setDoc(doc(db, `${collectionPath}/asg-forged`), { schemaVersion: 1, clientId: "other", workspaceId: "ws", assignmentId: "asg-forged", snapshotId: "content", lifecycleState: "ready", accessStatus: "active", accessExpiresAt: new Date("2030-01-01T00:00:00Z") });
+      await setDoc(doc(db, `${collectionPath}/asg-forged`), { schemaVersion: 1, clientId: "other", workspaceId: "ws", assignmentId: "asg-forged", snapshotId: "content", lifecycleState: "ready", accessStatus: "active", accessExpiresAt: new Date(assignmentFixtureNowMillis + 48 * 60 * 60 * 1000) });
       await setDoc(doc(db, `${collectionPath}/asg-malformed`), { clientId: "client", workspaceId: "ws" });
     });
     await assertFails(getDoc(doc(client, `${collectionPath}/asg-forged`)));
@@ -1036,7 +1039,7 @@ describe("Firestore and Storage rules", () => {
     await assertSucceeds(getDoc(doc(client, `${collectionPath}/asg-ready-2`)));
   });
 
-  it("allows active trainers to discover only their own assignment indexes", async () => {
+  it("denies all direct trainer assignment index reads; discovery requires mediation", async () => {
     const indexPath = "workspaces/ws/assignedPrograms";
     const owned = `${indexPath}/asg-owned`;
     await environment.withSecurityRulesDisabled(async (context) => {
@@ -1055,9 +1058,8 @@ describe("Firestore and Storage rules", () => {
     const trainer = verifiedContext("trainer").firestore();
     const client = verifiedContext("client").firestore();
     const ownQuery = query(collection(trainer, indexPath), where("schemaVersion", "==", 1), where("workspaceId", "==", "ws"), where("trainerId", "==", "trainer"), where("status", "==", "active"));
-    const ownIndexes = await assertSucceeds(getDocs(ownQuery));
-    assert.deepEqual(ownIndexes.docs.map((document) => document.id), ["asg-owned"]);
-    assert.equal((await assertSucceeds(getDoc(doc(trainer, owned)))).get("clientId"), "client");
+    await assertFails(getDocs(ownQuery));
+    await assertFails(getDoc(doc(trainer, owned)));
     await assertFails(getDocs(collection(trainer, indexPath)));
     await assertFails(getDocs(query(collection(trainer, indexPath), where("trainerId", "==", "trainer"), where("status", "==", "active"))));
     await assertFails(getDoc(doc(trainer, `${indexPath}/asg-other`)));
@@ -1086,7 +1088,7 @@ describe("Firestore and Storage rules", () => {
       await assertFails(getDocs(ownQuery));
       await assertFails(getDoc(doc(trainer, owned)));
       await environment.withSecurityRulesDisabled(async (context) => { await updateDoc(doc(context.firestore(), path), { [field]: original }); });
-      assert.equal((await assertSucceeds(getDoc(doc(trainer, owned)))).exists(), true);
+      await assertFails(getDoc(doc(trainer, owned)));
     }
   });
 

@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+
 package com.delminiusapps.tillfailure.assignments
 
 import com.delminiusapps.tillfailure.identity.isPathSafeAuthUid
@@ -8,7 +10,7 @@ import com.delminiusapps.tillfailure.programs.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 
-/** PR 1a isolated value contracts. No ledger dispatch, transport or issuance adapter. */
+/** Frozen PR 1a assignment values, shared by product dispatch and recovery. */
 @Serializable
 data class AssignmentAuthority(val trainerLifecycleRevision:Int,val trainerMembershipRevision:Int,val clientLifecycleRevision:Int,
     val clientMembershipRevision:Int,val workspaceMembershipRevision:Int,val clientOnboardingRevision:Int) {
@@ -39,7 +41,8 @@ data class AssignmentCopy(val copyPolicyVersion:Int,val title:String,val descrip
 }
 @Serializable
 data class AssignmentDecision(val status:String,val workspaceId:String,val clientUid:String,val assignmentId:String,
-    val assignmentRevision:Int,val plannedWorkoutId:String?,val snapshotHash:String?)
+    val assignmentRevision:Int,val plannedWorkoutId:String?,val snapshotHash:String?,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val replayed:Boolean?=null)
 
 object AssignmentContract {
     const val DAY_MS=86400000L

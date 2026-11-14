@@ -1,0 +1,2734 @@
+{
+  "backend": {
+    "m7-pr1b-final-regression.log": {
+      "fail": 0,
+      "pass": 330,
+      "path": ".firebase/m7-pr1b-final-regression.log",
+      "sha256": "0c92423c2bf72d4f9b564c71461f7393dddefe94f820a2b1fff48262df673cb1",
+      "skipped": 0,
+      "tests": 330
+    },
+    "m7-pr1b-post-ui-regression.log": {
+      "fail": 0,
+      "pass": 330,
+      "path": ".firebase/m7-pr1b-post-ui-regression.log",
+      "sha256": "170335a78ff5cab8a862dfb8613f6265fef31a01b2a541db6887a8605dbf74e7",
+      "skipped": 0,
+      "tests": 330
+    }
+  },
+  "baseline": {
+    "branch": "feature/milestone-7-pr1b-program-assignment",
+    "commit": "3146c7621111ee872a102c2e66f0162a4a9a3357",
+    "pr20VerifiedMerged": true,
+    "treeAndIndexInitiallyClean": true
+  },
+  "budgets": {
+    "actualMaxTransaction": {
+      "commitBytes": 147610,
+      "observedDocumentReadsIncludingAdmission": 17,
+      "sourceBytes": 135201,
+      "writes": 20
+    },
+    "android": {
+      "maximumEncrypted": 48796,
+      "maximumPlaintext": 36500,
+      "oversizeByteIdentical": true,
+      "states": 1748
+    },
+    "customAdmissionFindingUnchanged": {
+      "acceptedPlaintext": 51966,
+      "conservativeSwiftBound": 138757,
+      "sampleEncrypted": 70569
+    },
+    "limits": {
+      "encrypted": 98304,
+      "mutationRequest": 32768,
+      "newKindPlaintext": 36500,
+      "packet": 65536,
+      "pending": 16384,
+      "publicationExceptionStillExclusive": 196608
+    },
+    "modeledAdmin": {
+      "commit": 177638,
+      "largestDocument": 13205,
+      "request": 2533,
+      "resolverUnits": 2559,
+      "version": 136741,
+      "writes": 20
+    },
+    "swiftFinal": {
+      "fixtures": 1748,
+      "maximumEncrypted": 49595,
+      "maximumPlaintext": 36500,
+      "oversizeByteIdentical": true
+    },
+    "swiftPreviousSample": {
+      "fixtures": 1748,
+      "maximumEncrypted": 49608,
+      "maximumPlaintext": 36500,
+      "oversizeByteIdentical": true
+    },
+    "typedKotlin": {
+      "maximumPlaintext": 36500,
+      "pending": 3468,
+      "states": 1748,
+      "swiftBound": 97517
+    }
+  },
+  "buildLogs": [
+    {
+      "path": ".firebase/m7-pr1b-frozen-candidate-builds.log",
+      "sha256": "3fe54eecea2577c1001bad7b7ee7f2c51a866c4e515c41a6b67682432fe14d54"
+    },
+    {
+      "path": ".firebase/m7-pr1b-ios-frozen-debug.log",
+      "sha256": "792f297b0a22d39ca3e05c18095eb41b9ba666182f7d3eab081bec90d7613a73"
+    },
+    {
+      "path": ".firebase/m7-pr1b-ios-frozen-release.log",
+      "sha256": "de26b1b7f806b9a672850e56bb55df64a631dcd0594a10b4ab1ca9890dc9212f"
+    }
+  ],
+  "date": "2026-11-14",
+  "finalFiles": {
+    "README.md": "01d2f04c548bccd83eccfd42f0bdfe292ff0d8f8c11bfb296d9ddb720db00631",
+    "docs/firestore-schema.md": "d22f0205bc815968a9231c11306eee8bae3a386b1f1a4e1ef1c5a333b28a0a09",
+    "docs/firestore-security.md": "58c43ac18d0fe6b5f05262ce97b5a95bc264346e26684c54d90a4f23efdc2a6d",
+    "docs/milestones/milestone-7-plan.md": "859d4e47f3d8b9dbf82f34c4944029cf6054869634dc4d573b1aff60bcd5bbcc",
+    "docs/offline-sync.md": "dedebd6dfe0ba1f01b08c4670a169f686cd35961544f9e212db117660ef2c787",
+    "docs/open-questions.md": "806361b483ca0aa6f89a1f38b9e34b066e374a4d201178232cc9143f581abce6",
+    "docs/trainer-notes-settlement-adr.md": "c6f44773e2b2c24daa2716053e5790dfb5bfe761f3b2afa0ec9c1e8f7945998f",
+    "firebase/firestore.indexes.json": "01a0f171f9556b1e0100965c75e11e8aa4452bb8e8f842ef5a329d1badba2672",
+    "firebase/firestore.rules": "c062cb127dc320295e989331869579908f7fc1477548e7f36add56edf1c9183d",
+    "firebase/functions/package-lock.json": "0636bb6977fb17302dd896a4c9da281dfa73f478456b60b57a7ef24d9d4f6e04",
+    "firebase/functions/scripts/assignment-pr1b-ui-fixture.mjs": "b309938070edcb6d59b3c40302044bcf6a87743c1cc348abf5cd3e3f1a96b772",
+    "firebase/functions/scripts/audit-assignment-pr1b-native.mjs": "4535b84a5ff2a08f9c33d3a5825266073f131a8e8faa8a47bc65544bb75238c6",
+    "firebase/functions/scripts/run-assignment-pr1b-native.py": "362be179b78e9a87c6792f586ef2b1ff2a95894e28353973137cf326d375b2ee",
+    "firebase/functions/scripts/run-assignment-pr1b.mjs": "605b715c63f2b23abf3a583d49457efca6c17adc4534b5c2452687c892fe3a9d",
+    "firebase/functions/scripts/seed-assignment-pr1b.mjs": "d9ce8a7e647dd4f4e0bdb8cb64ead5ad2fde75d293b25d272e633c4b85814d69",
+    "firebase/functions/src/assigned-program.ts": "4ac51f2d1a568c7de5094729040004031dc567e4649502e87097fdfaaf2c3987",
+    "firebase/functions/src/assignment-coverage.ts": "e5613211ffbca3eb2cb1bf8f2bfe359f92f90f4c22eec70d69db38ea8d7aafca",
+    "firebase/functions/src/assignment-feasibility-contract.ts": "31eed36ea734a2dda4e7afc1d86f0801c932641e5b7f8861a848396e91cc386c",
+    "firebase/functions/src/command-identity.ts": "025b6b55ed56c24209bb3ab3571547f290e83b1f8c262191c6a2d2f0e20477f1",
+    "firebase/functions/src/command-resolution.ts": "ecdf97b60f04c2d872becbf993945e0e6aa2af7f52a28cd6e141ec3dbb11a1fc",
+    "firebase/functions/src/index.ts": "afcbd0b76d2a20b846d2f4e65842e98c21a2ad0bb887cb17f3f08e42ba2f2f4e",
+    "firebase/functions/src/program-assignments.ts": "4c4125ccbdcdf773c3cfed6c0c5e4f2094ebed7841e5d7c3422d92cdd85c3b5c",
+    "firebase/functions/src/program-publication-contract.ts": "c6f60398360742dfb7ae5cf608a6e919d734ac4c1c8176f68cd60be5253c6aec",
+    "firebase/functions/test/assignment-pr1a-transactions.test.ts": "8df14d66a4fe3d594afa79bd67fb183b4f843078890431d80e2b08104a8b21ba",
+    "firebase/functions/test/assignment-pr1b-fixture.ts": "e6f58183ff8f1aaf324001b352208b3f9c332f7d238a89996432c8e27d8dde60",
+    "firebase/functions/test/assignment-pr1b-rules.test.ts": "6e6a9a0e38795ba043db3623465cf559a7664486f1a631ab7268012af1d5f5ac",
+    "firebase/functions/test/program-assignments.test.ts": "2e0cac7cc9350b04aea9187a076cfb89bc99351b9599024b3107b3018dcd3d42",
+    "firebase/functions/test/rules.test.ts": "daa6165b7163317367c0a078df861201f90b2c1379c419308b5f551cab772afb",
+    "gradle/libs.versions.toml": "74d10fa0885e2ad933f4c64f51961226b440e516089a9ce622d4d92d4d2dacc5",
+    "iosApp/feasibility/AssignmentAdmissionMain.swift": "c52ed826466e55ca26df690f7b8981608a7045489a9345764324a68b130acd79",
+    "iosApp/feasibility/run-assignment-admission.py": "d66e7970a8ba0b90730799b636a6d8366af599f420e6264e113a76c5599733af",
+    "iosApp/iosApp/FirebaseNativeBridge.swift": "2c48045c8ce85195d2f8a05cbbb1cd00f546ae6283f144e5553b95eb8e93b5b7",
+    "iosApp/iosApp/ProgramAssignmentsHarness.swift": "e7b9bf1ad413a3f8e4d6ac67bf21e1a4198e7b054c43eccb243bf6a22ef37e9d",
+    "iosApp/iosApp/RecoveryPersistenceBridge.swift": "21e27e77b4797eaa4c1d9ca6e86558b15ab9da13655e914701e24095032a6af3",
+    "iosApp/iosApp/iOSApp.swift": "03cd8f7f711c441e215b274a10092c1ad6ae7b3ed1af3190f7b4328cd37cd863",
+    "shared/src/androidDeviceTest/kotlin/com/delminiusapps/tillfailure/assignments/AndroidAssignmentAdmissionTest.kt": "66aa68e574072922cb340c9f5222d2270aa623880368b2894539fe8d80d29b55",
+    "shared/src/androidDeviceTest/kotlin/com/delminiusapps/tillfailure/firebase/AndroidProgramAssignmentsTest.kt": "e279a8e730ac50cec7f4cdc5375fd074897305b286b29c8846016f3352cf1c12",
+    "shared/src/androidHostTest/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentFixtureTest.kt": "fe6e88ba3bd8bad463702ae6e571b0ed9f60fb33511f664638dba6e949b745d8",
+    "shared/src/androidMain/kotlin/com/delminiusapps/tillfailure/firebase/AndroidFirebaseSpikeClient.kt": "38f75c56a0ff5a6bdf7b868f25f3fc911f9191216333771eae76f9dd5dba8237",
+    "shared/src/androidMain/kotlin/com/delminiusapps/tillfailure/persistence/AndroidAtomicFilePersistence.kt": "73b3613d9abd61bd0b0b4a5c54c5aef49a4b00f03b8fa320d56a280db43af08d",
+    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentClientDocuments.kt": "9da64a28e82bbb026350b02225e3183253855c60c33893c96458d191dbcf4e9b",
+    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentContract.kt": "6936f0153c5acb328cc6ba9a0f20906a8c65f1083d972dba263061b12ea347dd",
+    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentProtocol.kt": "eedf9d37c964be01a06d98036a8d725e0a1422006bfbb2d3fc7a60e44ebc6fe1",
+    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentRepository.kt": "5ff625c4f5d699d6523fd0053eb860eb3320c8ea7f79d733daeada071c4b04a5",
+    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentScreen.kt": "7478bce93dff9b549fc010445ec7edf408093399476acd030463c59f73e40649",
+    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentViewModel.kt": "a29afd28b13bb29799febdeecf474d30a9400fc2d399ec054be7996f8bb5cc16",
+    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/clients/ClientsScreen.kt": "4a46276acbb9929fc9ad27e608cd747c68af19339bca441202c3731b194b0bd6",
+    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/identity/IdentityRoot.kt": "2b481a62198e291bdb126594fb9880f854606f1716a162dc316b03f4c8e5a30f",
+    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/identity/ProductIdentityClient.kt": "aab78dcde056fd1c17c16b858ec40f8bd4bbc0b27d3eddd126033795daa2f539",
+    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/identity/RoleShell.kt": "83bd1716c8c107ee7bbdc4ff144cd2b63fda67cd4eab3fdadacd6f762d1c9518",
+    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/invitations/CommandResolution.kt": "3f97bebc7131861d4acc35c6e1f76b5bcf8aa7bf902f33d02d035d89eac8010d",
+    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/invitations/InvitationClient.kt": "96824fc184e2e2250466835c7a8d8f33a0e09621cf8c0a003f0b25d7cb7c0770",
+    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/invitations/InvitationScreen.kt": "50338a15b53083b348247745699aa0b69d4ea6168ac1ec8a2e4415af70b84486",
+    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/persistence/PersistencePrototype.kt": "d538b4e4dbef895ed1d23da1bf52ef738675770b93df103964ce5638979d1000",
+    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/programs/ProgramPublication.kt": "28b39b0daf7731433e9bf5ebbef9b124c07ba822323aeee4da95e3d8ded5d8da",
+    "shared/src/commonTest/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentContractTest.kt": "139e04504effac8d9101514978d0ce1a465cf53e072ed1f89eaec6ee1013e3f6",
+    "shared/src/commonTest/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentRecoveryTest.kt": "f0f9afd99df78346206da48a76e86f68535d69badffdb86399eb45e192439e4b",
+    "shared/src/iosMain/kotlin/com/delminiusapps/tillfailure/firebase/IosFirebaseBridge.kt": "687a0e830ebd04e6ac1ed38067a3bee6215e8e0f47ac37b4f9c67f6944995f88"
+  },
+  "finalReview": {
+    "allStartingSourceAndReportFingerprintsMatched": true,
+    "branch": "feature/milestone-7-pr1b-program-assignment",
+    "changedManifestEntriesDuringReview": {
+      "docs/milestones/milestone-7-plan.md": "859d4e47f3d8b9dbf82f34c4944029cf6054869634dc4d573b1aff60bcd5bbcc",
+      "docs/open-questions.md": "806361b483ca0aa6f89a1f38b9e34b066e374a4d201178232cc9143f581abce6",
+      "firebase/functions/test/rules.test.ts": "daa6165b7163317367c0a078df861201f90b2c1379c419308b5f551cab772afb",
+      "iosApp/iosApp/FirebaseNativeBridge.swift": "2c48045c8ce85195d2f8a05cbbb1cd00f546ae6283f144e5553b95eb8e93b5b7",
+      "iosApp/iosApp/ProgramAssignmentsHarness.swift": "e7b9bf1ad413a3f8e4d6ac67bf21e1a4198e7b054c43eccb243bf6a22ef37e9d"
+    },
+    "corrections": [
+      "Swift client header list checks assignmentId equals actual Firestore documentID for every row before shared parsing",
+      "Debug-only native positive/corrupt read regression with production identity pinning, no protected command or coverage",
+      "All inherited live Rules assignment expiries use one per-test reference plus 48 hours; canonical vectors unchanged"
+    ],
+    "finalDebugArtifact": {
+      "path": ".firebase/m7-pr1b-final-review/xcode/Build/Products/Debug-iphonesimulator/TillFailure.app/TillFailure",
+      "sha256": "1d3ac9abdab79b4146f2ef38ff47e93d20195f9a0f74fb7907c3132acdfba314"
+    },
+    "freshBackend": [
+      {
+        "fail": 0,
+        "pass": 330,
+        "path": ".firebase/m7-pr1b-final-review/backend.log",
+        "sha256": "b4a598c936cf5d0672ff9ea5f1504163162509887bc1ac73a8793b6a0d5c7bc0",
+        "skipped": 0,
+        "tests": 330
+      },
+      {
+        "fail": 0,
+        "pass": 330,
+        "path": ".firebase/m7-pr1b-final-review/backend-relative-rules.log",
+        "sha256": "8ab898f2191103a388f9f5373ca4ee858a70940a265ce9f19777c75d0e7e828d",
+        "skipped": 0,
+        "tests": 330
+      }
+    ],
+    "freshFixtureTest": {
+      "errors": 0,
+      "failures": 0,
+      "inputManifest": {
+        "path": ".firebase/m7-pr1b-final-review/fixture-inputs.sha256.json",
+        "sha256": "a2aa357335190d65d74e1d633c6a7f27a6e88f9c5dbfa1b6d712922eaa18c60c"
+      },
+      "log": {
+        "path": ".firebase/m7-pr1b-final-review/fixture-host.log",
+        "sha256": "b6d06be99da83d8c0b3c4c84c69718e6d5a9ec564d682e0e9db319570ba75dc9"
+      },
+      "optInExplicit": true,
+      "skipped": 0,
+      "tests": 1,
+      "typedMeasurements": {
+        "maximumPlaintext": 36500,
+        "pending": 3468,
+        "states": 1748,
+        "swiftBound": 97517
+      }
+    },
+    "freshIosBuildLogs": [
+      {
+        "path": ".firebase/m7-pr1b-final-review/ios-debug.log",
+        "sha256": "5074bbe09ed633149f2910bdb6a4e0736ac6f6a91cd8d5f0ff38563de990b925"
+      },
+      {
+        "path": ".firebase/m7-pr1b-final-review/ios-debug-pinned-probe.log",
+        "sha256": "25ef075c386fd9bc306b1e5e26bc21696b32e6511a105434777f98e0f48e6eeb"
+      },
+      {
+        "path": ".firebase/m7-pr1b-final-review/ios-release.log",
+        "sha256": "95709127def45c895e4ca8a5842acd6535f75820ce28c3a8007f190fb61b3a99"
+      },
+      {
+        "path": ".firebase/m7-pr1b-final-review/ios-release-final.log",
+        "sha256": "c6a1b662f12499352e24da004bd3397896f8165b7581c53d242c65cb59a201ea"
+      }
+    ],
+    "freshOrdinaryHost": {
+      "errors": 0,
+      "failures": 0,
+      "fixtureOptInUnset": true,
+      "fixtureRootNonexistent": true,
+      "log": {
+        "path": ".firebase/m7-pr1b-final-review/ordinary-host.log",
+        "sha256": "97e92774d1bbea6de9db5aff96ea0ace650b0d6f272bc42ab2bfd4a3fe4bb5f9"
+      },
+      "passed": 267,
+      "resultsManifest": {
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.AppSurfaceTest.xml": "454e3a470c99953927ba6914cd8068c8e3e5c33cc244553d76d5697171544ee9",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.app.AuthFixtureDraftTest.xml": "5b218736cb37aa8445477edeb21863b34d7315e431177038a6de803fc584d054",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.app.FoundationSnackbarHostTest.xml": "10b220036c6afc1489b3ca339dd589e47de24010b38b7c88c57788ed739fe5b8",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.assignments.AssignmentContractTest.xml": "00f1737ceaa0aceab592b254af41eaced3c6e102ee50946612c6f8bc8314ddf5",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.assignments.AssignmentFixtureTest.xml": "457780bcae28ef9ed7003510ef1f9cb18fb2324c215636b9db0b56ae08115d2e",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.assignments.AssignmentRecoveryTest.xml": "6ac17545034416aa0f4d13fe8a32b3db8b8ece39b051e49591f5e874ed96a2b3",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.clients.ClientInvitationsTest.xml": "e21a522671002766ae7d295ad26da1225557001f792d077d7bb72bff13f5828e",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.clients.ClientRevocationTest.xml": "090e29f1ba992164327fb6fc648a157cefb9ac584f88b501e8c2e788d57ee9ea",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.clients.ClientsTest.xml": "0e8acfbff9c61edf84d759cd421c417260871082e467684a6367d75004bbedd4",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.clients.TrainerNotesTest.xml": "4a4707e861a9f4452103d8ed9c04450a99d5d7417b87f4388c9d68136d69b89a",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.core.designsystem.DesignSystemContractTest.xml": "539f5818a7b7a15c94fda8f1718933ba43bf6587a3a5fc843363ccd014641e75",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.designcatalog.Milestone2ReviewRegressionTest.xml": "8e6c7c92a356d55eb33ffcca47cb3ea3490bac65b86be65f83e6258bc9a7370b",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.exercises.CustomExercisesTest.xml": "221fa13e3e14df954458623c111c2c13536d9fec0972ca7406f2d33fbaf7b600",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.exercises.CustomExercisesViewModelTest.xml": "13d16e96decfb642e1fa2a4c26f3aa091be6071be52619c5d2d157b170e7e9fc",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.exercises.SystemExercisesTest.xml": "9be1350edff2b08e21a2b34909d99c77a1b16c40e72f92cb7128ddd99e661c31",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.firebase.CounterValueContractTest.xml": "d2b21f019197de4ac4c14dacde65ccf1cade613893a1f6fd5715ee79e36364c7",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.firebase.FirebaseContractsTest.xml": "8c3526de36d2b05e8ddba7520f805fa66ada1a90c2231b761744a138b538d185",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.foundation.details.FoundationDetailsViewModelTest.xml": "48aa7cc9ea4255aa5728eb24de1607e613eb0cacf3795c1d8df53e159cf15763",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.foundation.home.FoundationHomeViewModelTest.xml": "34ebac7170d1a6cf43c597e10f01e3519775d63ff5284704c25e4439d002b5d0",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.foundation.scoping.FoundationViewModelStoreTest.xml": "dbc4f3656a426a37aa6c0105309e0032f45d07bf2e8652461257bd3cdd61b613",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.identity.CleanDepartureTest.xml": "e10c44d780c25e53f9376a80bd2f5d096618b67a72a5358a1ac5a4b810aa05b8",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.identity.IdentityGateTest.xml": "70caf3a3fa9bee5b40e7c3dabae76728ea6450272464179798ffa7a58c8c9ed2",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.identity.IdentityViewModelTest.xml": "9b9721f57124076eb00d0a420602e5df4c0bdfed035fcbd83e18080327fca98c",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.invitations.CommandResolutionTest.xml": "fd99f5f8d8e9aa18bf890829dd87affa0d196b7648b60574c72eaeffd1fa1c8f",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.invitations.InvitationTest.xml": "6a486d7f83e691896efea0ec7491bbce2f9008dbffc901702e647473d7a2f630",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.invitations.RecoveryHardeningTest.xml": "164153f2b506b1448a69afc922fa3e7a1c896ad91be9fe47d6827aa4e41a476f",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.invitations.SettledCommandMarkerTest.xml": "8e05e46c6cfdea9bf0413a88e1a0e41fbdf5ca15c7267166436f58f509567046",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.onboarding.OnboardingTest.xml": "55bc5334b5d47fe9e4e24229afac12faf570559a305afdaefc319644021bcd76",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.persistence.RecoveryUidContractTest.xml": "744c2578d9485c471f17c03577f051b0c143fca837a0eda18d2ad1c602ffa4bc",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.profile.ProfileTest.xml": "4e2f364473179d8fee9c08b6c042a8394f1e8c9d8558373793810557fc7035e8",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.programs.DraftNativeFixtureTest.xml": "3db395e7443d8be5b539890db256b35e0ebcfd346d5d8700a35b10e16309a393",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.programs.DraftsViewModelTest.xml": "768f609e50f889a66a5ae949b19d4a357c32d88471ce250adbec6f66c11a0230",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.programs.ProgramDraftTest.xml": "a3f612b5aebf163222a50b74be6860a17ee582d6888288414e52cefa7fe5f4f9",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.programs.ProgramPublicationTest.xml": "af9d61f8ddc3da9432d1b93b24c5be332ba6cf6f4183f70990ac17008697cc1c",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.programs.PublicationNativeFixtureTest.xml": "8819ff0210924096824aa27f3c3ea81af0e7f148cb3c7a6f2302095c0de3369b",
+        "ordinary-host-results/TEST-com.delminiusapps.tillfailure.programs.PublicationResponseFixtureTest.xml": "8acc352d4a6828be8cde68c8c3454d5f1548ffd012c56f0f8d0817b28d0bba4b"
+      },
+      "skipped": 1,
+      "tests": 268
+    },
+    "localArtifactReferencesAreLocalOnly": true,
+    "localArtifactReferencesVerifiedAtStart": 307,
+    "nativeMatrixAttribution": "Retained 7 cases per platform in each of two recorded cohorts. Final matrix predates backend two-file read correction and final-review Swift read/harness + Rules test changes. No claim of execution against later bytes.",
+    "nativeMatrixRerun": false,
+    "newReadOnlyNativeRegression": {
+      "actualSwiftSdk": true,
+      "beforeNativeExport": {
+        "path": ".firebase/m7-pr1b-final-review/native/before-native-export-explicit.sha256.json",
+        "sha256": "3a1968dfe77f545885d555f82e8dba82a9e0c10a05468b025f8bacd052671e8c"
+      },
+      "cases": [
+        {
+          "ciphertextCheckpoint": {
+            "path": ".firebase/m7-pr1b-final-review/native/good-native.sha256.json",
+            "sha256": "559307e2912b74672fb9d1462a13d25ab5023c791b51928d9782d10bcfac3785"
+          },
+          "completeExport": {
+            "path": ".firebase/m7-pr1b-final-review/native/good-export.sha256.json",
+            "sha256": "15f784c051bab0b4d55c0dc3083ebd2f1d3cb883fe13d78dfc9d0f2782d12b6b"
+          },
+          "log": {
+            "path": ".firebase/m7-pr1b-final-review/native/good.log",
+            "sha256": "f637963f1e71139e87cc968cc5cab80aed0cb7eaa2a89cc4e881c8b6e40c8935"
+          },
+          "mode": "good"
+        },
+        {
+          "ciphertextCheckpoint": {
+            "path": ".firebase/m7-pr1b-final-review/native/bad-native.sha256.json",
+            "sha256": "094b510ce7bc477cb575af2a7b4be5cc8645b36b15960ed2205659537cb6b7f0"
+          },
+          "completeExport": {
+            "path": ".firebase/m7-pr1b-final-review/native/bad-export.sha256.json",
+            "sha256": "5ee0fd80e4645d8e0387ac4aeac350b6d271e92e6dc4c0c75bc895445643cfea"
+          },
+          "log": {
+            "path": ".firebase/m7-pr1b-final-review/native/bad.log",
+            "sha256": "d69de5d455e169486c204a792b7a4e7965a71e9111fe06b3ffd1b593b3bd6134"
+          },
+          "mode": "bad"
+        }
+      ],
+      "exportFallback": "Explicit verified task hub export API; reset shutdown removed common CLI locator. No reset/import/reseed or discarded dataset.",
+      "failedCliLocatorAttempt": {
+        "path": ".firebase/m7-pr1b-final-review/native/before-native-export.log",
+        "sha256": "83ea5308f087af4a811da9f40c22cbed42462e44d0af93051691883e6c58557d"
+      },
+      "finalExport": {
+        "path": ".firebase/m7-pr1b-final-review/native/final-export.sha256.json",
+        "sha256": "fa6cc1c542da63c861159eeaf6462b2f017efc66fe4ab28c3b76143abe86e916"
+      },
+      "fixtures": {
+        "path": ".firebase/m7-pr1b-final-review/native/read-only-fixtures.json",
+        "sha256": "1a10eceb2b7c86a7a9d555a84894e6abe60112d6bd0950528bfcb8c9c0015bf2"
+      },
+      "noProtectedCommands": {
+        "counts": {
+          "assignmentCommands": 0,
+          "commandResolutionConfig": 0,
+          "commandResolutionCoverage": 0,
+          "lifecycleCommands": 0
+        },
+        "verified": true
+      },
+      "positiveAndCorruptHeaderCasesPassed": 2,
+      "shutdown": {
+        "completeExportVerified": true,
+        "keysAndDatasetsPreserved": true,
+        "nativeReadCases": 2,
+        "protectedCommands": 0,
+        "supervisorExitCode": 0,
+        "supervisorPid": 36455,
+        "taskIosStopped": true
+      }
+    },
+    "protocolStorageMutationAndSettlementUnchanged": true,
+    "publicationAuthorization": {
+      "base": "main",
+      "commitMessage": "feat(assignments): add protected program assignment and client readback",
+      "dependencyUpgrade": false,
+      "deployment": false,
+      "merge": false,
+      "normalPush": true,
+      "prTitle": "Milestone 7 PR 1b: program assignment and client readback",
+      "publishEnabled": false
+    },
+    "releaseAudit": {
+      "android": {
+        "artifactHashReverified": true,
+        "excluded": [
+          "AndroidProgramAssignmentsTest",
+          "AndroidAssignmentAdmissionTest",
+          "M7P1B_",
+          "AssignmentNative",
+          "TF_M7P1B"
+        ],
+        "freshBuild": false,
+        "sha256": "2e175bec67918879e77aca7c2c9ee2eb1872ea77026456df1b6243dd057e9bfd"
+      },
+      "ios": {
+        "excluded": [
+          "ProgramAssignmentsHarness",
+          "TF_M7P1B",
+          "M7P1B_IOS",
+          "AssignmentNative",
+          "header-path-binding"
+        ],
+        "freshBuild": true,
+        "sha256": "6b00424c8610d1b12ef122ef21f9a1be3e4cf2f4cefd74904aabb896f824aaef"
+      }
+    },
+    "remoteFeatureAndPrInitiallyAbsent": true,
+    "remoteMainMatchedStartingCommit": true,
+    "retainedSharedIos": {
+      "failures": 0,
+      "rerun": false,
+      "resultFiles": {
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.AppSurfaceTest.xml": "50e166f67a07300adb768b16eede4da576624e882797f87459a159028f61897b",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.app.AuthFixtureDraftTest.xml": "5a49c87f386c1bf0f432fe21efd8812a74b7f2d0e1cb4fe8eb11eeb3f01fa64b",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.app.FoundationSnackbarHostTest.xml": "b1a3cd1dfec47e1e501c82557257ea2f8404c418e655ead64efa2a1d6c448f4d",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.assignments.AssignmentContractTest.xml": "8430b7b183ee07a003572dbcd1d1b1249398596a48dfc26ff000dd285d66ee59",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.assignments.AssignmentRecoveryTest.xml": "b1e047af2e8b918447a705761d33a979f46807bdb4aa1b90ad3c110f93fe5f72",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.clients.ClientInvitationsTest.xml": "72334470a767aa04ace1f1bb1fae80f12c60f55f09c420419eb2e0994fecd71c",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.clients.ClientRevocationTest.xml": "536229605f513a0ece13b1fada0b90b3d698cfc80ecb9ce023ca777a4426e118",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.clients.ClientsTest.xml": "0ce47b8959498f34bf835c90a44e7c6318a6641a48fdca9bf66ed196d7b25b7a",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.clients.TrainerNotesTest.xml": "43188bee0d5b26a7dd8e33fa09f3cdd47519d6242e84eab66d1bcc0ae3265a12",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.core.designsystem.DesignSystemContractTest.xml": "c7d0869a2b90a933a471f58e069897c86fe53dfd3960da80c76eef19ccab1e14",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.designcatalog.Milestone2ReviewRegressionTest.xml": "850af2edc2d84b3d6b3cfa55c9e5321230c591f91c020db25db786c21a42a851",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.exercises.CustomExercisesTest.xml": "efae6255c3df603a8ef6e546bdfa985db9d8c3401b66046387e422a31519d8fc",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.exercises.CustomExercisesViewModelTest.xml": "6d4b97c336348e4cb5afb9fd3f61887b9003dfb14a32eafb1ad54dc151f17950",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.exercises.SystemExercisesTest.xml": "6f782ee5eb500623246bb72117155818e8e95bdc2b670b3ef6de7fbccc93991c",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.firebase.CounterValueContractTest.xml": "1cc3a98424efac7328c8b34957a4a329b29283a4365b0b9483d4e7e51acf10a2",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.firebase.FirebaseContractsTest.xml": "be38d1e268feedb9e9c48abd776298ab6f73384c39d508066420c8e0061a622c",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.foundation.details.FoundationDetailsViewModelTest.xml": "bf73fff81f75970da75cc0d749823cebc813fa5c0906a1e34fd72c82bc56dad4",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.foundation.home.FoundationHomeViewModelTest.xml": "17cdf1ea900ae03673cca84a00b523402a6d293f8a6a2dee24c93a39085b4892",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.identity.CleanDepartureTest.xml": "a82bd53d35a9fdf20c0bbb84ce7f55167bfa80dba2bd5725e831f0f68f3e106c",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.identity.IdentityGateTest.xml": "bbeb6344936e205b6f7d705b11b61a5528179bef63b237c3b9f89864c9b1cc86",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.identity.IdentityViewModelTest.xml": "3c347271bcf0730b3960b74252e899e6bb9df9c0fbb8daa16e8f87fe7b61d9bf",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.identity.NavigationStoresTest.xml": "6fa124a49a22241e3cd0380ece826b53057e14da33811b27870f732c06397043",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.invitations.CommandResolutionTest.xml": "a8e628127ef17bd6364a629a4e3f6be29986b62b79a3163a51d74d0d0af0cc12",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.invitations.InvitationTest.xml": "b5439929fcbfd9e785926560e413e0929dca403582956570572e2f52438554a8",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.invitations.RecoveryHardeningTest.xml": "0926637ff7b945239a4f177e7a0e9b02d28314f20ad15bd93f0376935403d31a",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.invitations.SettledCommandMarkerTest.xml": "9293434e4294a6a64051b30126269fa29321d4c0639558a512f1aea6a1d44675",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.onboarding.OnboardingTest.xml": "14d5434f76c5830c2bc5449220496f8ba6ba6d9616814afda7538dd96bb9836b",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.persistence.IosAtomicFilePersistenceTest.xml": "39da6391cb591c1542c27d03eec3c4e626a54f275b80585055ebc5f7d6ca62f6",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.persistence.RecoveryUidContractTest.xml": "56d6c1f5b3c9ec7256396a5445f6806caca0691bc8996ffb426c0a624e9ad7e7",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.profile.ProfileTest.xml": "9760d0fc1a8da39fa42c8f8f884c99210f694bb51a26d4c90d8793ad6223084a",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.programs.DraftsViewModelTest.xml": "a42a0b8ac37d1abfdf045addbfa89aaa5e5149f9882daac16ad710579437968a",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.programs.ProgramDraftTest.xml": "3e9427206a15bbe2b2e3c2857a065df7842bd269093bd2b930655371ad11c94b",
+        "retained-iosSimulatorArm64Test/TEST-com.delminiusapps.tillfailure.programs.ProgramPublicationTest.xml": "6ba3dff96b47f3aa1c77a2fe131350608cb29093521b8832ca922109d3b12f4a"
+      },
+      "skipped": 0,
+      "tests": 266
+    },
+    "reviewedFileCount": 51,
+    "sourceCredentialDependencyLinkAndWhitespaceAudit": "Passed before publication; final Git staging/index/tree audit required immediately before commit",
+    "startingCommit": "3146c7621111ee872a102c2e66f0162a4a9a3357",
+    "startingManifest": {
+      "path": ".firebase/m7-pr1b-final-review/starting-documents/evidence/milestone-7-pr1b-source-manifest.sha256",
+      "sha256": "47c351890e28c5617f12653579bfd2040186a7595b418eac98bf87ea80580b10"
+    },
+    "startingReport": {
+      "path": ".firebase/m7-pr1b-final-review/starting-documents/milestone-7-pr1b-report.md",
+      "sha256": "b276c5d9db2eb585f41d7418ef93d1b8201cadb78861a363caa22151bf55bcb6"
+    },
+    "startingVerification": {
+      "path": ".firebase/m7-pr1b-final-review/starting-documents/evidence/milestone-7-pr1b-verification.json",
+      "sha256": "9e9dbd47bb5893bd5b49eac509a5738b6c61a311a3fafe753466daa838a8f907"
+    },
+    "taskServicesStoppedAfterVerifiedCheckpoints": true,
+    "unchangedAnchorsVerifiedAgainstHead": true
+  },
+  "finalShutdown": {
+    "encryptedUiCheckpoints": [
+      {
+        "path": ".firebase/m7-pr1b-native-final/android-ui-client-before-clean-departure.tar.sha256.json",
+        "sha256": "56385a82ec569e9820386d58a520e884cee62e8dc17527c8fcaee42ceaa633dc"
+      },
+      {
+        "path": ".firebase/m7-pr1b-native-final/android-ui-trainer-before-clean-departure.tar.sha256.json",
+        "sha256": "ad971f1ca34f59084df07a4e908a8bad23b3a518a74961ddc46adf987042312c"
+      },
+      {
+        "path": ".firebase/m7-pr1b-native-final/ios-ui-client-before-clean-departure.sha256.json",
+        "sha256": "877cfa7f15aa9f5d7d75f86bfbd9b2249c2ddf21c6bdbd59949bdebe4669340f"
+      },
+      {
+        "path": ".firebase/m7-pr1b-native-final/ios-ui-product-before-clean-departure.sha256.json",
+        "sha256": "cd4674cf25be37987dec2653c40119c3aca3e00e40b81f0d2f2eb169e0af6785"
+      }
+    ],
+    "exportManifest": {
+      "path": ".firebase/m7-pr1b-native-final/final-shutdown-export.sha256.json",
+      "sha256": "268853f58579671695f7e31f209372c8ad1abe2e1b556ae09d07e2d70a8d2a1e"
+    },
+    "state": {
+      "completeExportVerified": true,
+      "earlierDatasetsPreserved": true,
+      "keysAndDatasetsPreserved": true,
+      "nativeCheckpoints": 28,
+      "supervisorExitCode": 0,
+      "supervisorPid": 4845,
+      "taskAndroidStopped": true,
+      "taskIosStopped": true
+    },
+    "uiExportManifest": {
+      "path": ".firebase/m7-pr1b-native-final/final-ui-export.sha256.json",
+      "sha256": "b7dbccf0bb0494b726b63cec11bf4eaec24f16b4a8ee8f3976ed1cdf9e6962c4"
+    }
+  },
+  "nativeCohorts": {
+    "finalNativeArtifacts": {
+      "caseCount": 14,
+      "cases": [
+        {
+          "checkpointManifests": [
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/admission/resume-native-verified-before-stop.sha256.json",
+              "sha256": "e04fd13a0146f2544b72a3303e298547829982284472d9d612fc7e25286937d6"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/admission/resume-native.sha256.json",
+              "sha256": "8271ec44fce8f39fc148bb3b24061a23dff0d1c0ba90e8fff610d86053ae4b53"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/admission/resume-server-export.sha256.json",
+              "sha256": "5e1a062f646af5f31c8d1cbd7e78077f5d424e2059f04bff410c5a61b43bec0e"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/admission/stage-native-verified-before-stop.sha256.json",
+              "sha256": "7e206a36322eafa28cee318fdc35b05bf43216ff27f51b7222c7e11c4be5ca73"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/admission/stage-native.sha256.json",
+              "sha256": "8f9c6285c6874ab6a67aa7b2c366084d4b1f1e989a7d7989ba4990a1edfa928a"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/admission/stage-server-export.sha256.json",
+              "sha256": "f963e8f903ae49507f93b63b7d5f947c50c4c6c175949302bffdef22fa3268b4"
+            }
+          ],
+          "mode": "admission",
+          "platform": "android",
+          "resume": {
+            "artifactCount": 18,
+            "commandId": "d9e1535f39c738ec9e5ca7eba8e93862e16183640c21275b615ca8668aa8b0d6",
+            "mode": "admission",
+            "outcome": "applied",
+            "phase": "resume",
+            "platform": "android",
+            "requestHash": "13f4f56cc3b7b88def1f4d1a08cad7585fb4fdb92237082da513bc32e747e836",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "resumeAudit": {
+            "path": ".firebase/m7-pr1b-native-final/cases/android/admission/resume-server.json",
+            "sha256": "a3325f2a8248296202571068e134882493633ad2d0c6075c1a4ff013a5f6b8b1"
+          },
+          "resumeLog": {
+            "path": ".firebase/m7-pr1b-native-final/cases/android/admission/resume.log",
+            "sha256": "c1434764b0bd6b77959e40f9fee8b7ea453b0c8f2147daa21191ffae7527a455"
+          },
+          "stage": {
+            "artifactCount": 18,
+            "commandId": "d9e1535f39c738ec9e5ca7eba8e93862e16183640c21275b615ca8668aa8b0d6",
+            "mode": "admission",
+            "outcome": "applied",
+            "phase": "stage",
+            "platform": "android",
+            "requestHash": "13f4f56cc3b7b88def1f4d1a08cad7585fb4fdb92237082da513bc32e747e836",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "stageAudit": {
+            "path": ".firebase/m7-pr1b-native-final/cases/android/admission/stage-server.json",
+            "sha256": "cf2da68bb954b5f3041f414d8e0b33b1726fa5fb7058f039a4ad33c97f21a837"
+          },
+          "stageLog": {
+            "path": ".firebase/m7-pr1b-native-final/cases/android/admission/stage.log",
+            "sha256": "761204240d51ac78f0a1eced6ed12b27495f18a44187ac3664b72000e43c84f6"
+          }
+        },
+        {
+          "checkpointManifests": [
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/applied/resume-native-verified-before-stop.sha256.json",
+              "sha256": "148a2cd4d083acd303f26085b91b41dc9f21541d10c3ddf996740d3227cfbe96"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/applied/resume-native.sha256.json",
+              "sha256": "90127020ae9054af9c2982cfcb2ce4467bd572561229aa2b7293d7557b2518ab"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/applied/resume-server-export.sha256.json",
+              "sha256": "75050672464ef47d0a4cf57d106a798468b4f17fbc9e6ea412b796538c47e3b0"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/applied/stage-native-verified-before-stop.sha256.json",
+              "sha256": "a5eff2c8f462022be25d98a688387cc79730a3dfb4551f00a1bf9c9593836782"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/applied/stage-native.sha256.json",
+              "sha256": "3e46d686629c5cebc66ffeb10f57d7ee34392ac23fb88aca44c874a169c25f6a"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/applied/stage-server-export.sha256.json",
+              "sha256": "1863b4050103a033893437bdab6d7deac71f2a72013f3db875e5e5e464fe839f"
+            }
+          ],
+          "mode": "applied",
+          "platform": "android",
+          "resume": {
+            "artifactCount": 7,
+            "commandId": "a091d9dbcb43039466d196a0775c9b4f26d7937f24cafc605cd0f98c17a4ba81",
+            "mode": "applied",
+            "outcome": "applied",
+            "phase": "resume",
+            "platform": "android",
+            "requestHash": "e1469c50d2b897a8f2b7306448225c35d54cf13ffa098ef25d0fd28c839a5022",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "resumeAudit": {
+            "path": ".firebase/m7-pr1b-native-final/cases/android/applied/resume-server.json",
+            "sha256": "addf63d6c4da3ad7bec36bd6a5b5d4ea56c01b3d62ddd2ce545c21195a8a309c"
+          },
+          "resumeLog": {
+            "path": ".firebase/m7-pr1b-native-final/cases/android/applied/resume.log",
+            "sha256": "14ea079c6eac3d6c2b38f1fad0e86350aba67633a2cf405e0ee0d52fb9f1f304"
+          },
+          "stage": {
+            "artifactCount": 7,
+            "commandId": "a091d9dbcb43039466d196a0775c9b4f26d7937f24cafc605cd0f98c17a4ba81",
+            "mode": "applied",
+            "outcome": "applied",
+            "phase": "stage",
+            "platform": "android",
+            "requestHash": "e1469c50d2b897a8f2b7306448225c35d54cf13ffa098ef25d0fd28c839a5022",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "stageAudit": {
+            "path": ".firebase/m7-pr1b-native-final/cases/android/applied/stage-server.json",
+            "sha256": "2333ddf613455c25853b6bea1adf2eb290b2129f6e6ae491f2d67a725d0dd08a"
+          },
+          "stageLog": {
+            "path": ".firebase/m7-pr1b-native-final/cases/android/applied/stage.log",
+            "sha256": "15954c587192f2acc212c02ddabf3ea80603c0d6d768dc686e21e38917fe3c91"
+          }
+        },
+        {
+          "checkpointManifests": [
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/conflict/resume-native-verified-before-stop.sha256.json",
+              "sha256": "960a5f6396b94593b3c057c8b48dddd5e5ea1ba09345c18fb3be489449dd66a3"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/conflict/resume-native.sha256.json",
+              "sha256": "cfb2f4b8b699642feb0520e8360f2cb8888d26f7d19526c727cdf279c2a4dd52"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/conflict/resume-server-export.sha256.json",
+              "sha256": "1d79c9cb5130c0e70084e2e92b5372db83ebfee265b0f8ea2f0efb5c8f2f5f2b"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/conflict/stage-native-verified-before-stop.sha256.json",
+              "sha256": "aae915366e57b93576704e118a6e2d42fb259eff726b7bb8c02d53403bd57b83"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/conflict/stage-native.sha256.json",
+              "sha256": "9e64934501bac9484f48c4538b9f51ff913d9ea67154ea075fa79328475c707c"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/conflict/stage-server-export.sha256.json",
+              "sha256": "7a24937547700b47beee8d29b63ebe6896e0d1ab7503e0ab610914d079f21b55"
+            }
+          ],
+          "mode": "conflict",
+          "platform": "android",
+          "resume": {
+            "artifactCount": 0,
+            "commandId": "68fce63c979798b6f840667ac8a690b8e903dcbbd763924b32cd5b9ad5dbec0f",
+            "mode": "conflict",
+            "outcome": "not-applied-conflict",
+            "phase": "resume",
+            "platform": "android",
+            "requestHash": "88d0cda4974c2d21bc480b932397f8ab2ed5991b10fa75202c94deb21915785d",
+            "verified": true,
+            "workspaceRevision": 1
+          },
+          "resumeAudit": {
+            "path": ".firebase/m7-pr1b-native-final/cases/android/conflict/resume-server.json",
+            "sha256": "3519971691027ab0b651b405c54685309752311a5b858874b1b908d454cd0b94"
+          },
+          "resumeLog": {
+            "path": ".firebase/m7-pr1b-native-final/cases/android/conflict/resume.log",
+            "sha256": "7af834dde90ae8df3a06290f1ee833c5466fe4b888db45fe141824de45c716e2"
+          },
+          "stage": {
+            "artifactCount": 0,
+            "commandId": "68fce63c979798b6f840667ac8a690b8e903dcbbd763924b32cd5b9ad5dbec0f",
+            "mode": "conflict",
+            "outcome": "not-applied-conflict",
+            "phase": "stage",
+            "platform": "android",
+            "requestHash": "88d0cda4974c2d21bc480b932397f8ab2ed5991b10fa75202c94deb21915785d",
+            "verified": true,
+            "workspaceRevision": 1
+          },
+          "stageAudit": {
+            "path": ".firebase/m7-pr1b-native-final/cases/android/conflict/stage-server.json",
+            "sha256": "7f09e0afab9eb295de881437d79a16d997152ae25f6548d2084633f1d93da37b"
+          },
+          "stageLog": {
+            "path": ".firebase/m7-pr1b-native-final/cases/android/conflict/stage.log",
+            "sha256": "99f9750fcb32bb757dfbc3951f3985eb4d8aef3cd276ca8eeaf44949492c3482"
+          }
+        },
+        {
+          "checkpointManifests": [
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/failure/resume-native-verified-before-stop.sha256.json",
+              "sha256": "08c004bebfef204c431eb55b4f3deacfa1141405d34b69e27a0d9d864f27fee9"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/failure/resume-native.sha256.json",
+              "sha256": "004210a8530a9aeb06d33c8fad1c480b512bf9c75e54bc3534707863efebf2b9"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/failure/resume-server-export.sha256.json",
+              "sha256": "aa0f354917761cef1a84f502016812a4f52925840ee01f536cca57f6d18538a3"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/failure/stage-native-verified-before-stop.sha256.json",
+              "sha256": "fff391c78886c6806edefc06394e28722ba48e4cc12827917790074af7a9c45a"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/failure/stage-native.sha256.json",
+              "sha256": "0cb35552fc6cb301817bf31a433cd26e15f48edd75a435c8e5be034fe98fa554"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/failure/stage-server-export.sha256.json",
+              "sha256": "1ae89c543106ad7fc6b6adb196b902d173f3f5d3e624d4edcf5455422f8d5e2c"
+            }
+          ],
+          "mode": "failure",
+          "platform": "android",
+          "resume": {
+            "artifactCount": 7,
+            "commandId": "9de28e41d20006b172b03df001cd283eaffd492ec1e903effcd1a18f46c65ae1",
+            "mode": "failure",
+            "outcome": "applied",
+            "phase": "resume",
+            "platform": "android",
+            "requestHash": "1f0d74a5ab4e5d0ffea769dbe236e0c575060edd215c58d113aeae5c6df22251",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "resumeAudit": {
+            "path": ".firebase/m7-pr1b-native-final/cases/android/failure/resume-server.json",
+            "sha256": "bbb03a65f80b2823c604a70d7e6dbc6c6129f7d85046a329f8fcd63a936e2a12"
+          },
+          "resumeLog": {
+            "path": ".firebase/m7-pr1b-native-final/cases/android/failure/resume.log",
+            "sha256": "9b73b5f4d29cfc8125ccb331ce7fa098c9a15fbf03f2f1e0fd5ae65494c93f59"
+          },
+          "stage": {
+            "artifactCount": 7,
+            "commandId": "9de28e41d20006b172b03df001cd283eaffd492ec1e903effcd1a18f46c65ae1",
+            "mode": "failure",
+            "outcome": "applied",
+            "phase": "stage",
+            "platform": "android",
+            "requestHash": "1f0d74a5ab4e5d0ffea769dbe236e0c575060edd215c58d113aeae5c6df22251",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "stageAudit": {
+            "path": ".firebase/m7-pr1b-native-final/cases/android/failure/stage-server.json",
+            "sha256": "8deecd88f0950c8c5c572be3c4cb789c5bddee170ee984551209c0b98ba1d53b"
+          },
+          "stageLog": {
+            "path": ".firebase/m7-pr1b-native-final/cases/android/failure/stage.log",
+            "sha256": "7ee2ae0f64c4305d05f36b6a7bae019a0ec4258fa638fcfefabec68b31dcc921"
+          }
+        },
+        {
+          "checkpointManifests": [
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/fenced/resume-native-verified-before-stop.sha256.json",
+              "sha256": "75cbd72827797370d21d04ae786790f8351418d5e79688f1a7c2e3468dc879e3"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/fenced/resume-native.sha256.json",
+              "sha256": "26db5e7b915ef5ea39de68155fb5696a47877ea23a9996db1ca5d9f3deeaef42"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/fenced/resume-server-export.sha256.json",
+              "sha256": "9d5fe8f1c6777a5d0ae94697055268425062a0ad412bba3f16d8c181f49857ae"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/fenced/stage-native-verified-before-stop.sha256.json",
+              "sha256": "3e2f3811cae6f8d4dbc87b43cf4ef8f2ba4a5c618ddd0156da582938ef2e2b18"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/fenced/stage-native.sha256.json",
+              "sha256": "673f2b24726b6019462c801b356d899d19789029797468713e56a77e5978ccb1"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/fenced/stage-server-export.sha256.json",
+              "sha256": "bbfa7c31736f3e59f156c195d5d104ff95be7a0c565b3ea0a71841bc9e70566e"
+            }
+          ],
+          "mode": "fenced",
+          "platform": "android",
+          "resume": {
+            "artifactCount": 0,
+            "commandId": "d9476ddedb693a8f3a51e4cc76715de28774164324d038df0fe9f411c7128cb4",
+            "mode": "fenced",
+            "outcome": "not-applied-fenced",
+            "phase": "resume",
+            "platform": "android",
+            "requestHash": "45d3550c59bf277b262e696f2987e4316e22cc46e3649cd317cebd57b21d3948",
+            "verified": true,
+            "workspaceRevision": 1
+          },
+          "resumeAudit": {
+            "path": ".firebase/m7-pr1b-native-final/cases/android/fenced/resume-server.json",
+            "sha256": "5083fddac8745828bf4d6a650105f948a835157168db431cf1d71b0d265f49bb"
+          },
+          "resumeLog": {
+            "path": ".firebase/m7-pr1b-native-final/cases/android/fenced/resume.log",
+            "sha256": "b54dac24a62c80463926c7fc0519a2cb32da4def4318b41044ebe4f5c1240273"
+          },
+          "stage": {
+            "artifactCount": 0,
+            "commandId": "d9476ddedb693a8f3a51e4cc76715de28774164324d038df0fe9f411c7128cb4",
+            "mode": "fenced",
+            "outcome": "not-applied-fenced",
+            "phase": "stage",
+            "platform": "android",
+            "requestHash": "45d3550c59bf277b262e696f2987e4316e22cc46e3649cd317cebd57b21d3948",
+            "verified": true,
+            "workspaceRevision": 1
+          },
+          "stageAudit": {
+            "path": ".firebase/m7-pr1b-native-final/cases/android/fenced/stage-server.json",
+            "sha256": "4c426ab517d0fca401b22cdb9064ed64c77bdfee65b5900dcd0fd502c97251c5"
+          },
+          "stageLog": {
+            "path": ".firebase/m7-pr1b-native-final/cases/android/fenced/stage.log",
+            "sha256": "866399700725613d17c9bd85624823864e2fb9ea7fce6486b7d92b4a06bf4058"
+          }
+        },
+        {
+          "checkpointManifests": [
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/proof/resume-native-verified-before-stop.sha256.json",
+              "sha256": "615ca14d394eb3d02df94d6307aa130ff0f4c0ef68327bea2a0cb8bd395cb16d"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/proof/resume-native.sha256.json",
+              "sha256": "1728516a8dc24c7beffbb3509c309350f3f2f78873d1dbe68693bc533da7399e"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/proof/resume-server-export.sha256.json",
+              "sha256": "61146fba25b196878b0dd1efc5214c8d3a474943f2e635a30af517127546eb7b"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/proof/stage-native-verified-before-stop.sha256.json",
+              "sha256": "23c484906209529756475969801ef72de94af0c3a9348f6bb4cbd70c1c7d343e"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/proof/stage-native.sha256.json",
+              "sha256": "fce12c6afc2301a659dfec56cac1bacae808c4a7dfeed7710d09643cb7cc5d18"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/proof/stage-server-export.sha256.json",
+              "sha256": "91352042b7905164d23c3e27a714434ec61bce266798eb7cdf0b1c26954fdd5d"
+            }
+          ],
+          "mode": "proof",
+          "platform": "android",
+          "resume": {
+            "artifactCount": 7,
+            "commandId": "49f8a8447971e15519eb3b502b29d9fd04caa78f54b2307b5363cf7407f8b201",
+            "mode": "proof",
+            "outcome": "applied",
+            "phase": "resume",
+            "platform": "android",
+            "requestHash": "603c2af88ac7d8ec5b820309908b4e039800368cde7e45a52557b7898bc37564",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "resumeAudit": {
+            "path": ".firebase/m7-pr1b-native-final/cases/android/proof/resume-server.json",
+            "sha256": "31498202e256769ba8b0125554e87a8d3987e61fee313068247b7cf40041f6b1"
+          },
+          "resumeLog": {
+            "path": ".firebase/m7-pr1b-native-final/cases/android/proof/resume.log",
+            "sha256": "ef0eebbbf6ba557e3700e46e4af062e45e64041373088f42994ef69615e6ef70"
+          },
+          "stage": {
+            "artifactCount": 7,
+            "commandId": "49f8a8447971e15519eb3b502b29d9fd04caa78f54b2307b5363cf7407f8b201",
+            "mode": "proof",
+            "outcome": "applied",
+            "phase": "stage",
+            "platform": "android",
+            "requestHash": "603c2af88ac7d8ec5b820309908b4e039800368cde7e45a52557b7898bc37564",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "stageAudit": {
+            "path": ".firebase/m7-pr1b-native-final/cases/android/proof/stage-server.json",
+            "sha256": "bf72dd40718bfa9f450f2ebbe0cef4997849621134703b230f8e1230e1aac282"
+          },
+          "stageLog": {
+            "path": ".firebase/m7-pr1b-native-final/cases/android/proof/stage.log",
+            "sha256": "0089cafc0cec2ad63231ef30f2bf2209b2845980a902b84972c970defd018c3f"
+          }
+        },
+        {
+          "checkpointManifests": [
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/settled/resume-native-verified-before-stop.sha256.json",
+              "sha256": "7718bfebaddb60400550947c3709270866513a3b82ec2dcc368ecfecafdc316a"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/settled/resume-native.sha256.json",
+              "sha256": "466aa20dc3cf85e6dfaff8df75b91efee61faad8192b237718282167a8f68c53"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/settled/resume-server-export.sha256.json",
+              "sha256": "e53794b95dd6b2d291667bdb1a8eae9745ec035703105ee28fcba07531318f4a"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/settled/stage-native-verified-before-stop.sha256.json",
+              "sha256": "42f066570de60a5b93231e3cb1306a993a84cdfbe4df25f88cfd2ad1ebd7e3b8"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/settled/stage-native.sha256.json",
+              "sha256": "11d8e54060b82bf097eec0d4d8645b4ea30d71422a4ba5150560c69bd71331fb"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/android/settled/stage-server-export.sha256.json",
+              "sha256": "4ec607240657e24e1ebc33a679798c192895059f2308ee92880257def54329f8"
+            }
+          ],
+          "mode": "settled",
+          "platform": "android",
+          "resume": {
+            "artifactCount": 7,
+            "commandId": "aa9af1ea400a5717a692753b255db4c74aed0450d04a73f07394ac81ac65eeb4",
+            "mode": "settled",
+            "outcome": "applied",
+            "phase": "resume",
+            "platform": "android",
+            "requestHash": "aff58ec1dbeb076ff6097076702272f7e2eaa1422b91c2a4dae6cfbf8f1e81c8",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "resumeAudit": {
+            "path": ".firebase/m7-pr1b-native-final/cases/android/settled/resume-server.json",
+            "sha256": "cffd651d8cc3fe64dc2e7361658ea7741924f6f2bc59fb02fc484d3715c2913e"
+          },
+          "resumeLog": {
+            "path": ".firebase/m7-pr1b-native-final/cases/android/settled/resume.log",
+            "sha256": "4794b97a00b1464ee18e57c93ae4a8a6dc0353ae1891c4fb7751df02634204e8"
+          },
+          "stage": {
+            "artifactCount": 7,
+            "commandId": "aa9af1ea400a5717a692753b255db4c74aed0450d04a73f07394ac81ac65eeb4",
+            "mode": "settled",
+            "outcome": "applied",
+            "phase": "stage",
+            "platform": "android",
+            "requestHash": "aff58ec1dbeb076ff6097076702272f7e2eaa1422b91c2a4dae6cfbf8f1e81c8",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "stageAudit": {
+            "path": ".firebase/m7-pr1b-native-final/cases/android/settled/stage-server.json",
+            "sha256": "48fd4cdc0d37b2c5f2fa8b00449afb0aac63807454fd96b4f2632fd1170a4834"
+          },
+          "stageLog": {
+            "path": ".firebase/m7-pr1b-native-final/cases/android/settled/stage.log",
+            "sha256": "15e2859ae4fec328f4bcb5d1b522ab15a0e509451dfe65fcd9db86e8fded304a"
+          }
+        },
+        {
+          "checkpointManifests": [
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/admission/resume-native-verified-before-stop.sha256.json",
+              "sha256": "1ea688c0f759712ec81a87779e3a64b78b3f7a12001fb5ee05afd000a936cc53"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/admission/resume-native.sha256.json",
+              "sha256": "88bacb17a73b5862018887facb0169bd68dc576887906293feae63476aaa019c"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/admission/resume-server-export.sha256.json",
+              "sha256": "67e46f92d64227917e384928f9767fd0f6e8a9ad59fc607c7e1729cf31074d00"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/admission/stage-native-verified-before-stop.sha256.json",
+              "sha256": "003693ea08a5f670ac982e181305e9e08bf7698616ca3679e2cc7aae02d47f82"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/admission/stage-native.sha256.json",
+              "sha256": "e3b53ed4212fe36f97ae0d6be99efbf076ac6bf5d94672d547d423fe91d06a93"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/admission/stage-server-export.sha256.json",
+              "sha256": "3dc55eee1c4cc22321f17791d8992eed29b24a7228bbbbd019dd8f55c4484358"
+            }
+          ],
+          "mode": "admission",
+          "platform": "ios",
+          "resume": {
+            "artifactCount": 18,
+            "commandId": "4dd988b54f3abc61cbd5fdf9ed092fb0104330e656fbeda0cc81208c9209526a",
+            "mode": "admission",
+            "outcome": "applied",
+            "phase": "resume",
+            "platform": "ios",
+            "requestHash": "d46e0bc71c2bc20918ebb0203aec2db9c4e6742dda5164af83023d016476b063",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "resumeAudit": {
+            "path": ".firebase/m7-pr1b-native-final/cases/ios/admission/resume-server.json",
+            "sha256": "882753457e14e87ae9656c4931c65541f08ed666f786de0bad12225ae9278010"
+          },
+          "resumeLog": {
+            "path": ".firebase/m7-pr1b-native-final/cases/ios/admission/resume.log",
+            "sha256": "df6737ba5ac866167a0c5c676acda8af7074f4234debc046885207a52ed9ae84"
+          },
+          "stage": {
+            "artifactCount": 18,
+            "commandId": "4dd988b54f3abc61cbd5fdf9ed092fb0104330e656fbeda0cc81208c9209526a",
+            "mode": "admission",
+            "outcome": "applied",
+            "phase": "stage",
+            "platform": "ios",
+            "requestHash": "d46e0bc71c2bc20918ebb0203aec2db9c4e6742dda5164af83023d016476b063",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "stageAudit": {
+            "path": ".firebase/m7-pr1b-native-final/cases/ios/admission/stage-server.json",
+            "sha256": "a92d229a7a2133f3b8f098f78189bc91e73b91e631500b2ba811cb499747cfaf"
+          },
+          "stageLog": {
+            "path": ".firebase/m7-pr1b-native-final/cases/ios/admission/stage.log",
+            "sha256": "1b471d762098b8ede9eec621e6086aa25e75d35c8994ed1d885f592d88e1c5c6"
+          }
+        },
+        {
+          "checkpointManifests": [
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/applied/resume-native-verified-before-stop.sha256.json",
+              "sha256": "cd5515c2c9d6c11b970d762e65a517e98953374601b2f885315cfa70e282dac2"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/applied/resume-native.sha256.json",
+              "sha256": "511a2cb1ba7ead422c4eadfe611065950833e55b6ea025f4e6d674c69c814471"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/applied/resume-server-export.sha256.json",
+              "sha256": "d04c5c9862359a24eb21155b554a4a01f84c01d1fe9fe117a6bbf435c2efecad"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/applied/stage-native-verified-before-stop.sha256.json",
+              "sha256": "bd4c7f47b4966bb9cb475146546c85dd661c8028880a34a24f2bf62af84b74c9"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/applied/stage-native.sha256.json",
+              "sha256": "9cbf08d145f7c6272065a05d745ea47caf9954951ff1f657d5bb5f5190447d81"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/applied/stage-server-export.sha256.json",
+              "sha256": "1863b4050103a033893437bdab6d7deac71f2a72013f3db875e5e5e464fe839f"
+            }
+          ],
+          "mode": "applied",
+          "platform": "ios",
+          "resume": {
+            "artifactCount": 7,
+            "commandId": "96c196b77cfedef93a5bfb47b601ace14e77ac7ff8111a7851ef517fbeabce23",
+            "mode": "applied",
+            "outcome": "applied",
+            "phase": "resume",
+            "platform": "ios",
+            "requestHash": "a8853deffe776c3b3f58d1d8ffb8982fd8abd5e5f15c267c6b1e9f9abbcda214",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "resumeAudit": {
+            "path": ".firebase/m7-pr1b-native-final/cases/ios/applied/resume-server.json",
+            "sha256": "51600e4706206b87d3bec943527d5e80e8ec5f4b6d83f1792ec2e13106553e80"
+          },
+          "resumeLog": {
+            "path": ".firebase/m7-pr1b-native-final/cases/ios/applied/resume.log",
+            "sha256": "7efda9e5cd6ab7555467f5e4d954e912ef5cc79dbd9a0fb09340b4d5911f9cbc"
+          },
+          "stage": {
+            "artifactCount": 7,
+            "commandId": "96c196b77cfedef93a5bfb47b601ace14e77ac7ff8111a7851ef517fbeabce23",
+            "mode": "applied",
+            "outcome": "applied",
+            "phase": "stage",
+            "platform": "ios",
+            "requestHash": "a8853deffe776c3b3f58d1d8ffb8982fd8abd5e5f15c267c6b1e9f9abbcda214",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "stageAudit": {
+            "path": ".firebase/m7-pr1b-native-final/cases/ios/applied/stage-server.json",
+            "sha256": "9e389479fa51011eca267a44d8990a7f6a1514531769674db31cfa8004900425"
+          },
+          "stageLog": {
+            "path": ".firebase/m7-pr1b-native-final/cases/ios/applied/stage.log",
+            "sha256": "38ceeb61e86b4c9bdacfb419fc0c59091067806ef3e882c38a77fbb603bdce85"
+          }
+        },
+        {
+          "checkpointManifests": [
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/conflict/resume-native-verified-before-stop.sha256.json",
+              "sha256": "b9d0c1acb46b5688fe746a449ad0ef21fe2fffb636cf11a2558e269c85e286a3"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/conflict/resume-native.sha256.json",
+              "sha256": "c5f813ba6def1fa3109d02324320a1aa35af38d40b4a1fe629f30b646b31aaf0"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/conflict/resume-server-export.sha256.json",
+              "sha256": "8ddb28343e989d01d1b61a9b530b7c45fcbf5c1f1986d94c26bcb3a3c8b1cc4e"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/conflict/stage-native-verified-before-stop.sha256.json",
+              "sha256": "6c2074b18a6dc1fca0307f9a7153d8bc445c0607e0e204a034d48696b05e6fee"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/conflict/stage-native.sha256.json",
+              "sha256": "b3c4da1f3611c9dec740155b97f92b883806c4eca2676f62b56cb15c2ce05022"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/conflict/stage-server-export.sha256.json",
+              "sha256": "639221e0481efd749737c18cfeecbbf0d62688668b3289fc18f9ae5d93c6ba32"
+            }
+          ],
+          "mode": "conflict",
+          "platform": "ios",
+          "resume": {
+            "artifactCount": 0,
+            "commandId": "f2b5cf665c7548c1535c18aa5ffe04d6ae8fc768107bd5f0f149937e00dfbcbf",
+            "mode": "conflict",
+            "outcome": "not-applied-conflict",
+            "phase": "resume",
+            "platform": "ios",
+            "requestHash": "630bf2f0e0bfcbf237dfd01cfbb9da01654cb7b4a3cec20739ac08f7ce971cc2",
+            "verified": true,
+            "workspaceRevision": 1
+          },
+          "resumeAudit": {
+            "path": ".firebase/m7-pr1b-native-final/cases/ios/conflict/resume-server.json",
+            "sha256": "5910346f6fc7c3cd69e799887f62eb1712310dbc6c81ac9535e53eb26532d613"
+          },
+          "resumeLog": {
+            "path": ".firebase/m7-pr1b-native-final/cases/ios/conflict/resume.log",
+            "sha256": "6d121bd610de7c8cd398f80a2e0114c8a6980fe71adf3249fb7b632b88979aac"
+          },
+          "stage": {
+            "artifactCount": 0,
+            "commandId": "f2b5cf665c7548c1535c18aa5ffe04d6ae8fc768107bd5f0f149937e00dfbcbf",
+            "mode": "conflict",
+            "outcome": "not-applied-conflict",
+            "phase": "stage",
+            "platform": "ios",
+            "requestHash": "630bf2f0e0bfcbf237dfd01cfbb9da01654cb7b4a3cec20739ac08f7ce971cc2",
+            "verified": true,
+            "workspaceRevision": 1
+          },
+          "stageAudit": {
+            "path": ".firebase/m7-pr1b-native-final/cases/ios/conflict/stage-server.json",
+            "sha256": "9437042ea00d788c7ca293cde133b2981b7722245c9f5bf3d4f5ff5495648a52"
+          },
+          "stageLog": {
+            "path": ".firebase/m7-pr1b-native-final/cases/ios/conflict/stage.log",
+            "sha256": "0638474f16fc741fa5062d5e8ed717dfbfcd7f0575c4e12fc54c5d2602d189bd"
+          }
+        },
+        {
+          "checkpointManifests": [
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/failure/resume-native-verified-before-stop.sha256.json",
+              "sha256": "a5b04b32d846fa60c71cdd884b50cfed9565252315f9af77388068ae533e18eb"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/failure/resume-native.sha256.json",
+              "sha256": "679bf21590296e44966cde17eadf4d22cd2c0cb003cd86edf0477a9ebd3ac8d1"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/failure/resume-server-export.sha256.json",
+              "sha256": "34aefe8295e9b54136b931199d68a35a53fe453741d4f3c62d54b44fa9461a41"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/failure/stage-native-verified-before-stop.sha256.json",
+              "sha256": "28e254afdd7953375ec6c28a49150f0f30d1bf81bc5b330df3477282c5f64583"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/failure/stage-native.sha256.json",
+              "sha256": "a702c2f89578a5771c5fb1b80ec5e86363fbe513e12a2dc00122fd6fdebc75c9"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/failure/stage-server-export.sha256.json",
+              "sha256": "c8fbfd89ca4e22355e9cb3b15a17dc5a65281d74b0d02175c5f2be991ab3f6fd"
+            }
+          ],
+          "mode": "failure",
+          "platform": "ios",
+          "resume": {
+            "artifactCount": 7,
+            "commandId": "7bd8f9ebf59f26a30ed59d578587435011aa5f04bf916c3ac2e93ac9bd1a7004",
+            "mode": "failure",
+            "outcome": "applied",
+            "phase": "resume",
+            "platform": "ios",
+            "requestHash": "74152660e4b6d46f78cb4d1348da502c3ff802cb7b0613b5ed3fd5cf0575f8fe",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "resumeAudit": {
+            "path": ".firebase/m7-pr1b-native-final/cases/ios/failure/resume-server.json",
+            "sha256": "38d691ecea900cbbe75125ea55195cfbdb87584e1805303f205401a35a4eccbf"
+          },
+          "resumeLog": {
+            "path": ".firebase/m7-pr1b-native-final/cases/ios/failure/resume.log",
+            "sha256": "eda5e72bb3e11d2a374d01dfceb55f6b0d2ac02c0e6bdc75453ab7365a1c4e27"
+          },
+          "stage": {
+            "artifactCount": 7,
+            "commandId": "7bd8f9ebf59f26a30ed59d578587435011aa5f04bf916c3ac2e93ac9bd1a7004",
+            "mode": "failure",
+            "outcome": "applied",
+            "phase": "stage",
+            "platform": "ios",
+            "requestHash": "74152660e4b6d46f78cb4d1348da502c3ff802cb7b0613b5ed3fd5cf0575f8fe",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "stageAudit": {
+            "path": ".firebase/m7-pr1b-native-final/cases/ios/failure/stage-server.json",
+            "sha256": "21f36de8f1cef22996907ab9c16602b26df7a5caa29eba44a1b83504a43867df"
+          },
+          "stageLog": {
+            "path": ".firebase/m7-pr1b-native-final/cases/ios/failure/stage.log",
+            "sha256": "7717dbe3a98deab497f199dca47428a4896c01d54f66b261d88b82ccb720e426"
+          }
+        },
+        {
+          "checkpointManifests": [
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/fenced/resume-native-verified-before-stop.sha256.json",
+              "sha256": "1f6cc8b3cae7f935d52b620145479e9aec7d7b26978f2dd318c9830f899788d1"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/fenced/resume-native.sha256.json",
+              "sha256": "a3e0264dcfbb483b72a2fb95d01c71e5b6c9161bd450649cc688a897074f6c16"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/fenced/resume-server-export.sha256.json",
+              "sha256": "4bae6c9e95947fccaf3b1bc3c9bf8145e9753d545671367845ca4aa579c2e269"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/fenced/stage-native-verified-before-stop.sha256.json",
+              "sha256": "f1fa097c4d863eade04e3d774c2e84e0a7609c324b144cd044d52f78bc6155c5"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/fenced/stage-native.sha256.json",
+              "sha256": "b61dec44752f7bfd42cc163b5bd15b6a001c1cc3a4ba05a7512c93c084c2a348"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/fenced/stage-server-export.sha256.json",
+              "sha256": "1f28710723708c28e4c30a94e34e87f18c742495052844cd2761473898db34f7"
+            }
+          ],
+          "mode": "fenced",
+          "platform": "ios",
+          "resume": {
+            "artifactCount": 0,
+            "commandId": "08d3c75c6d99011ae54626e4d27e8ab51040609a54b601abb823173f107fd736",
+            "mode": "fenced",
+            "outcome": "not-applied-fenced",
+            "phase": "resume",
+            "platform": "ios",
+            "requestHash": "dcd60d1aac7110dc32de0097eb968877dd64339afa949611df1eb4cfff6644b1",
+            "verified": true,
+            "workspaceRevision": 1
+          },
+          "resumeAudit": {
+            "path": ".firebase/m7-pr1b-native-final/cases/ios/fenced/resume-server.json",
+            "sha256": "42b3d97ee61f15fe07fe8eadacd7a2c0cc4b9768d45d0798068dda9855104959"
+          },
+          "resumeLog": {
+            "path": ".firebase/m7-pr1b-native-final/cases/ios/fenced/resume.log",
+            "sha256": "c68f6dd319a7b327bb9b8cf600bee7e5bf4d06420bd5a853689c707a1b3aaf01"
+          },
+          "stage": {
+            "artifactCount": 0,
+            "commandId": "08d3c75c6d99011ae54626e4d27e8ab51040609a54b601abb823173f107fd736",
+            "mode": "fenced",
+            "outcome": "not-applied-fenced",
+            "phase": "stage",
+            "platform": "ios",
+            "requestHash": "dcd60d1aac7110dc32de0097eb968877dd64339afa949611df1eb4cfff6644b1",
+            "verified": true,
+            "workspaceRevision": 1
+          },
+          "stageAudit": {
+            "path": ".firebase/m7-pr1b-native-final/cases/ios/fenced/stage-server.json",
+            "sha256": "e21a060d9f4811b69c8f0203da68e69ded71eec75b52f56454e50d4a15713117"
+          },
+          "stageLog": {
+            "path": ".firebase/m7-pr1b-native-final/cases/ios/fenced/stage.log",
+            "sha256": "f033b4877ce8ed3535616ef003076cd14e299c4ea2a3410f8e5fad00ea847292"
+          }
+        },
+        {
+          "checkpointManifests": [
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/proof/resume-native-verified-before-stop.sha256.json",
+              "sha256": "e833ecbf0978817fa49da11b9febaadb56721de8e80ba090ba4c6b51d19d15a1"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/proof/resume-native.sha256.json",
+              "sha256": "0c06bf57aa6bedf061ff8c66e880b8b807948fb29432f560cba0b20d7afedc89"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/proof/resume-server-export.sha256.json",
+              "sha256": "e5c23c078285c790834dce0260b621a6908f91a2bd7298f3c4e6e482a78424c6"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/proof/stage-native-verified-before-stop.sha256.json",
+              "sha256": "81ce6d3ea82d22a08247b78462a5bf1d0f4d352b1a044f9fab12701b7c54de0e"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/proof/stage-native.sha256.json",
+              "sha256": "86e5a2e360653a2fed3dea870f0f11795b6d86695a755e11e1a0de96bc6d6695"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/proof/stage-server-export.sha256.json",
+              "sha256": "922187a87a3f4b3b496f865a5b493fcd9164d6cae06caf03326216b8e55d6336"
+            }
+          ],
+          "mode": "proof",
+          "platform": "ios",
+          "resume": {
+            "artifactCount": 7,
+            "commandId": "adc85de2c3b5c1cf6f9fcd2d999fcddb3adb0443ac8a369b5a3c2cb2beca4808",
+            "mode": "proof",
+            "outcome": "applied",
+            "phase": "resume",
+            "platform": "ios",
+            "requestHash": "fcc590759a7f03e9e1266da2393d5ef01149bd61c180719309a9982f983b332c",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "resumeAudit": {
+            "path": ".firebase/m7-pr1b-native-final/cases/ios/proof/resume-server.json",
+            "sha256": "9e5f133c773b2109e65f2cf55fe3b1677eea13e5422025d8c17d6ee1ea43722d"
+          },
+          "resumeLog": {
+            "path": ".firebase/m7-pr1b-native-final/cases/ios/proof/resume.log",
+            "sha256": "6e2529b8a004b9cd60132f8b0a945eb226439ba77b6e9818a1b7aa0f5ee87b42"
+          },
+          "stage": {
+            "artifactCount": 7,
+            "commandId": "adc85de2c3b5c1cf6f9fcd2d999fcddb3adb0443ac8a369b5a3c2cb2beca4808",
+            "mode": "proof",
+            "outcome": "applied",
+            "phase": "stage",
+            "platform": "ios",
+            "requestHash": "fcc590759a7f03e9e1266da2393d5ef01149bd61c180719309a9982f983b332c",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "stageAudit": {
+            "path": ".firebase/m7-pr1b-native-final/cases/ios/proof/stage-server.json",
+            "sha256": "d47c09f6e30a9b09eced091e7b7f0bb1a75f6d9ddc1165ffe4e71e75dff808fe"
+          },
+          "stageLog": {
+            "path": ".firebase/m7-pr1b-native-final/cases/ios/proof/stage.log",
+            "sha256": "bc7041ae7e88c69474440dacd081f8ef21cc25ea3732e112fba23008d891d47b"
+          }
+        },
+        {
+          "checkpointManifests": [
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/settled/resume-native-verified-before-stop.sha256.json",
+              "sha256": "8f095278afb8cc093e369d86952278fc3c89807dd7adeaeeb6bdd53a2caddf4b"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/settled/resume-native.sha256.json",
+              "sha256": "46be9e666073b62b59141c892da0affb0de8774e3fe45e235c0c3a7b78c03efe"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/settled/resume-server-export.sha256.json",
+              "sha256": "0e8fa67a2d2fcce2dbad7ab0ce00f0f58a69c383e8190a9f7d5e595087f920b5"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/settled/stage-native-verified-before-stop.sha256.json",
+              "sha256": "5d668651b1d15969bfa64b9241a034d4b11967d0cbf0e64f7560a107cb94a4b1"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/settled/stage-native.sha256.json",
+              "sha256": "e9255647bbc24b0fd43704007c3ff601ed4ed0d3a87f5621c4151ebf8dc86343"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native-final/cases/ios/settled/stage-server-export.sha256.json",
+              "sha256": "1bbd6ed6759d5706cab75c1f3e406ea5cb7865e9699faf4d4ab061a37800d8d4"
+            }
+          ],
+          "mode": "settled",
+          "platform": "ios",
+          "resume": {
+            "artifactCount": 7,
+            "commandId": "d55db605500ff0a0d16c4f6b21ec3e9688945d2d7635f72f653cd79868a38a25",
+            "mode": "settled",
+            "outcome": "applied",
+            "phase": "resume",
+            "platform": "ios",
+            "requestHash": "f3c0de3f73d80c8dfce940be7421a90f29d47c0058d922e7e0ab3515d6c659b6",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "resumeAudit": {
+            "path": ".firebase/m7-pr1b-native-final/cases/ios/settled/resume-server.json",
+            "sha256": "77f68af90740d94235c84467a7a16387e9f8e593d569b2bb8c39e4e1a1d95284"
+          },
+          "resumeLog": {
+            "path": ".firebase/m7-pr1b-native-final/cases/ios/settled/resume.log",
+            "sha256": "7e1547d0d55d536fb35aceaed728fa8e44c7b7c0ab4475d11ab0e6d80d15a875"
+          },
+          "stage": {
+            "artifactCount": 7,
+            "commandId": "d55db605500ff0a0d16c4f6b21ec3e9688945d2d7635f72f653cd79868a38a25",
+            "mode": "settled",
+            "outcome": "applied",
+            "phase": "stage",
+            "platform": "ios",
+            "requestHash": "f3c0de3f73d80c8dfce940be7421a90f29d47c0058d922e7e0ab3515d6c659b6",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "stageAudit": {
+            "path": ".firebase/m7-pr1b-native-final/cases/ios/settled/stage-server.json",
+            "sha256": "aed337b2b9f2a2fd35092e2500dc41dd4148800e3b7542ce3f0ae1bffc0e446d"
+          },
+          "stageLog": {
+            "path": ".firebase/m7-pr1b-native-final/cases/ios/settled/stage.log",
+            "sha256": "a82cf1c36b80c9133d638b112622bb6cafb471c96782e16cfd953ab166076a2d"
+          }
+        }
+      ],
+      "coverage": {
+        "coverage": {
+          "barriers": "m7-pr1b-legacy-prefix-dual-namespace-index-denial-v1",
+          "exportSha256": "f6834ba996544cf6181e59172df9aee2fa20f18692cdf3ef1bf720f955b85cc2",
+          "generation": "b91f0176ec74475e8cf7406e25b7e9d3",
+          "historyKind": "independent-empty-before-protected-command",
+          "legacyCount": 0,
+          "lifecycleCount": 0,
+          "provenanceId": "m7p1br47049649",
+          "schemaVersion": 1,
+          "sourceFingerprint": "e949f953370c9bef25e26be8dbda34aa4e6f65bba97c7226fb07da4ad463ccfd"
+        },
+        "coverageSha256": "80391f172a9e60dfd62f8ee6a9490095819ce1a471c93b22de1037b3210c0e88"
+      },
+      "initialExport": {
+        "path": ".firebase/m7-pr1b-native-final/initial-export-verified.sha256.json",
+        "sha256": "bdc4b47b458cfe4806c58a6d95bb14bfe61ff9703958b03848d7d26ed9f65afe"
+      },
+      "shutdown": {
+        "completeExportVerified": true,
+        "earlierDatasetsPreserved": true,
+        "keysAndDatasetsPreserved": true,
+        "nativeCheckpoints": 28,
+        "supervisorExitCode": 0,
+        "supervisorPid": 4845,
+        "taskAndroidStopped": true,
+        "taskIosStopped": true
+      },
+      "stageResumeCheckpoints": 28
+    },
+    "implementation": {
+      "caseCount": 14,
+      "cases": [
+        {
+          "checkpointManifests": [
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/admission/resume-native-verified-before-stop.sha256.json",
+              "sha256": "9400216513b609faf866dd0b52fa92ae119ce5760411de730bf4feda47ebe99c"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/admission/resume-native.sha256.json",
+              "sha256": "829583cbd87df6ed5400ffc638d05086c21b1e31f18028e26a954cf685177879"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/admission/resume-server-export.sha256.json",
+              "sha256": "72acb6b20161af8d12660266edf20cc073eba336b2760fc2ef48d179074d37f9"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/admission/stage-native-verified-before-stop.sha256.json",
+              "sha256": "5baf70c2b5daee9a5781c90023cb3b8fc7ad62036f28b5a4e6e2c77c6e880445"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/admission/stage-native.sha256.json",
+              "sha256": "b63bbe9c3c7e4094569c3c09b909cbb9c89a99c8c401c5001aa7fdb8fdeae9ec"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/admission/stage-server-export.sha256.json",
+              "sha256": "34d4a0a7436fa649b08cd50e4d9e69d8067f694ed49b1002b66ca3bd36a025f2"
+            }
+          ],
+          "mode": "admission",
+          "platform": "android",
+          "resume": {
+            "artifactCount": 18,
+            "commandId": "d98ca50c89e73bd0de9debc7275dce183142164fa489e507bad3e7f98562b999",
+            "mode": "admission",
+            "outcome": "applied",
+            "phase": "resume",
+            "platform": "android",
+            "requestHash": "eba8018643e591411ebecc19f51d00afc6752715e4b35b6ca108cde2f80af1bf",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "resumeAudit": {
+            "path": ".firebase/m7-pr1b-native/cases/android/admission/resume-server.json",
+            "sha256": "98c027ebab609b90a8c8ac0af50fffea1f8856d3d1557701d953681de2573994"
+          },
+          "resumeLog": {
+            "path": ".firebase/m7-pr1b-native/cases/android/admission/resume.log",
+            "sha256": "6e09d5397d0891332432d19511f08703c775b546cbe541395cdebbf309865181"
+          },
+          "stage": {
+            "artifactCount": 18,
+            "commandId": "d98ca50c89e73bd0de9debc7275dce183142164fa489e507bad3e7f98562b999",
+            "mode": "admission",
+            "outcome": "applied",
+            "phase": "stage",
+            "platform": "android",
+            "requestHash": "eba8018643e591411ebecc19f51d00afc6752715e4b35b6ca108cde2f80af1bf",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "stageAudit": {
+            "path": ".firebase/m7-pr1b-native/cases/android/admission/stage-server.json",
+            "sha256": "dbeb499c0eb9c1ec63396a0c2e32d882372fdba1390fcf7bf6b56c64f8f165af"
+          },
+          "stageLog": {
+            "path": ".firebase/m7-pr1b-native/cases/android/admission/stage.log",
+            "sha256": "a3c26708af7726ae328028d6619bd53d15a131667dd3472adb31de0d3a4d5ee4"
+          }
+        },
+        {
+          "checkpointManifests": [
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/applied/resume-native-verified-before-stop.sha256.json",
+              "sha256": "4ca2140492c9518e56833909300d86edf2eccea8073abcf9b1cf35881925c3da"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/applied/resume-native.sha256.json",
+              "sha256": "9f4db50861341b13a5291b0f960a23370016f72b8a8d64d13cd092440d926063"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/applied/resume-server-export.sha256.json",
+              "sha256": "13784f1773ad4b772e456507b5561c1925f9fb01d0df45ebb03de2cce7be3286"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/applied/stage-native-verified-before-stop.sha256.json",
+              "sha256": "454e00160c66cb9a9ef82f0466b85828a29c29bfc7f764a7fa52a97e31ded2ae"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/applied/stage-native.sha256.json",
+              "sha256": "aab4c081818515c6938fae721bc5658c2b9d348a1cfa208c6da68d4d2a0ed34a"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/applied/stage-server-export.sha256.json",
+              "sha256": "c3a30a6627a21e0c04ba79d8cb51f710259710347c22f653e532473733ba4c4c"
+            }
+          ],
+          "mode": "applied",
+          "platform": "android",
+          "resume": {
+            "artifactCount": 7,
+            "commandId": "93331b3e41e580ac25cb494042115f3cd86f3e02347136e68aab05d246292cd4",
+            "mode": "applied",
+            "outcome": "applied",
+            "phase": "resume",
+            "platform": "android",
+            "requestHash": "403ff9858ff4291f0a79537bf77b4cdae2c65d64d71acbb424652000686fa26f",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "resumeAudit": {
+            "path": ".firebase/m7-pr1b-native/cases/android/applied/resume-server.json",
+            "sha256": "87a2f97071d5ccabf19aa4efe32d3a974e556ac3b62695fca9bdda08bf783a14"
+          },
+          "resumeLog": {
+            "path": ".firebase/m7-pr1b-native/cases/android/applied/resume.log",
+            "sha256": "37ce67bccd2127fa0ed5fd70a8bfb9498ce44626607696f1718b1be5670478d8"
+          },
+          "stage": {
+            "artifactCount": 7,
+            "commandId": "93331b3e41e580ac25cb494042115f3cd86f3e02347136e68aab05d246292cd4",
+            "mode": "applied",
+            "outcome": "applied",
+            "phase": "stage",
+            "platform": "android",
+            "requestHash": "403ff9858ff4291f0a79537bf77b4cdae2c65d64d71acbb424652000686fa26f",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "stageAudit": {
+            "path": ".firebase/m7-pr1b-native/cases/android/applied/stage-server.json",
+            "sha256": "9e92d0824f20a536a00eb7168b2ad484d7384b535d96d285e270c68c32f52524"
+          },
+          "stageLog": {
+            "path": ".firebase/m7-pr1b-native/cases/android/applied/stage.log",
+            "sha256": "ec5118b9333eb03d52c6aabe91d9df245280dfc026fed5e04a1a01f09928a2e1"
+          }
+        },
+        {
+          "checkpointManifests": [
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/conflict/resume-native-verified-before-stop.sha256.json",
+              "sha256": "37f43f3cba34a97d99b9e820aae206ed3192b27b45a98adb3aa51066184d53cc"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/conflict/resume-native.sha256.json",
+              "sha256": "7e98a4be200f61d27831460a9f0dcfa8ea1672d073b3c78abf44652aa11612d4"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/conflict/resume-server-export.sha256.json",
+              "sha256": "b146021b23fb156c966bb366df7143bfb372b868790d6c4cbb0862abc4543b29"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/conflict/stage-native-verified-before-stop.sha256.json",
+              "sha256": "2f86eeb4580f03923941bee42fb7921e74fab9103ddda25610eac39d2f822fae"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/conflict/stage-native.sha256.json",
+              "sha256": "4733d42d4cdf9fa01fdbaa375ef96b5835f15d930d7a75c5a7ebc21d3c54c989"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/conflict/stage-server-export.sha256.json",
+              "sha256": "c67f03cdb7ecae336eb479e6ff329e71f2459b6c9b3bde1f540d3096ef1aad20"
+            }
+          ],
+          "mode": "conflict",
+          "platform": "android",
+          "resume": {
+            "artifactCount": 0,
+            "commandId": "7f120310ccda42caa46f72f47d411577ec0f054f2206bfbbe90910813decd94b",
+            "mode": "conflict",
+            "outcome": "not-applied-conflict",
+            "phase": "resume",
+            "platform": "android",
+            "requestHash": "92735da1c67c0938a70ccf4d8f669c647e16abf5cf721352f29e947a9a93e4c0",
+            "verified": true,
+            "workspaceRevision": 1
+          },
+          "resumeAudit": {
+            "path": ".firebase/m7-pr1b-native/cases/android/conflict/resume-server.json",
+            "sha256": "518d66067211b61bba3d542171205cc426cd8c49228392dddb1a3957fbb94974"
+          },
+          "resumeLog": {
+            "path": ".firebase/m7-pr1b-native/cases/android/conflict/resume.log",
+            "sha256": "f28c7cc306a995a2e81bbf67812e4340a9fedae38428f61dfbb351123fdb24b1"
+          },
+          "stage": {
+            "artifactCount": 0,
+            "commandId": "7f120310ccda42caa46f72f47d411577ec0f054f2206bfbbe90910813decd94b",
+            "mode": "conflict",
+            "outcome": "not-applied-conflict",
+            "phase": "stage",
+            "platform": "android",
+            "requestHash": "92735da1c67c0938a70ccf4d8f669c647e16abf5cf721352f29e947a9a93e4c0",
+            "verified": true,
+            "workspaceRevision": 1
+          },
+          "stageAudit": {
+            "path": ".firebase/m7-pr1b-native/cases/android/conflict/stage-server.json",
+            "sha256": "cf519e5fccd4a35017de7852a0468f63913bc1b15451bf87f2d1cb87d6336669"
+          },
+          "stageLog": {
+            "path": ".firebase/m7-pr1b-native/cases/android/conflict/stage.log",
+            "sha256": "1f50035e16866777ea14ae9d668d51b02d931da4ca949379165976d7013a9ec1"
+          }
+        },
+        {
+          "checkpointManifests": [
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/failure/resume-native-verified-before-stop.sha256.json",
+              "sha256": "5ccba87658f8d6d5ca3823bf1bedbcaa5b4e939f2ec6ae20a666739f95eb2208"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/failure/resume-native.sha256.json",
+              "sha256": "73c4e6af4cdefb2538cfe13fe7582033f424cd4e0337f29db059c4603ffd1d17"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/failure/resume-server-export.sha256.json",
+              "sha256": "a7a0055ce1b6b2c79fadee6e31c80dbc229373fb22beef5317a41fb084c74f49"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/failure/stage-native-verified-before-stop.sha256.json",
+              "sha256": "97bc3bc481afb01468bff38f8c1d82ddf7633e94c53619acb00746ac95b805e4"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/failure/stage-native.sha256.json",
+              "sha256": "680e01f98740cf7e89f911e104552e099f978e569d062b9e11505209e702b00e"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/failure/stage-server-export.sha256.json",
+              "sha256": "72c05ace74aeaa2a975f551d4dd2ba152f04467652102655865db0094b2d100f"
+            }
+          ],
+          "mode": "failure",
+          "platform": "android",
+          "resume": {
+            "artifactCount": 7,
+            "commandId": "458589d3756e32e0495f9aed785a460bbe72efa0f5be4a2b775941d537f59f31",
+            "mode": "failure",
+            "outcome": "applied",
+            "phase": "resume",
+            "platform": "android",
+            "requestHash": "6bce21346b99ffed41ab7f7aa98895126603fba486401f08968a8cef5b6df844",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "resumeAudit": {
+            "path": ".firebase/m7-pr1b-native/cases/android/failure/resume-server.json",
+            "sha256": "1dc89e1569f5a6fce1539f6b4d5a53498076483fedd5edd89226c663726ac461"
+          },
+          "resumeLog": {
+            "path": ".firebase/m7-pr1b-native/cases/android/failure/resume.log",
+            "sha256": "47ab94603c2083f982a6bf6133429a9321048a33651ca8c94b8798c2fb7bffdc"
+          },
+          "stage": {
+            "artifactCount": 7,
+            "commandId": "458589d3756e32e0495f9aed785a460bbe72efa0f5be4a2b775941d537f59f31",
+            "mode": "failure",
+            "outcome": "applied",
+            "phase": "stage",
+            "platform": "android",
+            "requestHash": "6bce21346b99ffed41ab7f7aa98895126603fba486401f08968a8cef5b6df844",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "stageAudit": {
+            "path": ".firebase/m7-pr1b-native/cases/android/failure/stage-server.json",
+            "sha256": "324406c4cf5dc881a56ae345102db23c9442f72510ef10ffacc65ede16384003"
+          },
+          "stageLog": {
+            "path": ".firebase/m7-pr1b-native/cases/android/failure/stage.log",
+            "sha256": "b8bbab5f8b644f4d7da2cf798ba13a50a89128902830a6a68d980b367d0fbe24"
+          }
+        },
+        {
+          "checkpointManifests": [
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/fenced/resume-native-verified-before-stop.sha256.json",
+              "sha256": "9f3210f6abb0b47490414613fa317e7bc1ca73ec49218dc6024cc7dbe30a8a1d"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/fenced/resume-native.sha256.json",
+              "sha256": "53da6303bcd52ab98f4f1123a80f6aedb33c30d65f9c09e343bd2ed6705294fc"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/fenced/resume-server-export.sha256.json",
+              "sha256": "6d5b2f81ae03b656340277eb62a53a6ba94f48be03f571021bb1022e43f34924"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/fenced/stage-native-verified-before-stop.sha256.json",
+              "sha256": "2d2facc06cc3952391f57b2e16faaf640d45e4b14fb0f26316ff63d9ca143874"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/fenced/stage-native.sha256.json",
+              "sha256": "fcc06f5455d33f1ff1e5c6e14aa4752ea9414f8cbba6d8a5535de8de9db38d05"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/fenced/stage-server-export.sha256.json",
+              "sha256": "74bcf3da412664e5de7683a45d9f86f4c8fd5342542d40d6c028a585d6133180"
+            }
+          ],
+          "mode": "fenced",
+          "platform": "android",
+          "resume": {
+            "artifactCount": 0,
+            "commandId": "fcad1a609e41822c42b14903c97d1b6a84492b31d922d21fad731edbe309ec14",
+            "mode": "fenced",
+            "outcome": "not-applied-fenced",
+            "phase": "resume",
+            "platform": "android",
+            "requestHash": "09f3284cdd02a7bac1c913ca530419f95dbc3dc2d7199ed332aa3d56f33a963e",
+            "verified": true,
+            "workspaceRevision": 1
+          },
+          "resumeAudit": {
+            "path": ".firebase/m7-pr1b-native/cases/android/fenced/resume-server.json",
+            "sha256": "44882ef30773cfca9e2b2b5049832642b1b4aa8e234b36440b9855d1cf5355d3"
+          },
+          "resumeLog": {
+            "path": ".firebase/m7-pr1b-native/cases/android/fenced/resume.log",
+            "sha256": "e014bb53f0b0eddc77f7e8f38a1174024a8f1b8c9d0df87f4808a8b129f4d42a"
+          },
+          "stage": {
+            "artifactCount": 0,
+            "commandId": "fcad1a609e41822c42b14903c97d1b6a84492b31d922d21fad731edbe309ec14",
+            "mode": "fenced",
+            "outcome": "not-applied-fenced",
+            "phase": "stage",
+            "platform": "android",
+            "requestHash": "09f3284cdd02a7bac1c913ca530419f95dbc3dc2d7199ed332aa3d56f33a963e",
+            "verified": true,
+            "workspaceRevision": 1
+          },
+          "stageAudit": {
+            "path": ".firebase/m7-pr1b-native/cases/android/fenced/stage-server.json",
+            "sha256": "f3fe47302066c87f9bf23e8b0b93949b1543cb7bf1146122a93408edce88d8e7"
+          },
+          "stageLog": {
+            "path": ".firebase/m7-pr1b-native/cases/android/fenced/stage.log",
+            "sha256": "b436de60436adfd7edf7420989e8d1dd2fe468519c8d4da719345e3701ff72ff"
+          }
+        },
+        {
+          "checkpointManifests": [
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/proof/resume-native-verified-before-stop.sha256.json",
+              "sha256": "6d3a5501c194935f45ca4f1b949b9e5f9ce4a11e981b43557c964af70250ba40"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/proof/resume-native.sha256.json",
+              "sha256": "09d96f50fd26ecb0730a0ec02c2c64a5be2d1d97ccf805557141ab97e5ee8f6a"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/proof/resume-server-export.sha256.json",
+              "sha256": "3241282bc0f3cdb302c2925cdabe909fa9fabc992c8ac93bc4598c925dd73844"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/proof/stage-native-verified-before-stop.sha256.json",
+              "sha256": "9239ddf988ceb87ad311054c3214d7c9daf735a301fcae4c8a67a2532463dc57"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/proof/stage-native.sha256.json",
+              "sha256": "d1d64741fd0a410f6833cbf8efc972e28c8eaa44ea5768a06485f0e6eae533c1"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/proof/stage-server-export.sha256.json",
+              "sha256": "cce5c4aba024c038302c26d9fb91e23a4c5ce37cfbb26df765cf63ba3b5dd9d0"
+            }
+          ],
+          "mode": "proof",
+          "platform": "android",
+          "resume": {
+            "artifactCount": 7,
+            "commandId": "ff02b32f95eeba77b3e6d63154c5ae36b581ec0dc67a75116c5af744992da5f7",
+            "mode": "proof",
+            "outcome": "applied",
+            "phase": "resume",
+            "platform": "android",
+            "requestHash": "e3e1d64fce56539db4940266e1821dbefcb5601c81c4bae68796480779130d31",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "resumeAudit": {
+            "path": ".firebase/m7-pr1b-native/cases/android/proof/resume-server.json",
+            "sha256": "81045e2d19c6487a2290372ea060bf83f15c75c6d65bb31b5cfb391345874a23"
+          },
+          "resumeLog": {
+            "path": ".firebase/m7-pr1b-native/cases/android/proof/resume.log",
+            "sha256": "2063f6b7593d9465fba1046e1440e2d68f92fedb3abc2c89e219034faea8524f"
+          },
+          "stage": {
+            "artifactCount": 7,
+            "commandId": "ff02b32f95eeba77b3e6d63154c5ae36b581ec0dc67a75116c5af744992da5f7",
+            "mode": "proof",
+            "outcome": "applied",
+            "phase": "stage",
+            "platform": "android",
+            "requestHash": "e3e1d64fce56539db4940266e1821dbefcb5601c81c4bae68796480779130d31",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "stageAudit": {
+            "path": ".firebase/m7-pr1b-native/cases/android/proof/stage-server.json",
+            "sha256": "455a9472e2a1c9f7b3fb951a821795ba485fa2cabf6576e107499cb11456fe58"
+          },
+          "stageLog": {
+            "path": ".firebase/m7-pr1b-native/cases/android/proof/stage.log",
+            "sha256": "f5b5b78edad52a558abb98ee65e0ab87632c0390587fdf0d894962784d497c63"
+          }
+        },
+        {
+          "checkpointManifests": [
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/settled/resume-native-verified-before-stop.sha256.json",
+              "sha256": "10e978c137390bee1d94e33e91973a941a2764fbc51978c88172802752a77328"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/settled/resume-native.sha256.json",
+              "sha256": "dcb89a41816ac730f9760d733b62b1448c5806c49e888866b0ac745bfcfb8134"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/settled/resume-server-export.sha256.json",
+              "sha256": "dcab5ce77d0f16dc766fc62d112795055edab7e1b7a5d410bc2dbc4b3fe75385"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/settled/stage-native-verified-before-stop.sha256.json",
+              "sha256": "0a2cee6496992ccdea09c4e6990babb067ae8c857c2b88229562bcd63ec2261c"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/settled/stage-native.sha256.json",
+              "sha256": "f84d8d3e0a9ebf1a171ad1f7e09a4b0a5305f44141887f95566df109ec64304b"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/android/settled/stage-server-export.sha256.json",
+              "sha256": "848b6163c317b11f16f7fe6f11060d1a440aee72a6a032f59ebed61015b90bbd"
+            }
+          ],
+          "mode": "settled",
+          "platform": "android",
+          "resume": {
+            "artifactCount": 7,
+            "commandId": "1bd2b3ae5e3102a4f83a1f3aad69ef0d2b2b5b108b1c215e46196adba9e18128",
+            "mode": "settled",
+            "outcome": "applied",
+            "phase": "resume",
+            "platform": "android",
+            "requestHash": "6bf45a73c9bd197a5866f979c3bf8f74f2c3c2025ff99ab051dd1de29fb3175f",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "resumeAudit": {
+            "path": ".firebase/m7-pr1b-native/cases/android/settled/resume-server.json",
+            "sha256": "9718833e3f0cd6fe0ff3cc7b200cf3cf48aca621028253601cfae468c8ff9959"
+          },
+          "resumeLog": {
+            "path": ".firebase/m7-pr1b-native/cases/android/settled/resume.log",
+            "sha256": "d5efb2db808ad92a7bcb36b4c30641ae4d3b03338ffc0c90cbce7a981ea24be5"
+          },
+          "stage": {
+            "artifactCount": 7,
+            "commandId": "1bd2b3ae5e3102a4f83a1f3aad69ef0d2b2b5b108b1c215e46196adba9e18128",
+            "mode": "settled",
+            "outcome": "applied",
+            "phase": "stage",
+            "platform": "android",
+            "requestHash": "6bf45a73c9bd197a5866f979c3bf8f74f2c3c2025ff99ab051dd1de29fb3175f",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "stageAudit": {
+            "path": ".firebase/m7-pr1b-native/cases/android/settled/stage-server.json",
+            "sha256": "42da70c6bad3d967cf3eb29e3c0002bd57b086d47154b5ae159e557e3228c62a"
+          },
+          "stageLog": {
+            "path": ".firebase/m7-pr1b-native/cases/android/settled/stage.log",
+            "sha256": "270cfb911bd4b56c751c56fd31513e92377eee8485c53114e6a75dac71f1464c"
+          }
+        },
+        {
+          "checkpointManifests": [
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/admission/resume-native-verified-before-stop.sha256.json",
+              "sha256": "04a8b7ed8a846d64eb0295e2892c1bfaac139c747e37e428c3d3187886cc74a7"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/admission/resume-native.sha256.json",
+              "sha256": "1c4063cfac983060ecb62f5e313d1f73b1331ffcb091b47f9b8f00d49cbfabdf"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/admission/resume-server-export.sha256.json",
+              "sha256": "adc231a35df9fefc35b8c3cd2afcb5d2d64aef1af39bf56d4c99b72e982da538"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/admission/stage-native-verified-before-stop.sha256.json",
+              "sha256": "eaa4d952bc1c644b35ef4b393a363c209f7799fdb9eb09f57ad18424b4567c9f"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/admission/stage-native.sha256.json",
+              "sha256": "3bf84d8f73a2a8d726ad1f44c8cc7efb40cb8380b25d73646f627fdacd8332a7"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/admission/stage-server-export.sha256.json",
+              "sha256": "3107b1e8b7db12454eecc1e4746f6c5e3d0208c41d1b443f6a07d94d02b44a27"
+            }
+          ],
+          "mode": "admission",
+          "platform": "ios",
+          "resume": {
+            "artifactCount": 18,
+            "commandId": "920454b5f3e2760f4dcc62a089c04414274092d0958fe5a02712a25e2601dedf",
+            "mode": "admission",
+            "outcome": "applied",
+            "phase": "resume",
+            "platform": "ios",
+            "requestHash": "10465def6fd8cb2f8c5d331d36338902aa25a30c5e05d651a0638fd0e10721c8",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "resumeAudit": {
+            "path": ".firebase/m7-pr1b-native/cases/ios/admission/resume-server.json",
+            "sha256": "7095eb652a528ef82dcdb4328f35fb02a7417c91bbd71dccbdcdae019e2108b9"
+          },
+          "resumeLog": {
+            "path": ".firebase/m7-pr1b-native/cases/ios/admission/resume.log",
+            "sha256": "d6bcf2b947b5c0ba9acf4b5dcc4646d1cb5fa50a9be788084eff4cb3b05ebd62"
+          },
+          "stage": {
+            "artifactCount": 18,
+            "commandId": "920454b5f3e2760f4dcc62a089c04414274092d0958fe5a02712a25e2601dedf",
+            "mode": "admission",
+            "outcome": "applied",
+            "phase": "stage",
+            "platform": "ios",
+            "requestHash": "10465def6fd8cb2f8c5d331d36338902aa25a30c5e05d651a0638fd0e10721c8",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "stageAudit": {
+            "path": ".firebase/m7-pr1b-native/cases/ios/admission/stage-server.json",
+            "sha256": "e04ae7100f6d09971ab378c5f3f2db748bb9d09c8e60211086d5aab5e17536ae"
+          },
+          "stageLog": {
+            "path": ".firebase/m7-pr1b-native/cases/ios/admission/stage.log",
+            "sha256": "5356c3751a72ff9a27df8c22b2bf3b0a8483f378b3916a1f9ab6c893772d2a38"
+          }
+        },
+        {
+          "checkpointManifests": [
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/applied/resume-native-verified-before-stop.sha256.json",
+              "sha256": "5ba28f2e4c7bebabea35f50a598e3a6d3b52beaea1089421244615dbdc219bb7"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/applied/resume-native.sha256.json",
+              "sha256": "978eba14c2c588982331451b16af3df4060b5f8248843a807941ac93f6b39026"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/applied/resume-server-export.sha256.json",
+              "sha256": "30bead7fc7e819e657b807fbe4175e7ab0f58b0f7a91ecd0369314c782ce33cd"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/applied/stage-native-verified-before-stop.sha256.json",
+              "sha256": "9a1c225cf83c9c09c31e4b273c6b891cc4f6f89a03b926d21e495e84e82d4a43"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/applied/stage-native.sha256.json",
+              "sha256": "a6625c4c2604d551e2f055285f3a2391adde9ff1bca84947663d187ff0ec5ace"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/applied/stage-server-export.sha256.json",
+              "sha256": "af38e1158d039aa83f5f810f53a061d48ae035ecf5e5ecb4e11e849d85176bfd"
+            }
+          ],
+          "mode": "applied",
+          "platform": "ios",
+          "resume": {
+            "artifactCount": 7,
+            "commandId": "de688e7a3495dbd3867535d0738b1b0d55162cbf264dd1f1dc9e285c83cad36e",
+            "mode": "applied",
+            "outcome": "applied",
+            "phase": "resume",
+            "platform": "ios",
+            "requestHash": "03e5164490e71e814eb4dfbe999aaf77d0ccedfd9b4aa1b67a67405d4b5b045a",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "resumeAudit": {
+            "path": ".firebase/m7-pr1b-native/cases/ios/applied/resume-server.json",
+            "sha256": "277da4e5ae3ccd7be3fd221a75f1eb8b47876e20cb824048b736af0ab040fe8e"
+          },
+          "resumeLog": {
+            "path": ".firebase/m7-pr1b-native/cases/ios/applied/resume.log",
+            "sha256": "b931e1da503e351fb145bf8bd7b9c89f49ba697bb561b619f18b6cd19f615ab6"
+          },
+          "stage": {
+            "artifactCount": 7,
+            "commandId": "de688e7a3495dbd3867535d0738b1b0d55162cbf264dd1f1dc9e285c83cad36e",
+            "mode": "applied",
+            "outcome": "applied",
+            "phase": "stage",
+            "platform": "ios",
+            "requestHash": "03e5164490e71e814eb4dfbe999aaf77d0ccedfd9b4aa1b67a67405d4b5b045a",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "stageAudit": {
+            "path": ".firebase/m7-pr1b-native/cases/ios/applied/stage-server.json",
+            "sha256": "56a783e20431d2935120dbfd3298665759ba2826b79e191f01335a1e6a3926c8"
+          },
+          "stageLog": {
+            "path": ".firebase/m7-pr1b-native/cases/ios/applied/stage.log",
+            "sha256": "3c3667390e0b1880d9a48cdd0a06ea69b0fd823620967b5140c2394e4a97e906"
+          }
+        },
+        {
+          "checkpointManifests": [
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/conflict/resume-native-verified-before-stop.sha256.json",
+              "sha256": "8e42e2cfec9f6e779276135cca41fea51e51080d2b02ac6f2997e1da82ea912b"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/conflict/resume-native.sha256.json",
+              "sha256": "441e223339a4b4fbb9dbe246c7dcf61cd7e94733d16fbb9ab02e302e6d106e1c"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/conflict/resume-server-export.sha256.json",
+              "sha256": "8c4197b66329da6288baa58a5a8fe03c6635b3b676a94936ee5bf609b08ac06a"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/conflict/stage-native-verified-before-stop.sha256.json",
+              "sha256": "5bb1aeee3215abbb12da509050f35e6220e5987ab64744830c0495bb928dc84e"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/conflict/stage-native.sha256.json",
+              "sha256": "c6f1e20c4cfb8298f3851a41f2618e2a3b6b630d7f9e14d74f1beab2ea9f2c8f"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/conflict/stage-server-export.sha256.json",
+              "sha256": "696c2cfc0c72197ba8584f5aa306798804194ad79c2ab0176bd591479f478190"
+            }
+          ],
+          "mode": "conflict",
+          "platform": "ios",
+          "resume": {
+            "artifactCount": 0,
+            "commandId": "6ab22fbda41b482141606c9cfc5adffe3c0e4f9cf06e5a8b95e3b25afedc976d",
+            "mode": "conflict",
+            "outcome": "not-applied-conflict",
+            "phase": "resume",
+            "platform": "ios",
+            "requestHash": "4dc617d6e1592a08ac6eda64c3a75d42fb6c8af874c943a7db56235bda66cba8",
+            "verified": true,
+            "workspaceRevision": 1
+          },
+          "resumeAudit": {
+            "path": ".firebase/m7-pr1b-native/cases/ios/conflict/resume-server.json",
+            "sha256": "175fd0152e37de75608d82ad048678345ea0cf38f50f43216c4e6d58137d930a"
+          },
+          "resumeLog": {
+            "path": ".firebase/m7-pr1b-native/cases/ios/conflict/resume.log",
+            "sha256": "aaf858ecb431470e6c3c3fae39be6d58421ca82bbf8433ad887e8fa3468be506"
+          },
+          "stage": {
+            "artifactCount": 0,
+            "commandId": "6ab22fbda41b482141606c9cfc5adffe3c0e4f9cf06e5a8b95e3b25afedc976d",
+            "mode": "conflict",
+            "outcome": "not-applied-conflict",
+            "phase": "stage",
+            "platform": "ios",
+            "requestHash": "4dc617d6e1592a08ac6eda64c3a75d42fb6c8af874c943a7db56235bda66cba8",
+            "verified": true,
+            "workspaceRevision": 1
+          },
+          "stageAudit": {
+            "path": ".firebase/m7-pr1b-native/cases/ios/conflict/stage-server.json",
+            "sha256": "1c284293b32898eef4274c800ac72de26b693b3b30c3204c3a2a597bee720103"
+          },
+          "stageLog": {
+            "path": ".firebase/m7-pr1b-native/cases/ios/conflict/stage.log",
+            "sha256": "8d2c49c1d90247971f2a3b25bb99c05b387dda277a7a68765736e7a61d56ad94"
+          }
+        },
+        {
+          "checkpointManifests": [
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/failure/resume-native-verified-before-stop.sha256.json",
+              "sha256": "e2e10b37f48e1b6c0b43a3425f8e87acf04f6bb133e473b3a9d5ffc35a5add29"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/failure/resume-native.sha256.json",
+              "sha256": "e949d5930b2b243f91adfb368ef24a1a07d24a80711e2a75e6d27021cd34a42f"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/failure/resume-server-export.sha256.json",
+              "sha256": "93fe58e356dd29fd039b112a398b299089419e408da6130e08ad541c7d7513d6"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/failure/stage-native-verified-before-stop.sha256.json",
+              "sha256": "b24e55dcc08b812a89b699dc36dd2e10701b0acd4def24d3ea0d7dca5e9b8a15"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/failure/stage-native.sha256.json",
+              "sha256": "c30efb72bc666e599224a57491ee807f0ba2ae9c326ea97ef36814080cb0aca9"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/failure/stage-server-export.sha256.json",
+              "sha256": "f490ae92c014ee678f23be697579464c2795b5b0ad478b6490e0aa2e4269d0bc"
+            }
+          ],
+          "mode": "failure",
+          "platform": "ios",
+          "resume": {
+            "artifactCount": 7,
+            "commandId": "087f49c6fd89f5f46113d3c3e6454901349320664fee4364075982db3e1f2d25",
+            "mode": "failure",
+            "outcome": "applied",
+            "phase": "resume",
+            "platform": "ios",
+            "requestHash": "c042ed5ec3a5de78b6fb4f6eee1a18e2944ee87dadb6fb19b2a6ae7977f06d6f",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "resumeAudit": {
+            "path": ".firebase/m7-pr1b-native/cases/ios/failure/resume-server.json",
+            "sha256": "47121e495d90f01857172525871a5175a79cc1bc334ea27e1056be6211468026"
+          },
+          "resumeLog": {
+            "path": ".firebase/m7-pr1b-native/cases/ios/failure/resume.log",
+            "sha256": "722b77acfe956383e3601c263181c232cbf288a21971121a840f62d6e765c4fa"
+          },
+          "stage": {
+            "artifactCount": 7,
+            "commandId": "087f49c6fd89f5f46113d3c3e6454901349320664fee4364075982db3e1f2d25",
+            "mode": "failure",
+            "outcome": "applied",
+            "phase": "stage",
+            "platform": "ios",
+            "requestHash": "c042ed5ec3a5de78b6fb4f6eee1a18e2944ee87dadb6fb19b2a6ae7977f06d6f",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "stageAudit": {
+            "path": ".firebase/m7-pr1b-native/cases/ios/failure/stage-server.json",
+            "sha256": "1c7dc03c7a6eb9f99681c1065e161313b399ffcee4b77c69fc23ceafbfd19861"
+          },
+          "stageLog": {
+            "path": ".firebase/m7-pr1b-native/cases/ios/failure/stage.log",
+            "sha256": "abe2fe4c8854fc92968a2b5255726d9881db0ea4be93a73f453fb337eed56882"
+          }
+        },
+        {
+          "checkpointManifests": [
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/fenced/resume-native-verified-before-stop.sha256.json",
+              "sha256": "d492198872cebbe190706927b6ce9ccabea898c2944b045bc7fda384f937ac76"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/fenced/resume-native.sha256.json",
+              "sha256": "ac8eb0351ec15d68bfff5f99b785fdb6b4afcd5cc4a566dfb3e652c6dcf917fe"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/fenced/resume-server-export.sha256.json",
+              "sha256": "338d04b5bcf36f436dd0dd5117e6095bbe372da6cc88451ea90f9fe56ecb4e14"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/fenced/stage-native-verified-before-stop.sha256.json",
+              "sha256": "10cdaeb987f11281d707846e69f2eb9c3e749f5f9bf02968cd699b78a08b70eb"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/fenced/stage-native.sha256.json",
+              "sha256": "f4a54d78c36c0710b64256c4a68f8055f2e31ed1c7c07d1f94b4d1c8f320c98a"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/fenced/stage-server-export.sha256.json",
+              "sha256": "ef069b957bf620410c96801d8c2f95815a03dae8e38aec13b0e648d942e9f71c"
+            }
+          ],
+          "mode": "fenced",
+          "platform": "ios",
+          "resume": {
+            "artifactCount": 0,
+            "commandId": "2c6dd82ec10052149cc770e02361ac79bd6b0ba5bcf3c13fa2dd7c878f23c0ad",
+            "mode": "fenced",
+            "outcome": "not-applied-fenced",
+            "phase": "resume",
+            "platform": "ios",
+            "requestHash": "a416735f7fbfac0bc43091299c7043426ecaad5735f8ce2f4108693d77922b0a",
+            "verified": true,
+            "workspaceRevision": 1
+          },
+          "resumeAudit": {
+            "path": ".firebase/m7-pr1b-native/cases/ios/fenced/resume-server.json",
+            "sha256": "a8ddab17c736e0667e22f2723de9816671ec9056c5bdface59b0e314bcf33f86"
+          },
+          "resumeLog": {
+            "path": ".firebase/m7-pr1b-native/cases/ios/fenced/resume.log",
+            "sha256": "a0516a5af2a91577b9ab227103143cca8f808ec2551179dbc5ad992ca3afa997"
+          },
+          "stage": {
+            "artifactCount": 0,
+            "commandId": "2c6dd82ec10052149cc770e02361ac79bd6b0ba5bcf3c13fa2dd7c878f23c0ad",
+            "mode": "fenced",
+            "outcome": "not-applied-fenced",
+            "phase": "stage",
+            "platform": "ios",
+            "requestHash": "a416735f7fbfac0bc43091299c7043426ecaad5735f8ce2f4108693d77922b0a",
+            "verified": true,
+            "workspaceRevision": 1
+          },
+          "stageAudit": {
+            "path": ".firebase/m7-pr1b-native/cases/ios/fenced/stage-server.json",
+            "sha256": "761253ac9e80674a59bca49aa6cdd40eb2639c75721484ba9bfe900478db3985"
+          },
+          "stageLog": {
+            "path": ".firebase/m7-pr1b-native/cases/ios/fenced/stage.log",
+            "sha256": "8c21052aab563c04b8c3c52210c309baa9fb4b38c1809b138057f524a1538ea5"
+          }
+        },
+        {
+          "checkpointManifests": [
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/proof/resume-native-verified-before-stop.sha256.json",
+              "sha256": "130fc09e3c4cdcc653f91a08c5f1a64d63fd4e64bb01ce1f3db588bd457f670b"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/proof/resume-native.sha256.json",
+              "sha256": "4dd39860a924ebcc9062b85e81da6569846a3e7b11f3a351d5cf8e985551724a"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/proof/resume-server-export.sha256.json",
+              "sha256": "b568e6f042bd9f7bd9684ec7e732843c3963bbcb4fabe60e7b40ab78d56e33d0"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/proof/stage-native-verified-before-stop.sha256.json",
+              "sha256": "fcba1b924f04953c1d752d1999a6fd97abdb2b5b448b80dda00fe048b3a5b460"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/proof/stage-native.sha256.json",
+              "sha256": "c3a1c48b3bc540051066b4d9243aa22a6021b0cecfa977970a3661a2b06e8903"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/proof/stage-server-export.sha256.json",
+              "sha256": "f96cc00edc17d0ead7e2e7b9eca0f379c874038597c0fa83e0d9491f6c8be403"
+            }
+          ],
+          "mode": "proof",
+          "platform": "ios",
+          "resume": {
+            "artifactCount": 7,
+            "commandId": "06f188ec25bd5645bbf79504ec22354e1ffef713471acd91f13152fa61038c09",
+            "mode": "proof",
+            "outcome": "applied",
+            "phase": "resume",
+            "platform": "ios",
+            "requestHash": "fc18944c693cf7461c15ab03a12fb90b18ca02fba88eff3618c9a195ac549f46",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "resumeAudit": {
+            "path": ".firebase/m7-pr1b-native/cases/ios/proof/resume-server.json",
+            "sha256": "dacd343e50c7ba24344217ec8dd9ffa3e3e6b2692251b4f448d3d9b1e46dd19e"
+          },
+          "resumeLog": {
+            "path": ".firebase/m7-pr1b-native/cases/ios/proof/resume.log",
+            "sha256": "393e6ad4abb7052e88254a8b9199db85c20ee95352672430cfd379eb97158970"
+          },
+          "stage": {
+            "artifactCount": 7,
+            "commandId": "06f188ec25bd5645bbf79504ec22354e1ffef713471acd91f13152fa61038c09",
+            "mode": "proof",
+            "outcome": "applied",
+            "phase": "stage",
+            "platform": "ios",
+            "requestHash": "fc18944c693cf7461c15ab03a12fb90b18ca02fba88eff3618c9a195ac549f46",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "stageAudit": {
+            "path": ".firebase/m7-pr1b-native/cases/ios/proof/stage-server.json",
+            "sha256": "96a3d928e83ac4a8f54b2cf0b7e0204fd12511bbeaaa14ee532662487721df6c"
+          },
+          "stageLog": {
+            "path": ".firebase/m7-pr1b-native/cases/ios/proof/stage.log",
+            "sha256": "e878bedae6aa19a5fa035033477a63cb93ca0e52e2185f8d72c2f85b8187ee86"
+          }
+        },
+        {
+          "checkpointManifests": [
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/settled/resume-native-verified-before-stop.sha256.json",
+              "sha256": "e6b7b34af0435016f54dd9a506163e9de1ce633235ee2f59414db3d8c296a24f"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/settled/resume-native.sha256.json",
+              "sha256": "e7c2f966905a1c553c1c958d36e3c4a483f06d001f5ff0fefab2f8511d4d6e32"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/settled/resume-server-export.sha256.json",
+              "sha256": "bd2c1e1a928aaa6d2da45989bee770e26a4cdbec17adce07d421b02fcfcad7dc"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/settled/stage-native-verified-before-stop.sha256.json",
+              "sha256": "c3c8ae0a8790995d558547311517f245009ec8a999ce686e73e3278dc2e8c7b0"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/settled/stage-native.sha256.json",
+              "sha256": "baa0b489781c82c87e409e5acff259592b1dda140f10cc89074bf205446c8015"
+            },
+            {
+              "path": ".firebase/m7-pr1b-native/cases/ios/settled/stage-server-export.sha256.json",
+              "sha256": "83f488d1ada3027fe5cea79a5ec132272f1a607c52c5b21b8e8ac624c577cb1c"
+            }
+          ],
+          "mode": "settled",
+          "platform": "ios",
+          "resume": {
+            "artifactCount": 7,
+            "commandId": "971c6b0bf6b93c8acc083c22c207087adea4bee4d687e7425b5568aff0b01485",
+            "mode": "settled",
+            "outcome": "applied",
+            "phase": "resume",
+            "platform": "ios",
+            "requestHash": "ae283bed0cea02bd7e488640d29f415e016751d127036bcc1580c650eb2a49bf",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "resumeAudit": {
+            "path": ".firebase/m7-pr1b-native/cases/ios/settled/resume-server.json",
+            "sha256": "05e0e3698c5107b03b3f8df3987ffc806b562aa6d103f1a9bf91b4e9e5b1f9c5"
+          },
+          "resumeLog": {
+            "path": ".firebase/m7-pr1b-native/cases/ios/settled/resume.log",
+            "sha256": "667bbbb3d895994f2fc701024609012ab968c1a6b3768496de02c32c95094ca3"
+          },
+          "stage": {
+            "artifactCount": 7,
+            "commandId": "971c6b0bf6b93c8acc083c22c207087adea4bee4d687e7425b5568aff0b01485",
+            "mode": "settled",
+            "outcome": "applied",
+            "phase": "stage",
+            "platform": "ios",
+            "requestHash": "ae283bed0cea02bd7e488640d29f415e016751d127036bcc1580c650eb2a49bf",
+            "verified": true,
+            "workspaceRevision": 2
+          },
+          "stageAudit": {
+            "path": ".firebase/m7-pr1b-native/cases/ios/settled/stage-server.json",
+            "sha256": "f88daa1aaea8f22b9edf5473d7112708fba5fdcc6e71054b4a6143691a1c7f93"
+          },
+          "stageLog": {
+            "path": ".firebase/m7-pr1b-native/cases/ios/settled/stage.log",
+            "sha256": "4c7f43348dd2068b5ef7529f6d3a2765834537acc027f7a94564c03d0a5b6c79"
+          }
+        }
+      ],
+      "coverage": {
+        "coverage": {
+          "barriers": "m7-pr1b-legacy-prefix-dual-namespace-index-denial-v1",
+          "exportSha256": "a55c6fa5bf4044552354b794162f984fa26d381bc70e66110d1fb541baf03b1f",
+          "generation": "b91f0176ec74475e8cf7406e25b7e9d3",
+          "historyKind": "independent-empty-before-protected-command",
+          "legacyCount": 0,
+          "lifecycleCount": 0,
+          "provenanceId": "m7p1brd868ee53",
+          "schemaVersion": 1,
+          "sourceFingerprint": "16429e869afa4eacc04e1601d67bd7e663fb3b429060139626c4d51022a28732"
+        },
+        "coverageSha256": "6bbb29cb6b91f9751139afe05fb80a738546a271b9c0c6db1c89c5d2447d5cc8"
+      },
+      "initialExport": {
+        "path": ".firebase/m7-pr1b-native/initial-export.sha256.json",
+        "sha256": "fc09933d8640710584b794a926e918dcbe80d0577ec1e845872d3079645147af"
+      },
+      "shutdown": {
+        "completeExportVerified": true,
+        "earlierDatasetsPreserved": true,
+        "nativeCheckpoints": 28,
+        "supervisorPid": 88292
+      },
+      "stageResumeCheckpoints": 28
+    }
+  },
+  "nativeSourceSnapshot": {
+    "artifacts": {
+      ".firebase/m7-pr1b-native/xcode/Build/Products/Debug-iphonesimulator/TillFailure.app/TillFailure": "7cda0948c4f07f6c0da4955f3606e79a0328924b7bce7313c20f705338a3983a",
+      "androidApp/build/outputs/apk/debug/androidApp-debug.apk": "a2b8203ec5680fdbf887e3fbc5b33b9c8a32809fbc96a29e3831cf57cc80ddcd",
+      "shared/build/bin/iosSimulatorArm64/debugFramework/Shared.framework/Shared": "f7a202ae55e66521233e385a1d4a1f4500443bc79cfafd6963a079831d885205",
+      "shared/build/outputs/apk/androidTest/shared-androidTest.apk": "ece3ac1d4569fbb18775f913fe06cd4e02f04a07cb4d4d47719f2575c22be853"
+    },
+    "attribution": "Final protected matrix source/artifacts at implementation handoff. The two-file backend header-read correction occurred afterward. Final-review Swift read-path binding and Debug probe plus live Rules fixture corrections are separately attributed below; no protocol/storage/mutation/settlement change.",
+    "files": {
+      "firebase/firestore.indexes.json": "01a0f171f9556b1e0100965c75e11e8aa4452bb8e8f842ef5a329d1badba2672",
+      "firebase/firestore.rules": "c062cb127dc320295e989331869579908f7fc1477548e7f36add56edf1c9183d",
+      "firebase/functions/package-lock.json": "0636bb6977fb17302dd896a4c9da281dfa73f478456b60b57a7ef24d9d4f6e04",
+      "firebase/functions/scripts/assignment-pr1b-ui-fixture.mjs": "b309938070edcb6d59b3c40302044bcf6a87743c1cc348abf5cd3e3f1a96b772",
+      "firebase/functions/scripts/audit-assignment-pr1b-native.mjs": "4535b84a5ff2a08f9c33d3a5825266073f131a8e8faa8a47bc65544bb75238c6",
+      "firebase/functions/scripts/run-assignment-pr1b-native.py": "362be179b78e9a87c6792f586ef2b1ff2a95894e28353973137cf326d375b2ee",
+      "firebase/functions/scripts/run-assignment-pr1b.mjs": "605b715c63f2b23abf3a583d49457efca6c17adc4534b5c2452687c892fe3a9d",
+      "firebase/functions/scripts/seed-assignment-pr1b.mjs": "d9ce8a7e647dd4f4e0bdb8cb64ead5ad2fde75d293b25d272e633c4b85814d69",
+      "firebase/functions/src/assigned-program.ts": "4ac51f2d1a568c7de5094729040004031dc567e4649502e87097fdfaaf2c3987",
+      "firebase/functions/src/assignment-coverage.ts": "e5613211ffbca3eb2cb1bf8f2bfe359f92f90f4c22eec70d69db38ea8d7aafca",
+      "firebase/functions/src/command-resolution.ts": "ecdf97b60f04c2d872becbf993945e0e6aa2af7f52a28cd6e141ec3dbb11a1fc",
+      "firebase/functions/src/index.ts": "afcbd0b76d2a20b846d2f4e65842e98c21a2ad0bb887cb17f3f08e42ba2f2f4e",
+      "firebase/functions/src/program-assignments.ts": "0989cc90dd8356ce0383ffbe3f7f1baea8177fb4532e083c557cad96bcd022f9",
+      "firebase/functions/test/assignment-pr1a-transactions.test.ts": "8df14d66a4fe3d594afa79bd67fb183b4f843078890431d80e2b08104a8b21ba",
+      "firebase/functions/test/assignment-pr1b-fixture.ts": "e6f58183ff8f1aaf324001b352208b3f9c332f7d238a89996432c8e27d8dde60",
+      "firebase/functions/test/assignment-pr1b-rules.test.ts": "6e6a9a0e38795ba043db3623465cf559a7664486f1a631ab7268012af1d5f5ac",
+      "firebase/functions/test/program-assignments.test.ts": "9574a9674c0ca5591cac641776fb740c20876f32b3c5140093aba9797df7e38c",
+      "firebase/functions/test/rules.test.ts": "e50941daef94a1d8dc60a1a7de2d2aed556056f04e8f2991a49117ef56654ea8",
+      "iosApp/feasibility/AssignmentAdmissionMain.swift": "c52ed826466e55ca26df690f7b8981608a7045489a9345764324a68b130acd79",
+      "iosApp/feasibility/run-assignment-admission.py": "d66e7970a8ba0b90730799b636a6d8366af599f420e6264e113a76c5599733af",
+      "iosApp/iosApp/FirebaseNativeBridge.swift": "0aea75b80f28f56b0c3deca68764b6a2033e81128c01b59a9a54dee9ce4a7e7d",
+      "iosApp/iosApp/ProgramAssignmentsHarness.swift": "0684bd4b30d28202fe045f62ec562ea4aff88f86c8473a3a894fec14b71a9591",
+      "iosApp/iosApp/iOSApp.swift": "03cd8f7f711c441e215b274a10092c1ad6ae7b3ed1af3190f7b4328cd37cd863",
+      "shared/src/androidDeviceTest/kotlin/com/delminiusapps/tillfailure/assignments/AndroidAssignmentAdmissionTest.kt": "66aa68e574072922cb340c9f5222d2270aa623880368b2894539fe8d80d29b55",
+      "shared/src/androidDeviceTest/kotlin/com/delminiusapps/tillfailure/firebase/AndroidProgramAssignmentsTest.kt": "e279a8e730ac50cec7f4cdc5375fd074897305b286b29c8846016f3352cf1c12",
+      "shared/src/androidHostTest/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentFixtureTest.kt": "fe6e88ba3bd8bad463702ae6e571b0ed9f60fb33511f664638dba6e949b745d8",
+      "shared/src/androidMain/kotlin/com/delminiusapps/tillfailure/firebase/AndroidFirebaseSpikeClient.kt": "38f75c56a0ff5a6bdf7b868f25f3fc911f9191216333771eae76f9dd5dba8237",
+      "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentContract.kt": "6936f0153c5acb328cc6ba9a0f20906a8c65f1083d972dba263061b12ea347dd",
+      "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentProtocol.kt": "eedf9d37c964be01a06d98036a8d725e0a1422006bfbb2d3fc7a60e44ebc6fe1",
+      "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentRepository.kt": "5ff625c4f5d699d6523fd0053eb860eb3320c8ea7f79d733daeada071c4b04a5",
+      "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentScreen.kt": "7478bce93dff9b549fc010445ec7edf408093399476acd030463c59f73e40649",
+      "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentViewModel.kt": "a29afd28b13bb29799febdeecf474d30a9400fc2d399ec054be7996f8bb5cc16",
+      "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/clients/ClientsScreen.kt": "4a46276acbb9929fc9ad27e608cd747c68af19339bca441202c3731b194b0bd6",
+      "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/identity/IdentityRoot.kt": "2b481a62198e291bdb126594fb9880f854606f1716a162dc316b03f4c8e5a30f",
+      "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/identity/ProductIdentityClient.kt": "aab78dcde056fd1c17c16b858ec40f8bd4bbc0b27d3eddd126033795daa2f539",
+      "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/identity/RoleShell.kt": "83bd1716c8c107ee7bbdc4ff144cd2b63fda67cd4eab3fdadacd6f762d1c9518",
+      "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/invitations/CommandResolution.kt": "3f97bebc7131861d4acc35c6e1f76b5bcf8aa7bf902f33d02d035d89eac8010d",
+      "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/invitations/InvitationClient.kt": "96824fc184e2e2250466835c7a8d8f33a0e09621cf8c0a003f0b25d7cb7c0770",
+      "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/invitations/InvitationScreen.kt": "50338a15b53083b348247745699aa0b69d4ea6168ac1ec8a2e4415af70b84486",
+      "shared/src/commonTest/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentContractTest.kt": "139e04504effac8d9101514978d0ce1a465cf53e072ed1f89eaec6ee1013e3f6",
+      "shared/src/commonTest/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentRecoveryTest.kt": "f0f9afd99df78346206da48a76e86f68535d69badffdb86399eb45e192439e4b",
+      "shared/src/iosMain/kotlin/com/delminiusapps/tillfailure/firebase/IosFirebaseBridge.kt": "687a0e830ebd04e6ac1ed38067a3bee6215e8e0f47ac37b4f9c67f6944995f88"
+    },
+    "path": ".firebase/m7-pr1b-native-final/source-before-native.sha256.json",
+    "postMatrixTrainerReadFix": {
+      "firebase/functions/src/program-assignments.ts": "4c4125ccbdcdf773c3cfed6c0c5e4f2094ebed7841e5d7c3422d92cdd85c3b5c",
+      "firebase/functions/test/program-assignments.test.ts": "2e0cac7cc9350b04aea9187a076cfb89bc99351b9599024b3107b3018dcd3d42"
+    },
+    "sha256": "975d160b88fcce6b3e814c589edbf8acc957787cdbb18d10950febc9efc8da5b"
+  },
+  "releaseAudit": {
+    "android": {
+      "excluded": [
+        "AndroidProgramAssignmentsTest",
+        "AndroidAssignmentAdmissionTest",
+        "M7P1B_",
+        "AssignmentNative",
+        "TF_M7P1B"
+      ],
+      "sha256": "2e175bec67918879e77aca7c2c9ee2eb1872ea77026456df1b6243dd057e9bfd"
+    },
+    "ios": {
+      "excluded": [
+        "ProgramAssignmentsHarness",
+        "TF_M7P1B",
+        "M7P1B_IOS",
+        "AssignmentNative"
+      ],
+      "sha256": "7c98bf710658b1ae92968e67454232911a33c4e825fa5f94761f247fbffc14c0"
+    }
+  },
+  "remainingGates": [
+    "TalkBack/VoiceOver, switch access, keyboard-only and broader text/device/OS acceptance",
+    "Physical key loss, power loss, backup and shared-device security",
+    "Separate custom-admission universal conservative bound finding",
+    "Retention/privacy, real-data/production approval and operational index/deployment readiness",
+    "Later lifecycle and assignment-bearing revocation remain excluded"
+  ],
+  "report": {
+    "path": "docs/milestones/milestone-7-pr1b-report.md",
+    "sha256": "d405703fdba5f8ff0bf4f76161035309b13e04a56e53ab17e9f24cc0943c8735"
+  },
+  "review": {
+    "dependencyPinsUnchanged": true,
+    "generatedPayloadsExportsAndBinariesIgnored": true,
+    "indexEmpty": true,
+    "noAbsoluteMachinePathsOrConflictMarkers": true,
+    "noPushCommitPrMergeDeployment": true,
+    "publishEnabled": false,
+    "recordedAt": "Implementation handoff before finalization publication authorization; historical state",
+    "syntheticAssignEnabledAfterNativeGates": true,
+    "taskCredentialsAbsent": true
+  },
+  "schemaVersion": 1,
+  "scope": "M7-D1\u2013D9 synthetic emulator-only implementation; separate finalization authorizes bounded corrections, one implementation commit, normal push and PR against main; no merge/deployment/later scope",
+  "shared": {
+    "iosSimulatorArm64Test": {
+      "errors": 0,
+      "failures": 0,
+      "resultManifestSha256": "ec7b06a995e7285aa52ec91dafc712d9d7712e2471f16e9465e2e5520cb6646e",
+      "skipped": 0,
+      "tests": 266
+    },
+    "optInTypedComparison": {
+      "frozenVectorsUnchanged": 7,
+      "passedSeparately": true,
+      "path": ".firebase/m7-pr1b-typed-bounds.log",
+      "sha256": "b87cf5786ff7d836a31f6f1e4c12acbda11be32fb314533ca46d5059d1087d82"
+    },
+    "testAndroidHostTest": {
+      "errors": 0,
+      "failures": 0,
+      "resultManifestSha256": "39acccba72b340e73a6b89c7833dbe39fffcae8c15b03e8ca3dc3e5fcafc99ad",
+      "skipped": 1,
+      "tests": 268
+    }
+  },
+  "sourceManifest": {
+    "entries": 58,
+    "path": "docs/milestones/evidence/milestone-7-pr1b-source-manifest.sha256",
+    "sha256": "73c503517d82d4c1b0453395ae5b62c97efc9bd35e17e0aee81290d1a63e80c1"
+  },
+  "typedNativeCheckpoints": [
+    {
+      "path": ".firebase/m7-pr1b-reset/android-typed-verified-inputs-ciphertext.tar",
+      "sha256": "efa5492682a1b6de1490ebc6b997f84b390fb176473948227bf529ee44eeae66"
+    },
+    {
+      "path": ".firebase/m7-pr1b-reset/typed-native-inputs.sha256.json",
+      "sha256": "2de533e3ae2e20fb0f8481ffb40d9f875b85e1594befc69c04e892bb3f961b99"
+    },
+    {
+      "path": ".firebase/m7-pr1b-reset/swift-native-checkpoint.json",
+      "sha256": "a8525fd67b3dbf5f148eb65e87f1d5ef96b6b310fcd20761417143ff2ef68349"
+    },
+    {
+      "path": ".firebase/m7-pr1b-reset/swift-final-typed-admission.log",
+      "sha256": "a4277e0c92301accc2f1929f6f633b21bb4b51effb403a4409f744ac82521683"
+    },
+    {
+      "path": ".firebase/m7-pr1b-reset/android-typed-admission-verified-inputs.log",
+      "sha256": "ec3ddf93fd939ab9dc3739f10712ccba86eb43e049a7525d95c22018d5d2a0c7"
+    }
+  ],
+  "ui": {
+    "android": {
+      "actualTrainerDetailComplete": true,
+      "assignmentAudit": {
+        "assignmentId": "899e61b2-da3e-4802-9f79-2e936edf1eeb",
+        "commandId": "89f3df557c7d184b057a99b32ffc3eeedcca289c8929cafdde175ee3ef8cb995",
+        "copiedDocumentCount": 6,
+        "originalV1Unchanged": true,
+        "outcome": "assignment-created",
+        "receiptCount": 1,
+        "requestHash": "716430136f90f0f35eb0a5beda5336826da97a292a2b7df90c89e9181a5d91de",
+        "snapshotHash": "cb81336e3c919031f4a9ab35b60f2199c4de0056cddba9bc08c06be59a8bf582",
+        "sourceVersionId": "v0000000001",
+        "verified": true
+      },
+      "cancel": {
+        "headerCount": 0,
+        "receiptCount": 0,
+        "verified": true
+      },
+      "cleanFinalSignOut": true,
+      "cleanTrainerToClient": true,
+      "clientCopiedContentComplete": true,
+      "finalSignedOutTree": {
+        "path": ".firebase/m7-pr1b-native-final/android-ui-final-signedout.json",
+        "sha256": "a6d23b0f238692ba3ea1a6c7d3e73d6b7d174b0b38d0be42c1e176fa4d7da7eb"
+      },
+      "largeTextScrollAndBackPassed": true,
+      "loadedTree": {
+        "path": ".firebase/m7-pr1b-native-final/android-ui-client-copy-loaded.json",
+        "sha256": "2b18aba236a463e559b70355911f2c47988f670d2b0b6ad977bc8155952f6309"
+      },
+      "screenshots": [
+        {
+          "path": ".firebase/m7-pr1b-native-final/android-ui-200-copy-top.png",
+          "sha256": "57e820249c70b0064563425e8a11f5c533b8a6268f0a259114b5b8962a0657f5"
+        },
+        {
+          "path": ".firebase/m7-pr1b-native-final/android-ui-200-scrolled.png",
+          "sha256": "fc75f762f9201ccc654dafedcc08175721f8ff79b5df5e1025063ce957c71631"
+        },
+        {
+          "path": ".firebase/m7-pr1b-native-final/android-ui-client-copy.png",
+          "sha256": "6d2e5302f5a1ad79697d2dd726da49627e5591fa5f3f89f12955140c6edd1215"
+        }
+      ],
+      "sourceFixtures": [
+        {
+          "platform": "android",
+          "v1ContentHash": "3948cc76e8a79d48546d741bb4ac75c28ec7673d71096f5eb04a4c2aa6249607",
+          "v1CopyHash": "cb81336e3c919031f4a9ab35b60f2199c4de0056cddba9bc08c06be59a8bf582",
+          "v1Fingerprint": "d8d2e80d0a6b4a36c7408c7006f556046e63d7cc2254ce46dd6f6fd39a495bb2",
+          "v2ContentHash": "5ba47809364e68499e78f9c4f68cdf00a9b1ce4e9e7263c57a7a1bee47f29d22",
+          "v2CopyHash": "58c13943fb5b3be72ebdd365f0e76766cfcbe201368c0983599595fcf147544c",
+          "workspaceId": "m7p1br47049649_android_assign_ui_ws"
+        },
+        {
+          "platform": "ios",
+          "v1ContentHash": "895064801164e38f1ee19462159e82dfd4194e6567b320973de3026d8c2bab67",
+          "v1CopyHash": "cb81336e3c919031f4a9ab35b60f2199c4de0056cddba9bc08c06be59a8bf582",
+          "v1Fingerprint": "45e4db3794c7af63cbfe4d7efd668861e0b7ed2b407b5e2a4690ba9762960272",
+          "v2ContentHash": "7ee392f30c88dae09110703b77b8c609763d1dc9e4cb6818f8f5e93373b0b94f",
+          "v2CopyHash": "58c13943fb5b3be72ebdd365f0e76766cfcbe201368c0983599595fcf147544c",
+          "workspaceId": "m7p1br47049649_ios_assign_ui_ws"
+        }
+      ],
+      "textScaleSamples": [
+        1,
+        2
+      ]
+    },
+    "ios": {
+      "actualTrainerDetailComplete": true,
+      "assignmentAudit": {
+        "assignmentId": "a4a0b861-8182-4aed-97ec-37980efb9bf3",
+        "commandId": "7635875ae185d40008325d18363ae4d55d55a56f3b94e84c26a2c80ed0ac0df5",
+        "copiedDocumentCount": 6,
+        "originalV1Unchanged": true,
+        "outcome": "assignment-created",
+        "receiptCount": 1,
+        "requestHash": "fd46aecfee56f427ef51fa1e504f276a22709bc02b559d7a48db9709ceb17853",
+        "snapshotHash": "cb81336e3c919031f4a9ab35b60f2199c4de0056cddba9bc08c06be59a8bf582",
+        "sourceVersionId": "v0000000001",
+        "verified": true
+      },
+      "cancel": {
+        "headerCount": 0,
+        "receiptCount": 0,
+        "verified": true
+      },
+      "cleanFinalSignOut": true,
+      "cleanTrainerToClient": true,
+      "clientCopiedContentComplete": true,
+      "clientRefreshReopenPassed": true,
+      "method": "CUA Simulator actual AX actions and visual screenshot; Debug helper performs only synthetic Auth SDK sign-in, no screen model injection",
+      "sourceFixtures": [
+        {
+          "platform": "android",
+          "v1ContentHash": "3948cc76e8a79d48546d741bb4ac75c28ec7673d71096f5eb04a4c2aa6249607",
+          "v1CopyHash": "cb81336e3c919031f4a9ab35b60f2199c4de0056cddba9bc08c06be59a8bf582",
+          "v1Fingerprint": "d8d2e80d0a6b4a36c7408c7006f556046e63d7cc2254ce46dd6f6fd39a495bb2",
+          "v2ContentHash": "5ba47809364e68499e78f9c4f68cdf00a9b1ce4e9e7263c57a7a1bee47f29d22",
+          "v2CopyHash": "58c13943fb5b3be72ebdd365f0e76766cfcbe201368c0983599595fcf147544c",
+          "workspaceId": "m7p1br47049649_android_assign_ui_ws"
+        },
+        {
+          "platform": "ios",
+          "v1ContentHash": "895064801164e38f1ee19462159e82dfd4194e6567b320973de3026d8c2bab67",
+          "v1CopyHash": "cb81336e3c919031f4a9ab35b60f2199c4de0056cddba9bc08c06be59a8bf582",
+          "v1Fingerprint": "45e4db3794c7af63cbfe4d7efd668861e0b7ed2b407b5e2a4690ba9762960272",
+          "v2ContentHash": "7ee392f30c88dae09110703b77b8c609763d1dc9e4cb6818f8f5e93373b0b94f",
+          "v2CopyHash": "58c13943fb5b3be72ebdd365f0e76766cfcbe201368c0983599595fcf147544c",
+          "workspaceId": "m7p1br47049649_ios_assign_ui_ws"
+        }
+      ],
+      "textScaleSamples": [
+        1
+      ]
+    }
+  }
+}

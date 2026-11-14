@@ -95,6 +95,19 @@ class AssignmentFixtureTest {
             }
             for((history,base) in histories) {
                 assertTrue(AssignmentProspective.admission(base,d))
+                val command=AssignmentProtocol.write(wid,d.assignment,d.idempotencyKey).pending(uid)!!
+                assertTrue(validPendingCommand(uid,command))
+                assertEquals(AssignmentContract.hash(uid,d),CommandResolution.hash(command))
+                assertTrue(AssignmentBudget.admission(base,command))
+                val frozen=AssignmentProspective.states(base,d).toSet()
+                for(started in listOf(false,true))for(actual in AssignmentBudget.states(base,command.copy(resolutionStarted=started))) {
+                    val actualJson=PersistenceJson.format.encodeToJsonElement(actual).jsonObject
+                    if(actualJson !in frozen)Files.write(root.resolve("typed-failure.json"),actualJson.toString().encodeToByteArray())
+                    assertTrue(actualJson in frozen,"Actual typed serializer drifted from frozen prospective states")
+                    assertEquals(actualJson.toString().encodeToByteArray().size,frozen.first{it==actualJson}.toString().encodeToByteArray().size)
+                    actual.pendingTerminalProof?.let{assertTrue(it.valid())}
+                    actual.lastSettledCommand?.let{assertTrue(it.valid())}
+                }
                 pendingMaximum=maxOf(pendingMaximum,AssignmentProspective.pending(uid,d,true).toString().encodeToByteArray().size)
                 AssignmentProspective.states(base,d).forEachIndexed{index,state->
                     val bytes=state.toString().encodeToByteArray();maximum=maxOf(maximum,bytes.size)

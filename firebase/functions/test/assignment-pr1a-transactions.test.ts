@@ -81,24 +81,23 @@ describe('M7 PR1a isolated dual-namespace transactions', () => {
       assert.equal((await current.get()).exists, false); await config.set(original);
     }
   });
-  it('legacy functions currently bypass lifecycle fences; proposed prefix exclusion blocks BOTH writers in either ordering', async () => {
+  it('installed legacy entry-point guards block BOTH writers before/after fences, preserving non-product receipts', async () => {
     const { uid, client, wid, descriptor: d } = await seed();
     await probeAssignment(db, uid, d, 'resolve', d.assignment.preparedAtMillis);
     const request = { callerUid: uid, idempotencyKey: d.idempotencyKey, uid: client, workspaceId: wid, trainerId: uid,
       assignmentId: 'legacy-gap', sourceTemplateId: 't', sourceVersionId: 'v1', sourceVersionNumber: 1, sourceContentHash: 's', snapshotHash: 's',
       accessExpiresAtMillis: Date.UTC(2030, 0, 1), workouts: [], plans: [], maxWrites: 20 };
-    // Characterize the unpatched implementation honestly, on a disposable project only.
-    assert.equal((await publishAssignment(db, request)).replayed, false);
+    // PR 1a documented the bypass; PR 1b installs the actual guards.
+    await assert.rejects(publishAssignment(db,request),/legacy-product-key-reserved/);
     const closeKey = d.idempotencyKey + '-close';
     await db.doc(`lifecycleCommands/${commandId(uid, closeKey)}`).create({ schemaVersion: 2, commandKind: 'own-command-fence' });
-    assert.equal((await closeAssignment(db, { callerUid: uid, idempotencyKey: closeKey, uid: client, workspaceId: wid, assignmentId: 'legacy-gap', status: 'cancelled', expectedRevision: 1 })).revision, 2);
+    await assert.rejects(closeAssignment(db, { callerUid: uid, idempotencyKey: closeKey, uid: client, workspaceId: wid, assignmentId: 'legacy-gap', status: 'cancelled', expectedRevision: 1 }),/legacy-product-key-reserved/);
     for (const kind of ['publish', 'close']) for (const beforeFence of [true, false]) {
       const key = d.idempotencyKey + `-${kind}-${beforeFence}`;
       const candidate = { ...d, idempotencyKey: key };
       const fence = () => probeAssignment(db, uid, candidate, 'resolve', d.assignment.preparedAtMillis);
       if (!beforeFence) assert.equal((await fence()).outcome, 'not-applied-fenced');
       const guarded = async () => {
-        rejectLegacyProductKey(key); // Exact proposed guard at BOTH legacy entry points, before any references.
         return kind === 'publish' ? publishAssignment(db, { ...request, idempotencyKey: key, assignmentId: 'must-not-exist' }) :
           closeAssignment(db, { callerUid: uid, idempotencyKey: key, uid: client, workspaceId: wid, assignmentId: 'legacy-gap', status: 'cancelled', expectedRevision: 2 });
       };
@@ -107,7 +106,8 @@ describe('M7 PR1a isolated dual-namespace transactions', () => {
       assert.equal((await db.doc(`assignmentCommands/${commandId(uid, key)}`).get()).exists, false);
     }
     const firstKey = d.idempotencyKey + '-legacy-first';
-    await publishAssignment(db, { ...request, idempotencyKey: firstKey, assignmentId: 'legacy-first' });
+    // Represent a historical pre-barrier receipt without calling the now-guarded writer.
+    await db.doc(`assignmentCommands/${commandId(uid,firstKey)}`).create({schemaVersion:1,commandKind:'publish-assignment'});
     await assert.rejects(probeAssignment(db, uid, { ...d, idempotencyKey: firstKey }, 'resolve', d.assignment.preparedAtMillis), /outcome-unavailable/);
     assert.equal((await db.doc(`lifecycleCommands/${commandId(uid, firstKey)}`).get()).exists, false);
     rejectLegacyProductKey('unchanged-historical-key');
