@@ -1,7 +1,7 @@
 # Implementation roadmap
 
-Status: **Milestone 3 locally accepted; Milestones 4–6 implementation merged with acceptance gates open; Milestone 7 bounded policy approved; PR 1a contract/feasibility authorized only**
-Review date: **2026-11-13**
+Status: **Milestone 3 locally accepted; Milestones 4–6 implementation merged with acceptance gates open; Milestone 7 PR 1a/1b merged, acceptance qualified; PR 2 documentation proposal only**
+Review date: **2026-11-15**
 
 Milestones are ordered, reviewable changes. Foundation work may be horizontal; feature milestones must demonstrate an end-to-end user outcome with authorization and recovery, not just screens or repositories. “Commands” are planned verification and may require files that do not exist yet.
 
@@ -84,7 +84,9 @@ Implementation status (2026-11-12): **all four slices merged through PR #19 (`de
 
 ## 7. Program assignment
 
-Planning status (2026-11-12): the [Milestone 7 plan](milestones/milestone-7-plan.md) confirms this scope and recommends an initial online synthetic, one-workout/one-occurrence end-to-end slice. Verified immutable fixture versions can supply it without enabling Publish, subject to explicit owner approval. The isolated materializer is not a complete authenticated source-loading endpoint or current protected adapter. Exact authority/copy/timing/expiry/lifecycle/custody, recovery namespace reconciliation, trainer-index correction and real serializer/native/interaction proof gate implementation. The roadmap acceptance below describes the full milestone; the reduced first slice alone cannot satisfy it. No new scheduling, history, retention, offline or access policy is approved.
+Implementation/planning status (2026-11-15): [PR #20](https://github.com/krajinov/TillFailure/pull/20) merged PR 1a contracts/feasibility; [PR #21](https://github.com/krajinov/TillFailure/pull/21) merged PR 1b at `0a1c717b164c46058b9efb1877fc70756a398b5b`. The bounded synthetic online single-workout/one-occurrence flow now includes authenticated exact-version loading, complete client-safe copies, namespace barriers, direct trainer-index denial, native protected recovery and two-role readback. The [PR 1b report](milestones/milestone-7-pr1b-report.md) retains exact evidence attribution, including later focused trainer-expiry correction versus earlier recovery/UI artifacts. Publish remains disabled; full M7 acceptance and inherited gaps remain open.
+
+The next [ordered M7 slice](milestones/milestone-7-plan.md#ordered-pr-slices) is **PR 2 — full bounded program/horizon**, not PR 3 lifecycle/withdrawal or M8 execution. Its [documentation proposal](milestones/milestone-7-pr2-plan.md) recommends the complete existing M6 1–3-workout/12-total-item version, exactly one UTC occurrence per workout, an initial finite revision-1 horizon and expiry 24 hours after the last occurrence. These are pending [R1–R6 decisions](milestones/milestone-7-pr2-plan.md#decisions-required-and-separate-authorization), with separate R7 implementation authorization; no longer horizon, recurrence, reschedule, lifecycle, history, cleanup, offline, real-data or production approval is inferred. The full-milestone acceptance below is unchanged; neither PR 1b nor the proposed PR 2 alone satisfies it.
 
 - **User outcome:** Trainer assigns an exact published version; client sees planned workouts without later template edits changing them.
 - **Affected areas:** `programs`, `workout` planning, client home/workouts.
@@ -157,3 +159,6 @@ The [approved PR 2 contract](milestones/milestone-6-pr2-plan.md#approval-and-imp
 
 
 Milestone 7 PR 1a handoff (2026-11-13): Josip approved [M7-D1–D9 and authorized M7-D10 for PR 1a only](milestones/milestone-7-plan.md#approval-and-pr-1a-authorization-2026-11-13). Historical pending-decision wording in the M7 planning paragraph is superseded only for the exact bounded synthetic contract. Executable contract/namespace/isolated Rules/native-storage feasibility is authorized; PR 1b, product endpoints/issuance/UI/Rules/index changes, Publish enablement, real-data/production/offline and assignment-bearing revocation remain excluded.
+
+
+M7 PR 2 approval (2026-11-15): [R1–R6 are approved exactly; R7 authorizes only the PR 2a contract-and-feasibility prerequisite](milestones/milestone-7-pr2-plan.md#r1r6-approval-and-pr-2a-prerequisite-authorization-2026-11-15), on `feature/milestone-7-pr2a-plan-feasibility` after the five-document planning commit. Earlier pending wording is historical within this boundary. Full product integration/new issuance, Rules/indexes/dependencies/native encoding/cap changes and Publish/production remain unauthorized.
