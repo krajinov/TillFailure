@@ -38,9 +38,9 @@ class AssignmentContractTest {
         val original=DraftJson(base.copy(preferredWorkspaceId="x".repeat(36500)))
         assertFalse(AssignmentProspective.admission(base.copy(preferredWorkspaceId="x".repeat(36500)),d))
         assertEquals(original,DraftJson(base.copy(preferredWorkspaceId="x".repeat(36500))))
-        // No new dispatcher/ledger adapter is installed by this prerequisite.
+        // Missing assignment payload still locks; the frozen prospective value is now typed.
         assertFalse(validPendingCommand("A",PendingInvitationCommand("A",d.action,d.idempotencyKey,workspaceId="w")))
-        assertFails{PersistenceJson.format.decodeFromString(AccountPersistenceEnvelope.serializer(),AssignmentProspective.states(base,d).first().toString())}
+        assertEquals(d.assignment,PersistenceJson.format.decodeFromString(AccountPersistenceEnvelope.serializer(),AssignmentProspective.states(base,d).first().toString()).pendingInvitationCommands.single().assignment)
         for(status in AssignmentContract.statuses)assertTrue(AssignmentContract.validDecision(d,AssignmentContract.decision(d,status)))
     }
     private fun DraftJson(record:AccountPersistenceEnvelope)=PersistenceJson.format.encodeToString(AccountPersistenceEnvelope.serializer(),record)

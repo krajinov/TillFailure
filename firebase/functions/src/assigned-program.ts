@@ -84,7 +84,13 @@ export interface AssignmentResult {
   readonly replayed: boolean;
 }
 
+// Installed on both legacy entry points before any reference, replay or transaction.
+function rejectReservedAssignmentKey(key: string): void {
+  if (typeof key !== "string" || key.startsWith("or1-")) throw new Error("legacy-product-key-reserved");
+}
+
 export async function publishAssignment(db: Firestore, input: PublishAssignmentRequest): Promise<AssignmentResult> {
+  rejectReservedAssignmentKey(input.idempotencyKey);
   requirePublishPathIdentifiers(input);
   const replaces = input.replacesAssignmentId !== undefined;
   if (replaces && (!Number.isInteger(input.replacesExpectedRevision) || (input.replacesExpectedRevision ?? 0) < 1)) {
@@ -270,6 +276,7 @@ export interface CloseAssignmentResult {
 // expired assignment is never rewritten, terminal reasons and replacement metadata are
 // immutable, and only the original caller-bound receipt replays a successful close.
 export async function closeAssignment(db: Firestore, input: CloseAssignmentRequest): Promise<CloseAssignmentResult> {
+  rejectReservedAssignmentKey(input.idempotencyKey);
   // The header and discovery-index references are built from these three IDs, so each must be a
   // single document segment before the transaction reads or publishes anything.
   singlePathSegment(input.uid, "client-uid");

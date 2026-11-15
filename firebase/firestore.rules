@@ -249,25 +249,8 @@ service cloud.firestore {
     }
 
     match /workspaces/{wid}/assignedPrograms/{aid} {
-      // The trusted assignment writer stores only trainer discovery metadata here: workspace,
-      // client, assignment and trainer IDs, lifecycle status/revision and replacement metadata.
-      // Lists constrain schema, stored workspace and trainerId; Rules cannot filter documents.
-      allow get: if signedIn()
-        && activeAccount(request.auth.uid)
-        && activeWorkspace(wid)
-        && activeTrainerMembership(wid, request.auth.uid)
-        && resource.data.schemaVersion == 1
-        && resource.data.workspaceId == wid
-        && resource.data.assignmentId == aid
-        && resource.data.trainerId == request.auth.uid;
-      allow list: if signedIn()
-        && activeAccount(request.auth.uid)
-        && activeWorkspace(wid)
-        && activeTrainerMembership(wid, request.auth.uid)
-        && resource.data.schemaVersion == 1
-        && resource.data.workspaceId == wid
-        && resource.data.trainerId == request.auth.uid;
-      allow write: if false;
+      // Current-relationship discovery/detail is mediated; index bytes grant no history right.
+      allow read, write: if false;
     }
 
     match /spikeEcho/{uid}/documents/{documentId} {

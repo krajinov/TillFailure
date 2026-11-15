@@ -1,3 +1,5 @@
+import { assignmentDescriptor, assignmentBinding, validAssignmentDecision, ASSIGNMENT_KIND, ASSIGNMENT_HASH_VERSION } from './assignment-feasibility-contract.js';
+import { requireAssignmentCoverage } from './assignment-coverage.js';
 import { publicationDescriptor, publicationDecisionValid } from "./program-publication-contract.js";
 import { draftDescriptor, validDraftSave } from "./program-draft-contract.js";
 import { draftDecisionValid } from "./program-drafts.js";
@@ -21,7 +23,7 @@ export function resolutionBinding(uid: string, raw: unknown) {
   if (!exact(raw, ["protocolVersion", "descriptor"]) || raw.protocolVersion !== 1 || !raw.descriptor || typeof raw.descriptor !== "object") fail();
   if (JSON.stringify(raw).length > 8192) fail();
   const d = (raw as Data).descriptor as Data;
-  const fields: Record<string, string[]> = { "publish-program-template": ["action","workspaceId","idempotencyKey","publish"], "save-program-draft": ["action","workspaceId","idempotencyKey","draftSave"], create: ["action", "workspaceId", "email", "idempotencyKey"],
+  const fields: Record<string, string[]> = { "assign-program-version": ["action","workspaceId","idempotencyKey","assignment"], "publish-program-template": ["action","workspaceId","idempotencyKey","publish"], "save-program-draft": ["action","workspaceId","idempotencyKey","draftSave"], create: ["action", "workspaceId", "email", "idempotencyKey"],
     resend: ["action", "workspaceId", "invitationId", "expectedVersion", "idempotencyKey"],
     revoke: ["action", "workspaceId", "invitationId", "expectedVersion", "idempotencyKey"],
     accept: ["action", "invitationId", "expectedVersion", "idempotencyKey", "acceptanceTokenDigest"],
@@ -62,8 +64,9 @@ export function resolutionBinding(uid: string, raw: unknown) {
   if (d.action === "save-trainer-note" && !validNoteSave(d.noteSave)) fail();
   if (d.action === "revoke-client" && !validRevocationBinding(d.revocation)) fail();
   if (d.action === "publish-program-template") publicationDescriptor(d.workspaceId,d.idempotencyKey,d.publish);
-  const kind = d.action === "publish-program-template" ? "program-template-publish" : d.action === "save-program-draft" ? "program-draft-save" : exerciseAction(d.action) ? (d.action === "create-custom-exercise" ? "custom-exercise-create" : "custom-exercise-correct") : d.action === "save-trainer-note" ? "trainer-note-save" : d.action === "revoke-client" ? "client-membership-revoke" : invitation ? `invitation-${d.action}` : d.action === "complete-onboarding" ? "onboarding-complete" : "profile-update";
-  const hashVersion = d.action === "publish-program-template" ? "program-publication-v1" : d.action === "save-program-draft" ? "program-draft-v1" : exerciseAction(d.action) ? "custom-exercise-v1" : d.action === "save-trainer-note" ? "trainer-note-v1" : d.action === "revoke-client" ? "client-revocation-v1" : invitation ? "invitation-v1" : d.action === "complete-onboarding" ? "onboarding-v1" : "profile-v1";
+  if (d.action === "assign-program-version") { assignmentDescriptor(d); assignmentBinding(uid,d); }
+  const kind = d.action === "assign-program-version" ? ASSIGNMENT_KIND : d.action === "publish-program-template" ? "program-template-publish" : d.action === "save-program-draft" ? "program-draft-save" : exerciseAction(d.action) ? (d.action === "create-custom-exercise" ? "custom-exercise-create" : "custom-exercise-correct") : d.action === "save-trainer-note" ? "trainer-note-save" : d.action === "revoke-client" ? "client-membership-revoke" : invitation ? `invitation-${d.action}` : d.action === "complete-onboarding" ? "onboarding-complete" : "profile-update";
+  const hashVersion = d.action === "assign-program-version" ? ASSIGNMENT_HASH_VERSION : d.action === "publish-program-template" ? "program-publication-v1" : d.action === "save-program-draft" ? "program-draft-v1" : exerciseAction(d.action) ? "custom-exercise-v1" : d.action === "save-trainer-note" ? "trainer-note-v1" : d.action === "revoke-client" ? "client-revocation-v1" : invitation ? "invitation-v1" : d.action === "complete-onboarding" ? "onboarding-v1" : "profile-v1";
   request = invitation ? { ...request, token: d.acceptanceTokenDigest ?? null, callerUid: uid } : { ...request, callerUid: uid, policyVersion: 1 };
   return { d, key, kind, hashVersion, hash: stableHash(request), id: commandId(uid, key) };
 }
@@ -82,7 +85,10 @@ function terminal(b: ReturnType<typeof resolutionBinding>, r: Data, uid: string)
     participantUid(strictPathIdentifier(r.workspaceId, "workspace"), "workspace");
     if (b.d.workspaceId !== undefined && r.workspaceId !== b.d.workspaceId) fail();
     const p = r.result;
-    if (b.d.action === "publish-program-template") {
+    if (b.d.action === "assign-program-version") {
+      if (!validAssignmentDecision(p,b.d)) fail();
+      if (p.status !== "assignment-created") outcome = "not-applied-conflict";
+    } else if (b.d.action === "publish-program-template") {
       if (r.templateId !== b.d.publish.templateId || !publicationDecisionValid(p,r.workspaceId,b.d.publish)) fail();
       if (p.status !== "program-published") outcome = "not-applied-conflict";
     } else if (b.d.action === "save-program-draft") {
@@ -134,7 +140,14 @@ export async function resolveOwnCommand(db: Firestore, caller: string | undefine
     const ref = db.doc(`lifecycleCommands/${b.id}`);
     const [a, c] = await tx.getAll(db.doc(`users/${uid}`), ref);
     if (a!.get("schemaVersion") !== 1 || a!.get("accountStatus") !== "active" || (!Number.isSafeInteger(a!.get("lifecycleRevision")) || a!.get("lifecycleRevision") < 1) || a!.get("emailNormalized") !== user.email!.toLowerCase()) throw new Error("identity-required");
-    if (c!.exists) return terminal(b, c!.data()!, uid);
+    // All resolver kinds check the legacy namespace transactionally. Never infer its hash.
+    if ((await tx.get(db.doc(`assignmentCommands/${b.id}`))).exists) fail();
+    if (c!.exists) {
+      if (b.d.action === 'assign-program-version' && Buffer.byteLength(JSON.stringify(c!.data()),'utf8')>4096) fail();
+      if (Date.now()-started>=5000) fail();
+      return terminal(b,c!.data()!,uid);
+    }
+    if (b.d.action === 'assign-program-version') await requireAssignmentCoverage(tx,db,b.key);
     if (!b.key.startsWith("or1-")) fail();
     const config = (await requireCommandGeneration(tx, db, b.key))!;
     const maximum = config.get("maxFencesPerCaller");

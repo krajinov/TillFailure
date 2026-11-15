@@ -465,6 +465,13 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
         if let token = issueIfWritable({
             let (token, gate) = beginOneShot()
             auth.signIn(withEmail: email, password: password) { [weak self] _, error in
+                #if DEBUG
+                if ProcessInfo.processInfo.environment["TF_M7P1B_NATIVE"] != nil, let e=error as NSError? {
+                    print("M7P1B_AUTH_ERROR domain=\(e.domain) code=\(e.code)")
+                    if let underlying=e.userInfo[NSUnderlyingErrorKey] as? NSError { print("M7P1B_AUTH_UNDERLYING domain=\(underlying.domain) code=\(underlying.code)") }
+                    fflush(stdout)
+                }
+                #endif
                 self?.deliverOneShot(token: token, gate: gate, accountEpoch: accountEpoch) {
                     callback(NativeFirebaseUnitResult(failure: error.map(Self.mapAuthFailure)))
                 }
@@ -566,6 +573,103 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
         return token
     }
 
+    func assignmentIssuanceEnabled() -> Bool {
+        #if DEBUG
+        return productMemoryCache && generation.projectID=="demo-tillfailure-m3"
+        #else
+        return false
+        #endif
+    }
+    func callProgramAssignments(uid: String, json: String, callback: @escaping (NativeClientOutcome) -> Void) -> String {
+        let token = UUID().uuidString
+        #if DEBUG
+        lock.lock()
+        defer { lock.unlock() }
+        guard !terminated, !accountFrozen, auth.currentUser?.uid == uid, generation.projectID == "demo-tillfailure-m3",
+              json.utf8.count <= 32768, let bytes = json.data(using: .utf8),
+              let payload = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any],
+              ["assignment-prepare", "assignment-preview-item", "assignment-list", "assignment-get", "assignment-document", "client-assignment-list", "client-assignment-document", "client-assignment-time"].contains(payload["action"] as? String ?? "") else {
+            callback(NativeClientOutcome(json: nil, error: "unavailable")); return token
+        }
+        let issuedEpoch = invitationAuthEpoch, callbackEpoch = currentEpoch
+        var cancelled = false
+        cancellations[token] = { cancelled = true }
+        func allowed() -> Bool { !cancelled && !self.terminated && !self.accountFrozen && self.auth.currentUser?.uid == uid &&
+            self.invitationAuthEpoch == issuedEpoch && self.currentEpoch == callbackEpoch }
+        auth.currentUser!.getIDTokenForcingRefresh(true) { [weak self] _, error in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.lock.lock(); defer { self.lock.unlock() }
+                guard allowed() else { return }
+                if error != nil { self.cancellations.removeValue(forKey: token); callback(NativeClientOutcome(json: nil, error: "unavailable")); return }
+                if let action=payload["action"] as? String, ["client-assignment-list","client-assignment-document"].contains(action) {
+                    guard payload["clientUid"] as? String == uid, let wid=payload["workspaceId"] as? String else {callback(NativeClientOutcome(json:nil,error:"unavailable"));return}
+                    let base="users/\(uid)/workspaces/\(wid)/assignedPrograms"
+                    func dto(_ document:DocumentSnapshot) throws -> [String:Any] {
+                        guard document.exists, !document.metadata.isFromCache, !document.metadata.hasPendingWrites, var data=document.data() else {throw NSError(domain:"Assignment",code:1)}
+                        for key in ["scheduledInstant","accessExpiresAt"] where data[key] != nil {
+                            guard let t=data.removeValue(forKey:key) as? Timestamp,t.nanoseconds%1000000==0 else {throw NSError(domain:"Assignment",code:2)}
+                            data[key+"Millis"]=t.seconds*1000+Int64(t.nanoseconds/1000000)
+                        }
+                        return data
+                    }
+                    func finish(_ value:[String:Any]?) {
+                        self.lock.lock();defer{self.lock.unlock()};guard allowed() else{return}
+                        self.cancellations.removeValue(forKey:token)
+                        guard let value,let data=try? JSONSerialization.data(withJSONObject:value),data.count+11<=65536,let json=String(data:data,encoding:.utf8) else{callback(NativeClientOutcome(json:nil,error:"unavailable"));return}
+                        callback(NativeClientOutcome(json:json,error:nil))
+                    }
+                    if action=="client-assignment-list" {
+                        var query=self.firestore.collection(base).order(by:FieldPath.documentID()).limit(to:6)
+                        if let after=payload["afterId"] as? String {query=query.start(after:[after])}
+                        query.getDocuments(source:.server) { snapshot,error in
+                            guard error==nil,let snapshot,!snapshot.metadata.isFromCache,!snapshot.metadata.hasPendingWrites else{finish(nil);return}
+                            do {
+                                // Pass all six to the shared parser before applying lookahead there.
+                                let rows=try snapshot.documents.map { document in
+                                    let data=try dto(document)
+                                    guard data["assignmentId"] as? String == document.documentID else {throw NSError(domain:"Assignment",code:3)}
+                                    return data
+                                }
+                                finish(["workspaceId":wid,"clientUid":uid,"items":rows,"afterId":NSNull()])
+                            }catch{finish(nil)}
+                        }
+                    } else {
+                        guard let aid=payload["assignmentId"] as? String,let relative=payload["relativePath"] as? String,
+                              relative.isEmpty || AssignmentReads.shared.relative(p:relative) else{finish(nil);return}
+                        let path=base+"/"+aid+(relative.isEmpty ? "" : "/"+relative)
+                        self.firestore.document(path).getDocument(source:.server) { document,error in
+                            guard error==nil,let document,let data=try? dto(document) else{finish(nil);return}
+                            finish(["workspaceId":wid,"clientUid":uid,"assignmentId":aid,"relativePath":relative,"document":data])
+                        }
+                    }
+                    return
+                }
+                let functions = Functions.functions(app: self.generation.app, region: "europe-west1")
+                let port = Int(ProcessInfo.processInfo.environment["TF_FUNCTIONS_EMULATOR_PORT"] ?? "") ?? 5001
+                functions.useEmulator(withHost: self.emulatorHost, port: port)
+                functions.httpsCallable("programAssignmentsEmulator").call(payload) { result, error in
+                    DispatchQueue.main.async {
+                        self.lock.lock(); defer { self.lock.unlock() }
+                        guard allowed() else { return }
+                        self.cancellations.removeValue(forKey: token)
+                        if let error = error as NSError? {
+                            let denied = error.domain == FunctionsErrorDomain && [FunctionsErrorCode.permissionDenied.rawValue, FunctionsErrorCode.unauthenticated.rawValue].contains(error.code)
+                            let reason = denied ? "unauthorized" : "unavailable"
+                            callback(NativeClientOutcome(json: nil, error: reason))
+                        } else if let data = result?.data, let bytes = try? JSONSerialization.data(withJSONObject: data),
+                                  bytes.count <= 64 * 1024, let json = String(data: bytes, encoding: .utf8) {
+                            callback(NativeClientOutcome(json: json, error: nil))
+                        } else { callback(NativeClientOutcome(json: nil, error: "unavailable")) }
+                    }
+                }
+            }
+        }
+        #else
+        callback(NativeClientOutcome(json: nil, error: "unavailable"))
+        #endif
+        return token
+    }
     func callProgramDrafts(uid: String, json: String, callback: @escaping (NativeClientOutcome) -> Void) -> String {
         let token = UUID().uuidString
         #if DEBUG
@@ -772,7 +876,7 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
         #if !DEBUG
         // Retain recovery compatibility while refusing new emulator-only publication issuance.
         if let data = json.data(using: .utf8), let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           payload["action"] as? String == "publish-program-template" {
+           ["publish-program-template", "assign-program-version"].contains(payload["action"] as? String ?? "") {
             callback(NativeInvitationOutcome(json: nil, error: "unavailable", ambiguous: true)); return token
         }
         #endif
@@ -801,7 +905,7 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
           let action = payload["action"] as? String ?? ""
           let publicationEndpoint: String?
           #if DEBUG
-          publicationEndpoint = action == "publish-program-template" ? "programPublicationsEmulator" : nil
+          publicationEndpoint = action == "assign-program-version" ? "programAssignmentsEmulator" : action == "publish-program-template" ? "programPublicationsEmulator" : nil
           #else
           publicationEndpoint = nil
           #endif
@@ -838,7 +942,7 @@ final class FirebaseNativeBridge: NSObject, NativeIdentityBridge {
             }
           }
           }
-          if ["publish-program-template", "save-program-draft", "create-custom-exercise", "correct-custom-exercise"].contains(action) {
+          if ["assign-program-version", "publish-program-template", "save-program-draft", "create-custom-exercise", "correct-custom-exercise"].contains(action) {
             self.auth.currentUser!.getIDTokenForcingRefresh(true) { _, error in
               DispatchQueue.main.async {
                 self.lock.lock(); defer { self.lock.unlock() }
