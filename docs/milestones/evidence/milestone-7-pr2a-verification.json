@@ -1,0 +1,3067 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-15",
+  "scope": "M7 R1-R6 approved exactly, R7 isolated prerequisite only",
+  "git": {
+    "mergeBaseline": "0a1c717b164c46058b9efb1877fc70756a398b5b",
+    "planningCommit": "70254d2495686f04287fd33f34745f0c073dc142",
+    "branch": "feature/milestone-7-pr2a-plan-feasibility",
+    "planningCommitFiles": [
+      "README.md",
+      "docs/implementation-plan.md",
+      "docs/open-questions.md",
+      "docs/milestones/milestone-7-plan.md",
+      "docs/milestones/milestone-7-pr2-plan.md"
+    ],
+    "prerequisiteCommitted": false,
+    "indexEmpty": true,
+    "recordContext": "Reviewed pre-commit tree; final commit/PR identifiers are returned by Git/GitHub, not embedded in self-referential source evidence."
+  },
+  "sourceManifest": {
+    "path": "docs/milestones/evidence/milestone-7-pr2a-source-manifest.sha256",
+    "sha256": "6b6e1e4686bf6987c7e1c7218d68a01ca2dd103f7cc017fc54db340e5716aa90",
+    "entries": 43
+  },
+  "sourceFiles": {
+    "docs/milestones/milestone-7-pr2a-bounds.mjs": "98ad9b6e9c98544ffc666c9c6a0aaf7dcd72f5b1986a80ced238a354245937f4",
+    "firebase/functions/scripts/run-plan-feasibility.mjs": "ece522767559d57989ac3091477f948b48cb4e7e920c88e32c97c59089784ec3",
+    "firebase/functions/src/assignment-plan-feasibility.ts": "de66f9f487636211e63a4d02d2378ef72dbea757cccb5414f0ee51f01a12c75c",
+    "firebase/functions/test/assignment-plan-contract.test.ts": "d8d676ffba4ec035d3840bfa6bd6de577844654bc765e28c9d9443233d0cf7bc",
+    "firebase/functions/test/assignment-plan-fixture.ts": "82df8bd2f054ff19aacb5d734a72dd41e0b1e7ebe952483044b043d1b9db6abf",
+    "firebase/functions/test/assignment-plan-read-probe.ts": "f67ca15f111d96762cb50484f46ff2a0571c4efd0ade8fcbae547deb289555c3",
+    "iosApp/feasibility/PlanStorageMain.swift": "ef10fcd9aa07f330abb1069dcf793b6d69a0ebe47a8780a9785dd3f4f5456f15",
+    "iosApp/feasibility/run-plan-storage.py": "ff02492a5ac66a7a35032930e679ecc261ea7c1bc25c7b62b47dcb1899e51d6e",
+    "shared/src/androidDeviceTest/kotlin/com/delminiusapps/tillfailure/assignments/AndroidPlanSizingTest.kt": "ea24bafb97aad4ddafa8dbe4a8436f6c5407c941d5b2cb842236252ed5a3d77e",
+    "shared/src/androidHostTest/kotlin/com/delminiusapps/tillfailure/assignments/PlanFixtureTest.kt": "ebe99c77184fdd9d51f98b36f767ea1e3fd70d56443473805c492b09461bb0b4",
+    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/assignments/PlanFeasibility.kt": "380b84242d661c3a1b459f37282c2e31ef0391a9e1c88c08d21ed6729d3781c1",
+    "shared/src/commonTest/kotlin/com/delminiusapps/tillfailure/assignments/PlanFeasibilityTest.kt": "d471f3bda61ee1abf50e7dcc2d7080d5f454a038f9f33e6a1b02198a8c71752c",
+    "firebase/functions/src/assignment-plan-packets-feasibility.ts": "553d2c46ec55750d36dc03767b575da9904ada5180d0738fbb5d5eb44647ae20",
+    "firebase/functions/test/assignment-plan-packets.test.ts": "7922556185d0bfda0193a71daddaf7d5057e693f42bdd1327a31123fe67c90af",
+    "firebase/functions/test/assignment-plan-packets-probe.ts": "72f52edccff3e22708987804c09b258994640a471e52ef8aaee3b2c434fdcd50",
+    "firebase/functions/scripts/run-plan-packets-feasibility.mjs": "a971fdd3ba59be98d505a779d2f638f583fbfda4184383bec1ba782caeb64b75"
+  },
+  "unchangedAnchors": {
+    "firebase/firestore.rules": "c062cb127dc320295e989331869579908f7fc1477548e7f36add56edf1c9183d",
+    "firebase/firestore.indexes.json": "01a0f171f9556b1e0100965c75e11e8aa4452bb8e8f842ef5a329d1badba2672",
+    "firebase/storage.rules": "ad0c32e45670a984c44652133e89f286e3a5f71ad16e7b82599959f64f3e4191",
+    "firebase/functions/package.json": "254b61175db338ec478da8a07a11f44dc6dba979a94228950851c1cd501d0576",
+    "firebase/functions/package-lock.json": "0636bb6977fb17302dd896a4c9da281dfa73f478456b60b57a7ef24d9d4f6e04",
+    "gradle/libs.versions.toml": "74d10fa0885e2ad933f4c64f51961226b440e516089a9ce622d4d92d4d2dacc5",
+    "shared/build.gradle.kts": "7eb2598d03a6ed467f220188ce6b2df04073fb3068f9a03e53fb0f93b8a65045",
+    "iosApp/iosApp.xcodeproj/project.pbxproj": "f4c58e1955d5408b6f6be5a53d2cc571bae70ecf85c6399c830092edde966a23",
+    "firebase/functions/src/assigned-program.ts": "4ac51f2d1a568c7de5094729040004031dc567e4649502e87097fdfaaf2c3987",
+    "firebase/functions/src/program-assignments.ts": "c267ceda80453a49f23c32264f03c0658a4fd4fdd0b3cc2a052d16ff71597bda",
+    "firebase/functions/src/assignment-feasibility-contract.ts": "31eed36ea734a2dda4e7afc1d86f0801c932641e5b7f8861a848396e91cc386c",
+    "firebase/functions/src/assignment-coverage.ts": "e5613211ffbca3eb2cb1bf8f2bfe359f92f90f4c22eec70d69db38ea8d7aafca",
+    "firebase/functions/src/command-identity.ts": "025b6b55ed56c24209bb3ab3571547f290e83b1f8c262191c6a2d2f0e20477f1",
+    "firebase/functions/src/command-resolution.ts": "ecdf97b60f04c2d872becbf993945e0e6aa2af7f52a28cd6e141ec3dbb11a1fc",
+    "firebase/functions/src/program-publication-contract.ts": "c6f60398360742dfb7ae5cf608a6e919d734ac4c1c8176f68cd60be5253c6aec",
+    "firebase/functions/src/program-draft-contract.ts": "c4b237d3105e5fd9874721824e8714073c1c4fc5b67917a342495b7297c7ea4e",
+    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentContract.kt": "6936f0153c5acb328cc6ba9a0f20906a8c65f1083d972dba263061b12ea347dd",
+    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentProtocol.kt": "eedf9d37c964be01a06d98036a8d725e0a1422006bfbb2d3fc7a60e44ebc6fe1",
+    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentRepository.kt": "fce939006dfc486a6737baa6d45eecaf9afa946e957b86f9753f7a93aabfc0fb",
+    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/assignments/AssignmentViewModel.kt": "53516f91cd2bd7b305a333703213367abf29356b8b778bdcb406dad028be8129",
+    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/invitations/InvitationClient.kt": "96824fc184e2e2250466835c7a8d8f33a0e09621cf8c0a003f0b25d7cb7c0770",
+    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/invitations/CommandResolution.kt": "3f97bebc7131861d4acc35c6e1f76b5bcf8aa7bf902f33d02d035d89eac8010d",
+    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/persistence/PersistencePrototype.kt": "d538b4e4dbef895ed1d23da1bf52ef738675770b93df103964ce5638979d1000",
+    "shared/src/androidMain/kotlin/com/delminiusapps/tillfailure/persistence/AndroidAtomicFilePersistence.kt": "73b3613d9abd61bd0b0b4a5c54c5aef49a4b00f03b8fa320d56a280db43af08d",
+    "shared/src/iosMain/kotlin/com/delminiusapps/tillfailure/persistence/IosAtomicFilePersistence.kt": "642cb50d56a210827366a0b0c5b53201218b688411ba387fd98dfe3df6aa53a4",
+    "iosApp/iosApp/RecoveryPersistenceBridge.swift": "21e27e77b4797eaa4c1d9ca6e86558b15ab9da13655e914701e24095032a6af3",
+    "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/programs/ProgramPublication.kt": "28b39b0daf7731433e9bf5ebbef9b124c07ba822323aeee4da95e3d8ded5d8da"
+  },
+  "report": {
+    "path": "docs/milestones/milestone-7-pr2a-report.md",
+    "sha256": "2dc3f8e6c626d6b514b49acdf491582f6ffc689625489219700ced26a1c01cd5"
+  },
+  "contracts": {
+    "action": "assign-program-plan",
+    "kind": "program-assignment-plan-create",
+    "hashVersion": "program-assignment-plan-v1",
+    "schedulePolicyVersion": 2,
+    "assignmentRevision": 1,
+    "expectedHorizonRevision": 0,
+    "horizonRevision": 1,
+    "workouts": [
+      1,
+      3
+    ],
+    "totalItemsMaximum": 12,
+    "occurrencesPerWorkout": 1,
+    "sourceOrderStrictlyIncreasingUtc": true,
+    "windowMillis": 86400000,
+    "expiryAfterLastMillis": 86400000,
+    "positiveGraphCompositions": 298,
+    "crossLanguageFixtureCount": 13,
+    "oldProtectedVariantsPreserved": 13,
+    "oldParsersRejectNewFields": true,
+    "noProductImportsOrWiring": true
+  },
+  "measuredSerializerMaxima": {
+    "source": 136875,
+    "copy": 134973,
+    "request": 3059,
+    "resolverUnits": 3085,
+    "resolverBytes": 3085,
+    "maxDocument": 13231,
+    "maxItemPacket": 13296,
+    "commit": 187343,
+    "writes": 24,
+    "indexEntries": 1015,
+    "maxEntries": 58
+  },
+  "modeledBounds": {
+    "classification": "modeled accepted-shape reserves; not production index internals or latency",
+    "writes": 24,
+    "admissionWrites": 1,
+    "logicalWriteJson": 364544,
+    "protobufReserve": 137344,
+    "commitBound": 501888,
+    "longestDocumentName": 1010,
+    "indexEntryBound": 3776,
+    "indexEntriesBound": 1484,
+    "indexBytesBound": 6078464,
+    "commitAndIndexReserve": 6580352,
+    "plaintext": 36500,
+    "swift": 97517,
+    "android": 48796,
+    "graphDocuments": 21,
+    "inventoryPaths": 19,
+    "trainerCalls": 21,
+    "trainerReads": 630,
+    "trainerAdmissionReads": 21,
+    "clientSdkReads": 22,
+    "clientTimeBusinessReads": 4,
+    "clientTimeAdmissionReads": 1
+  },
+  "actualWriter": {
+    "documentReadsIncludingAdmission": 17,
+    "commitBytes": 163299,
+    "businessWrites": 24,
+    "admissionWrites": 1,
+    "latencyMillis": 41.79150000000004
+  },
+  "trainerReads": {
+    "source": "isolated Node HTTP/Auth/Admin SDK probe, not product/native transport or deployed Functions",
+    "loads": [
+      {
+        "kind": "cold-after-writer",
+        "calls": 21,
+        "graphAuthorityReads": 630,
+        "admissionReads": 21,
+        "latencyMillis": 522.992084,
+        "maximumCallMillis": 36.98279100000002,
+        "packetBytes": 160205
+      },
+      {
+        "kind": "warm",
+        "calls": 21,
+        "graphAuthorityReads": 630,
+        "admissionReads": 21,
+        "latencyMillis": 451.97466699999995,
+        "maximumCallMillis": 23.57133399999998,
+        "packetBytes": 160205
+      },
+      {
+        "kind": "warm",
+        "calls": 21,
+        "graphAuthorityReads": 630,
+        "admissionReads": 21,
+        "latencyMillis": 459.7734579999999,
+        "maximumCallMillis": 29.515750000000025,
+        "packetBytes": 160205
+      }
+    ],
+    "perCallGraphAuthorityReads": 30,
+    "callsPerDetail": 21,
+    "graphAuthorityReadsPerDetail": 630,
+    "admissionReadsPerDetail": 21,
+    "totalDocumentReadsPerDetail": 651,
+    "maxPacketBytes": 12477,
+    "rate": {
+      "limit": 120,
+      "clock": "fixed-minute test clock, not measured per-minute production throughput",
+      "initial": {
+        "minute": 29912379,
+        "count": 1
+      },
+      "final": {
+        "minute": 29912379,
+        "count": 120
+      },
+      "extraSuccessfulCalls": 55,
+      "refused": true
+    },
+    "deadlineRefusals": 1,
+    "injectedDelayMillis": 5100,
+    "deadlineMillis": 5000,
+    "productionPerformanceProof": false
+  },
+  "clientReads": {
+    "source": "actual JS Firebase SDK SERVER reads under installed unchanged Rules; separate local authenticated time transaction",
+    "loads": [
+      {
+        "sdkDocumentReads": 22,
+        "timeCalls": 1,
+        "timeBusinessReads": 4,
+        "timeAdmissionReads": 1,
+        "latencyMillis": 158.68525000000045
+      },
+      {
+        "sdkDocumentReads": 22,
+        "timeCalls": 1,
+        "timeBusinessReads": 4,
+        "timeAdmissionReads": 1,
+        "latencyMillis": 111.1763749999991
+      },
+      {
+        "sdkDocumentReads": 22,
+        "timeCalls": 1,
+        "timeBusinessReads": 4,
+        "timeAdmissionReads": 1,
+        "latencyMillis": 100.66045900000063
+      }
+    ],
+    "documentReadsPerDetail": 22,
+    "planningEstimateCorrection": {
+      "old": 23,
+      "measured": 22,
+      "policyChange": false
+    },
+    "discoveryRows": 1,
+    "sourceAndIndexReadsDenied": true
+  },
+  "native": {
+    "android": {
+      "fixtures": 2508,
+      "maximumEncrypted": 48796,
+      "oversizeByteIdentical": true,
+      "ciphertextFilesVerified": 2509
+    },
+    "swift": {
+      "fixtures": 2508,
+      "maximumEncrypted": 49591,
+      "maximumPlaintext": 36500,
+      "oversizeByteIdentical": true
+    },
+    "kotlin": {
+      "states": 2508,
+      "histories": 65,
+      "pending": 3994,
+      "maximumPlaintext": 36500,
+      "swiftBound": 97517
+    },
+    "originalInputsByteIdenticalToFinalRegeneration": 2521,
+    "nativeCiphertextFilesEach": 2509,
+    "actualStoresAndEncodingUnchanged": true,
+    "futureRawJsonCodecEvidenceNotTypedProductCommandRecovery": true,
+    "androidUsesExistingPrivatePlaintextBoundary": true,
+    "nativeArtifactsPrecedeAddedGraphHelper": true,
+    "preHelperCommonSourceSha256": "9c8679af54883f25e94b475755b3e5949523eb2bef27ae12eca84a6c646886d7",
+    "finalCommonSourceSha256": "380b84242d661c3a1b459f37282c2e31ef0391a9e1c88c08d21ed6729d3781c1",
+    "inputBytesUnchangedAll2521": true,
+    "noNativeAuthOrProtectedCommands": true
+  },
+  "verification": {
+    "backendFinal": {
+      "tests": 335,
+      "pass": 335,
+      "fail": 0,
+      "skipped": 0
+    },
+    "isolatedFinalTsTests": {
+      "tests": 4,
+      "passed": 4,
+      "graphCompositions": 298
+    },
+    "ordinaryHostFinal": {
+      "discovered": 281,
+      "passed": 279,
+      "skipped": 2,
+      "failed": 0
+    },
+    "optedInFinalHost": {
+      "tests": 4,
+      "passed": 4
+    },
+    "sharedIosFinal": {
+      "tests": 278,
+      "passed": 278
+    },
+    "androidRelease": {
+      "apkSha256": "572df71c7d7e9fa85aa2e7332de571ca84f6baa9e06aef6697892bda5f88b881",
+      "excluded": [
+        "AndroidPlanSizingTest",
+        "PlanFixtureTest",
+        "PlanFeasibilityTest",
+        "PlanStorageMain",
+        "TF_M7_PR2A",
+        "M7_PR2A_ANDROID_NATIVE",
+        "m7-pr2a-sizing-"
+      ],
+      "pureContractsMayBePresent": true,
+      "productProvidersUnchanged": true
+    },
+    "iosProductReleaseBuildClaimed": false,
+    "dependenciesChanged": false
+  },
+  "custody": {
+    "supervisor": "independent task-owned retained instance, no Functions, no import/reset",
+    "newCreateOnlyCohortsPreserved": true,
+    "allCompleteAuthFirestoreStorageExportsVerified": true,
+    "noProductCommandsOrRealAttestations": true,
+    "shutdown": {
+      "completeExportVerified": true,
+      "exportFiles": 7,
+      "androidCiphertextFiles": 2509,
+      "swiftCiphertextFiles": 2509,
+      "taskAndroidStopped": true,
+      "taskIosStoppedAfterVerifiedCheckpoint": true,
+      "onlyTaskSupervisorSignalled": true,
+      "allDisksKeysAndFailedCohortsRetained": true
+    },
+    "rawArtifactsRemainIgnored": true,
+    "originalAndQuarantinedDatasetsKeysPartitionsAttestationsUntouched": true
+  },
+  "failures": [
+    {
+      "attempt": "pure-tests.log",
+      "reason": "negative test reversed a one-element vector; fixed fixture expectation"
+    },
+    {
+      "attempt": "host-compile-first.log and tool transcript",
+      "reason": "sandbox Gradle/Android CLI/ADB/simulator access; authorized retries succeeded"
+    },
+    {
+      "attempt": "probe compile transcript",
+      "reason": "CommonJS top-level await; wrapped explicit main"
+    },
+    {
+      "attempt": "read-first.log",
+      "reason": "test-only JS SDK Timestamp passed to Admin-only mapper; fixed SDK mapping"
+    },
+    {
+      "attempt": "read-r2.log",
+      "reason": "real-minute boundary prevented assumed exhaustion; fixed rate-test clock, not latency/deadline clock"
+    },
+    {
+      "attempt": "read-r3.log",
+      "reason": "expected 69 SDK reads; actual 66 =22 per detail; corrected arithmetic"
+    }
+  ],
+  "remainingDecision": "The eight-call candidate is selected only for later trainer-read integration. Separate product transport/native parser/ledger/UI/protected recovery authorization and acceptance remain required before any new issuance.",
+  "inherited": {
+    "publishEnabled": false,
+    "customAdmissionFinding": {
+      "acceptedPlaintext": 51966,
+      "conservativeSwiftBound": 138757,
+      "encryptedCap": 98304,
+      "sampleCiphertext": 70569,
+      "observedOverflow": false,
+      "resolved": false
+    },
+    "quarantinedUnknownOutcomesRemainUnknown": true,
+    "m2ThroughM6AndPr1aPr1bAcceptanceAndAttributionPreserved": true,
+    "noProductionOfflineLifecycleOrPhysicalAcceptance": true
+  },
+  "localEvidenceFingerprints": {
+    ".firebase/m7-pr2a/pure-tests.log": {
+      "sha256": "a2755ed9d5572eb3cfceb7663efa1bf06ac4605f0ab82d73dd52898bf0e8fa3c",
+      "bytes": 5336
+    },
+    ".firebase/m7-pr2a/pure-tests-r2.log": {
+      "sha256": "c2418233a215154568caa00293dddfc8aaa1b39724bfad9807480218b5dbfbb0",
+      "bytes": 4137
+    },
+    ".firebase/m7-pr2a/pure-tests-final.log": {
+      "sha256": "f0e5a53d8a81e71155f0e4111c56b6e651b14a15266e993526bb63bb63c4555c",
+      "bytes": 4139
+    },
+    ".firebase/m7-pr2a/pure-policy-final.log": {
+      "sha256": "792f760c4ec48048278b3bed27056f34dd0cd6b812b5d7da4eb2f0d5f1d46d5d",
+      "bytes": 4137
+    },
+    ".firebase/m7-pr2a/host-compile-first.log": {
+      "sha256": "8ca665552bc2284e7eafbe18fa74cc2ed06baec3be1e61eda9d2c43e0bceb610",
+      "bytes": 535
+    },
+    ".firebase/m7-pr2a/kotlin-native-build.log": {
+      "sha256": "217d99c5948abd9a942123de9df7c44979ba94ff32a3d2f9eaa728ec5459f495",
+      "bytes": 41478
+    },
+    ".firebase/m7-pr2a/final-shared-native-build.log": {
+      "sha256": "3d1e67637607bc56b6b2d408be5c337b54269c3fa58e393ae2fd680c41a9d4f8",
+      "bytes": 31580
+    },
+    ".firebase/m7-pr2a/final-graph-validation.log": {
+      "sha256": "b56c83404041a91709ba23c8047142ddcd63292eb46bc9e144df24767762e474",
+      "bytes": 25301
+    },
+    ".firebase/m7-pr2a/ordinary-host-final.log": {
+      "sha256": "d38090d7ccf3e700570f21e06a6c67fc7a8cce0113c1e3bf62956d758de9ddaa",
+      "bytes": 3178
+    },
+    ".firebase/m7-pr2a/backend-regression.log": {
+      "sha256": "eb0c08b1531297915b72b099438e266bfd90c74361b4c10de974a76fd6eb9d71",
+      "bytes": 146326
+    },
+    ".firebase/m7-pr2a/backend-regression-final.log": {
+      "sha256": "87fdbfed81c7f4d57348704d41e508db5b634c9df1900faef1113914ff535703",
+      "bytes": 146297
+    },
+    ".firebase/m7-pr2a/read-first.log": {
+      "sha256": "2871e1f87c2ad2dee75697d0dc0875d85aa145d61d715bdfb644ab7910df6502",
+      "bytes": 770
+    },
+    ".firebase/m7-pr2a/read-r2.log": {
+      "sha256": "2555c1122c615ee69c4f1a6793022e83e39f996c078df0b8b8a13a187ed54b40",
+      "bytes": 630
+    },
+    ".firebase/m7-pr2a/read-r3.log": {
+      "sha256": "a82bf62664d7ad5b6d9bf73ca0aebcde326d2cd12606e5f1f95195929f7b9795",
+      "bytes": 538
+    },
+    ".firebase/m7-pr2a/read-r4.log": {
+      "sha256": "f34e20c130fec1186060f1072bd465a10a883673acfbb4ce9057530b362cf644",
+      "bytes": 1723
+    },
+    ".firebase/m7-pr2a/read-final.log": {
+      "sha256": "6e6b388991ab80284f191ad928b6c9ae2b8dee2a5a4de0cf4176f6c0e6635f4a",
+      "bytes": 1526
+    },
+    ".firebase/m7-pr2a/android-native.log": {
+      "sha256": "7f012f6c758e67c6b96e0beb211018b5e5975c83099dd3e7274603b3533ee972",
+      "bytes": 897
+    },
+    ".firebase/m7-pr2a/android-system-out.log": {
+      "sha256": "343f6a66e8351277bcb41d14e610de64a104a7356d119a5245e3da559d584beb",
+      "bytes": 160
+    },
+    ".firebase/m7-pr2a/android-native.json": {
+      "sha256": "cce1533bbf3b0d802e2feeba391882c06c70708f426c7b13de858bbda44f43bd",
+      "bytes": 119
+    },
+    ".firebase/m7-pr2a/android-native-checkpoint.json": {
+      "sha256": "fa88d426e23fd2b9b911fa218a0e9a4ff269992c788f1f1827f64d21089d0518",
+      "bytes": 705530
+    },
+    ".firebase/m7-pr2a/android-ciphertext.tar": {
+      "sha256": "54357d683a71747dea0a7e082e5fe46c0417766b03b4cd4603976a28ddae1b79",
+      "bytes": 43392512
+    },
+    ".firebase/m7-pr2a/android-live.sha256": {
+      "sha256": "8df2cfe77bd89a07a5175992c4c60662fdd3403715062572bc56e871cd75ec05",
+      "bytes": 588509
+    },
+    ".firebase/m7-pr2a/native-input-checkpoint.json": {
+      "sha256": "7d32233de135dc98aeebe177aff0791f6f4e0d9de53553ad61582356875708d7",
+      "bytes": 385573
+    },
+    ".firebase/m7-pr2a/swift-input-checkpoint.json": {
+      "sha256": "7d32233de135dc98aeebe177aff0791f6f4e0d9de53553ad61582356875708d7",
+      "bytes": 385573
+    },
+    ".firebase/m7-pr2a/swift-driver.log": {
+      "sha256": "0735ea82bd5bfb90e0df97a80ce78507def3eee634f6fdb2a92f9949b46fca67",
+      "bytes": 491
+    },
+    ".firebase/m7-pr2a/swift-native.log": {
+      "sha256": "c7c53721bc1ebca324f6d2930b62cb3763612c2a83f6e268904d7041fdbaecb5",
+      "bytes": 213
+    },
+    ".firebase/m7-pr2a/swift-native.json": {
+      "sha256": "80dfedb4c5b4a14ccc3b624e21eb46fa1604feb64727ab0888279eeb546360b9",
+      "bytes": 96
+    },
+    ".firebase/m7-pr2a/swift-native-checkpoint.json": {
+      "sha256": "f5e6893296f9c6d9e13cd55848cd0302953e12cd32d2ace3a55c82671b845f9c",
+      "bytes": 698007
+    },
+    ".firebase/m7-pr2a/swift-shutdown.json": {
+      "sha256": "c1d454d09c66577d58461a12fc0b5dad6ee3ed15eb53ad391415ed3182eea483",
+      "bytes": 133
+    },
+    ".firebase/m7-pr2a/shutdown.json": {
+      "sha256": "e200c433e6e03c1723c37d36043bdc8d4f3c22c78c8633046489bab0250b51e8",
+      "bytes": 288
+    },
+    ".firebase/m7-pr2a/final-native-export.sha256.json": {
+      "sha256": "0c834681e81a4dd745370a21eff984f5413b341a0a4615a458469ee8d2963919",
+      "bytes": 813
+    },
+    ".firebase/m7-pr2a/release-audit.json": {
+      "sha256": "2a2405dc211f2b7b581f7abcb7936f6bc006e82fde38d3b5913f5e54ef84853d",
+      "bytes": 352
+    },
+    ".firebase/m7-pr2a/android-release.log": {
+      "sha256": "0b80fedd577c10568f1466197be7faa879c72c5204213026406d3078f3d84ed3",
+      "bytes": 5404
+    },
+    ".firebase/m7-pr2a/native-artifacts/android-probe.apk": {
+      "sha256": "0bd80666e482a49c9f54fe3baade32eb9d86c16f8e0243f7ec011a2fc7e57114",
+      "bytes": 56332623
+    },
+    ".firebase/m7-pr2a/native-artifacts/shared-before-graph-validation": {
+      "sha256": "b18d5e6ea9a3af4c54511de74bfa2d925c0acc732f550f6eecd18fa435091b51",
+      "bytes": 265979128
+    },
+    ".firebase/m7-pr2a/native-artifacts/PlanFeasibility-before-graph.kt": {
+      "sha256": "9c8679af54883f25e94b475755b3e5949523eb2bef27ae12eca84a6c646886d7",
+      "bytes": 8959
+    },
+    ".firebase/m7-pr2a/PlanStorageProbe.app/PlanStorageProbe": {
+      "sha256": "bba82cc040da08c5966f4d95050b74ddabbffe6f33e9b0cda69e85ac3403c7ec",
+      "bytes": 69067840
+    },
+    ".firebase/m7-pr2a/final-kotlin/kotlin-measurements.json": {
+      "sha256": "cb5b49503f0274ecaf830309f28e93aa998bb38659d632ef888ee1cbd80af48f",
+      "bytes": 89
+    },
+    ".firebase/m7-pr2a/read-final/after-read-probe-export.sha256.json": {
+      "sha256": "08cc7e659e91da5173c8344f6a74a485be9cf50e074a3c8fe3b7de4a6de31688",
+      "bytes": 813
+    },
+    ".firebase/m7-pr2a/read-final/before-native-export.sha256.json": {
+      "sha256": "348ffc74578ff3ad77588a6ab2460308d8003960abca5bb5da8815de7abfa0d0",
+      "bytes": 813
+    },
+    ".firebase/m7-pr2a/read-final/before-probe-export.sha256.json": {
+      "sha256": "12169968a56f72921f9e521cf9901876167382491749c7dd571a5347497d2823",
+      "bytes": 813
+    },
+    ".firebase/m7-pr2a/read-first/before-native-export.sha256.json": {
+      "sha256": "8bc787591fee920e3c12a00b9dc4531744761bb8cff6c08d2ea3ab8ea05374ac",
+      "bytes": 813
+    },
+    ".firebase/m7-pr2a/read-first/before-probe-export.sha256.json": {
+      "sha256": "c9d9ad2440efdefa5a9e3c1affae69353211e3c5f2e4c11b3bbf8a2acc8dee22",
+      "bytes": 813
+    },
+    ".firebase/m7-pr2a/read-r2/before-native-export.sha256.json": {
+      "sha256": "0cbd0191f0328f06a5ed0957d770bd8a6b9ca0903062358bf382b02261a3e462",
+      "bytes": 813
+    },
+    ".firebase/m7-pr2a/read-r2/before-probe-export.sha256.json": {
+      "sha256": "223e8e11b9cb2cfee92d7948caed34091b7f2ba9a97ecd2583d1fe18df236659",
+      "bytes": 813
+    },
+    ".firebase/m7-pr2a/read-r3/before-native-export.sha256.json": {
+      "sha256": "e5d0954d5c21c6f1e57d2a22ff0c1cdf679c76d9d8c74a9a7d62ad6c5a6837df",
+      "bytes": 813
+    },
+    ".firebase/m7-pr2a/read-r3/before-probe-export.sha256.json": {
+      "sha256": "a0166e53cdf8a72a4621d6b992e1b9c2a4b873fa412adbf6b713efd35e5752ed",
+      "bytes": 813
+    },
+    ".firebase/m7-pr2a/read-r4/after-read-probe-export.sha256.json": {
+      "sha256": "fd52662dc105ff2f839bece31dd5ab76ea138f4763ffed984832dca9d95f9a1a",
+      "bytes": 813
+    },
+    ".firebase/m7-pr2a/read-r4/before-native-export.sha256.json": {
+      "sha256": "7fc9bffae721a6e70ea641902560b434f05475e78afbd9e2ca2dea9c67a8ead7",
+      "bytes": 813
+    },
+    ".firebase/m7-pr2a/read-r4/before-probe-export.sha256.json": {
+      "sha256": "3202785e36d8f76fcd220a1981f0a7051df302ff735e7844836dc4fba212c933",
+      "bytes": 813
+    }
+  },
+  "lastUpdated": "2026-11-16",
+  "eightPacketFeasibility": {
+    "date": "2026-11-16",
+    "authorization": "Only isolated eight-call alternative; no full product transport/ledger/UI/new issuance",
+    "startingBranch": "feature/milestone-7-pr2a-plan-feasibility",
+    "planningCommit": "70254d2495686f04287fd33f34745f0c073dc142",
+    "startingPrerequisiteFileCount": 15,
+    "startingFilesSha256": {
+      "docs/milestones/evidence/milestone-7-pr2a-source-manifest.sha256": "e73f041c74b24d38b704c0eea9e786b65b61c8b34dba5def9606ac7f8eade465",
+      "docs/milestones/evidence/milestone-7-pr2a-verification.json": "fc2973697fab5f68c4935535479da813378aec922042094fb850f0f5e949a85a",
+      "docs/milestones/milestone-7-pr2a-bounds.mjs": "98ad9b6e9c98544ffc666c9c6a0aaf7dcd72f5b1986a80ced238a354245937f4",
+      "docs/milestones/milestone-7-pr2a-report.md": "7db1f392d702b929b237bc0e6fc7c1aa088e0f46e6831e4737f66cec9b1b062f",
+      "firebase/functions/scripts/run-plan-feasibility.mjs": "ece522767559d57989ac3091477f948b48cb4e7e920c88e32c97c59089784ec3",
+      "firebase/functions/src/assignment-plan-feasibility.ts": "ef774940f3516740dd3068e47f8f21378fcee96a2fe84fa08ed34a465e21b0a2",
+      "firebase/functions/test/assignment-plan-contract.test.ts": "7d8d9d87eab3347a2403cf7aa1306c79135ccb66989f180793ec86eb3a65c240",
+      "firebase/functions/test/assignment-plan-fixture.ts": "82df8bd2f054ff19aacb5d734a72dd41e0b1e7ebe952483044b043d1b9db6abf",
+      "firebase/functions/test/assignment-plan-read-probe.ts": "f67ca15f111d96762cb50484f46ff2a0571c4efd0ade8fcbae547deb289555c3",
+      "iosApp/feasibility/PlanStorageMain.swift": "ef10fcd9aa07f330abb1069dcf793b6d69a0ebe47a8780a9785dd3f4f5456f15",
+      "iosApp/feasibility/run-plan-storage.py": "ff02492a5ac66a7a35032930e679ecc261ea7c1bc25c7b62b47dcb1899e51d6e",
+      "shared/src/androidDeviceTest/kotlin/com/delminiusapps/tillfailure/assignments/AndroidPlanSizingTest.kt": "ea24bafb97aad4ddafa8dbe4a8436f6c5407c941d5b2cb842236252ed5a3d77e",
+      "shared/src/androidHostTest/kotlin/com/delminiusapps/tillfailure/assignments/PlanFixtureTest.kt": "ebe99c77184fdd9d51f98b36f767ea1e3fd70d56443473805c492b09461bb0b4",
+      "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/assignments/PlanFeasibility.kt": "380b84242d661c3a1b459f37282c2e31ef0391a9e1c88c08d21ed6729d3781c1",
+      "shared/src/commonTest/kotlin/com/delminiusapps/tillfailure/assignments/PlanFeasibilityTest.kt": "d471f3bda61ee1abf50e7dcc2d7080d5f454a038f9f33e6a1b02198a8c71752c"
+    },
+    "originalTwelveExecutableFilesByteIdentical": true,
+    "retainedFiftyRuntimeArtifactsByteIdentical": true,
+    "currentPrerequisiteFiles": 19,
+    "newFiles": {
+      "firebase/functions/src/assignment-plan-packets-feasibility.ts": "553d2c46ec55750d36dc03767b575da9904ada5180d0738fbb5d5eb44647ae20",
+      "firebase/functions/test/assignment-plan-packets.test.ts": "7922556185d0bfda0193a71daddaf7d5057e693f42bdd1327a31123fe67c90af",
+      "firebase/functions/test/assignment-plan-packets-probe.ts": "0889476e615f5009aaaed51ef0aaaf42a9f45785206c89a7a7071ef3a82e6cc3",
+      "firebase/functions/scripts/run-plan-packets-feasibility.mjs": "a971fdd3ba59be98d505a779d2f638f583fbfda4184383bec1ba782caeb64b75"
+    },
+    "initialReportSha256": "7db1f392d702b929b237bc0e6fc7c1aa088e0f46e6831e4737f66cec9b1b062f",
+    "initialManifestSha256": "e73f041c74b24d38b704c0eea9e786b65b61c8b34dba5def9606ac7f8eade465",
+    "initialVerificationSha256": "fc2973697fab5f68c4935535479da813378aec922042094fb850f0f5e949a85a",
+    "packetContract": {
+      "packetVersion": 1,
+      "metadataPackets": 1,
+      "maximumItemPackets": 6,
+      "maximumCompleteItemsPerPacket": 2,
+      "finalFullHeaderAndServerTimePackets": 1,
+      "responseCap": 65536,
+      "completeResultWrapperMeasured": true,
+      "independentMetadataValidation": true,
+      "fixedSourceOrderAndOrdinalValidation": true,
+      "exactIdentitySourceCopyPlanMetadataBinding": true,
+      "completeGraphValidationEveryRequest": true,
+      "freshCallerAndTargetAuthEveryRequest": true,
+      "sameNineCurrentAuthorityDocumentsEveryRequest": true,
+      "noArbitraryPathsOrSourceReads": true,
+      "noCrossRequestAuthorityOrGraphCache": true,
+      "receiverIsTransientRequestBuffer": true,
+      "withholdUntilFinalGraphHashAndHeaderCheck": true,
+      "denyOrMalformedClearsReceiver": true,
+      "serverClockRegressionGuard": true,
+      "fullMonotonicLatencySubtractedRoundedUp": true,
+      "earliestConservativeDeadlineRetained": true,
+      "noClientMediatorGrant": true
+    },
+    "serializedMeasurementFixtures": 40,
+    "measuredPacketMaxima": {
+      "metadata": 24168,
+      "items": 28842,
+      "final": 5352,
+      "cumulative": 197964,
+      "overhead": 2380
+    },
+    "packetMeasurements": [
+      {
+        "policy": 2,
+        "workouts": 1,
+        "path": "escaped-controls",
+        "character": 128512,
+        "metadata": 16412,
+        "items": 28842,
+        "final": 5274,
+        "cumulative": 190138,
+        "overhead": 2380,
+        "metadataDocuments": 5
+      },
+      {
+        "policy": 2,
+        "workouts": 1,
+        "path": "escaped-controls",
+        "character": 30028,
+        "metadata": 16052,
+        "items": 23354,
+        "final": 5274,
+        "cumulative": 158000,
+        "overhead": 2380,
+        "metadataDocuments": 5
+      },
+      {
+        "policy": 2,
+        "workouts": 1,
+        "path": "escaped-controls",
+        "character": 34,
+        "metadata": 15692,
+        "items": 17866,
+        "final": 5274,
+        "cumulative": 125862,
+        "overhead": 2380,
+        "metadataDocuments": 5
+      },
+      {
+        "policy": 2,
+        "workouts": 1,
+        "path": "escaped-controls",
+        "character": 92,
+        "metadata": 15692,
+        "items": 17866,
+        "final": 5274,
+        "cumulative": 125862,
+        "overhead": 2380,
+        "metadataDocuments": 5
+      },
+      {
+        "policy": 2,
+        "workouts": 1,
+        "path": "escaped-controls",
+        "character": 47,
+        "metadata": 15332,
+        "items": 12378,
+        "final": 5274,
+        "cumulative": 93724,
+        "overhead": 2380,
+        "metadataDocuments": 5
+      },
+      {
+        "policy": 2,
+        "workouts": 1,
+        "path": "wide-utf8",
+        "character": 128512,
+        "metadata": 11420,
+        "items": 26538,
+        "final": 3354,
+        "cumulative": 169402,
+        "overhead": 1612,
+        "metadataDocuments": 5
+      },
+      {
+        "policy": 2,
+        "workouts": 1,
+        "path": "wide-utf8",
+        "character": 30028,
+        "metadata": 11060,
+        "items": 21050,
+        "final": 3354,
+        "cumulative": 137264,
+        "overhead": 1612,
+        "metadataDocuments": 5
+      },
+      {
+        "policy": 2,
+        "workouts": 1,
+        "path": "wide-utf8",
+        "character": 34,
+        "metadata": 10700,
+        "items": 15562,
+        "final": 3354,
+        "cumulative": 105126,
+        "overhead": 1612,
+        "metadataDocuments": 5
+      },
+      {
+        "policy": 2,
+        "workouts": 1,
+        "path": "wide-utf8",
+        "character": 92,
+        "metadata": 10700,
+        "items": 15562,
+        "final": 3354,
+        "cumulative": 105126,
+        "overhead": 1612,
+        "metadataDocuments": 5
+      },
+      {
+        "policy": 2,
+        "workouts": 1,
+        "path": "wide-utf8",
+        "character": 47,
+        "metadata": 10340,
+        "items": 10074,
+        "final": 3354,
+        "cumulative": 72988,
+        "overhead": 1612,
+        "metadataDocuments": 5
+      },
+      {
+        "policy": 2,
+        "workouts": 2,
+        "path": "escaped-controls",
+        "character": 128512,
+        "metadata": 20290,
+        "items": 28522,
+        "final": 5313,
+        "cumulative": 194051,
+        "overhead": 2380,
+        "metadataDocuments": 7
+      },
+      {
+        "policy": 2,
+        "workouts": 2,
+        "path": "escaped-controls",
+        "character": 30028,
+        "metadata": 19929,
+        "items": 23114,
+        "final": 5313,
+        "cumulative": 161913,
+        "overhead": 2380,
+        "metadataDocuments": 7
+      },
+      {
+        "policy": 2,
+        "workouts": 2,
+        "path": "escaped-controls",
+        "character": 34,
+        "metadata": 19568,
+        "items": 17706,
+        "final": 5313,
+        "cumulative": 129775,
+        "overhead": 2380,
+        "metadataDocuments": 7
+      },
+      {
+        "policy": 2,
+        "workouts": 2,
+        "path": "escaped-controls",
+        "character": 92,
+        "metadata": 19568,
+        "items": 17706,
+        "final": 5313,
+        "cumulative": 129775,
+        "overhead": 2380,
+        "metadataDocuments": 7
+      },
+      {
+        "policy": 2,
+        "workouts": 2,
+        "path": "escaped-controls",
+        "character": 47,
+        "metadata": 19207,
+        "items": 12298,
+        "final": 5313,
+        "cumulative": 97637,
+        "overhead": 2380,
+        "metadataDocuments": 7
+      },
+      {
+        "policy": 2,
+        "workouts": 2,
+        "path": "wide-utf8",
+        "character": 128512,
+        "metadata": 13762,
+        "items": 26218,
+        "final": 3393,
+        "cumulative": 171779,
+        "overhead": 1612,
+        "metadataDocuments": 7
+      },
+      {
+        "policy": 2,
+        "workouts": 2,
+        "path": "wide-utf8",
+        "character": 30028,
+        "metadata": 13401,
+        "items": 20810,
+        "final": 3393,
+        "cumulative": 139641,
+        "overhead": 1612,
+        "metadataDocuments": 7
+      },
+      {
+        "policy": 2,
+        "workouts": 2,
+        "path": "wide-utf8",
+        "character": 34,
+        "metadata": 13040,
+        "items": 15402,
+        "final": 3393,
+        "cumulative": 107503,
+        "overhead": 1612,
+        "metadataDocuments": 7
+      },
+      {
+        "policy": 2,
+        "workouts": 2,
+        "path": "wide-utf8",
+        "character": 92,
+        "metadata": 13040,
+        "items": 15402,
+        "final": 3393,
+        "cumulative": 107503,
+        "overhead": 1612,
+        "metadataDocuments": 7
+      },
+      {
+        "policy": 2,
+        "workouts": 2,
+        "path": "wide-utf8",
+        "character": 47,
+        "metadata": 12679,
+        "items": 9994,
+        "final": 3393,
+        "cumulative": 75365,
+        "overhead": 1612,
+        "metadataDocuments": 7
+      },
+      {
+        "policy": 2,
+        "workouts": 3,
+        "path": "escaped-controls",
+        "character": 128512,
+        "metadata": 24168,
+        "items": 28366,
+        "final": 5352,
+        "cumulative": 197964,
+        "overhead": 2380,
+        "metadataDocuments": 9
+      },
+      {
+        "policy": 2,
+        "workouts": 3,
+        "path": "escaped-controls",
+        "character": 30028,
+        "metadata": 23806,
+        "items": 22997,
+        "final": 5352,
+        "cumulative": 165826,
+        "overhead": 2380,
+        "metadataDocuments": 9
+      },
+      {
+        "policy": 2,
+        "workouts": 3,
+        "path": "escaped-controls",
+        "character": 34,
+        "metadata": 23444,
+        "items": 17628,
+        "final": 5352,
+        "cumulative": 133688,
+        "overhead": 2380,
+        "metadataDocuments": 9
+      },
+      {
+        "policy": 2,
+        "workouts": 3,
+        "path": "escaped-controls",
+        "character": 92,
+        "metadata": 23444,
+        "items": 17628,
+        "final": 5352,
+        "cumulative": 133688,
+        "overhead": 2380,
+        "metadataDocuments": 9
+      },
+      {
+        "policy": 2,
+        "workouts": 3,
+        "path": "escaped-controls",
+        "character": 47,
+        "metadata": 23082,
+        "items": 12259,
+        "final": 5352,
+        "cumulative": 101550,
+        "overhead": 2380,
+        "metadataDocuments": 9
+      },
+      {
+        "policy": 2,
+        "workouts": 3,
+        "path": "wide-utf8",
+        "character": 128512,
+        "metadata": 16104,
+        "items": 26062,
+        "final": 3432,
+        "cumulative": 174156,
+        "overhead": 1612,
+        "metadataDocuments": 9
+      },
+      {
+        "policy": 2,
+        "workouts": 3,
+        "path": "wide-utf8",
+        "character": 30028,
+        "metadata": 15742,
+        "items": 20693,
+        "final": 3432,
+        "cumulative": 142018,
+        "overhead": 1612,
+        "metadataDocuments": 9
+      },
+      {
+        "policy": 2,
+        "workouts": 3,
+        "path": "wide-utf8",
+        "character": 34,
+        "metadata": 15380,
+        "items": 15324,
+        "final": 3432,
+        "cumulative": 109880,
+        "overhead": 1612,
+        "metadataDocuments": 9
+      },
+      {
+        "policy": 2,
+        "workouts": 3,
+        "path": "wide-utf8",
+        "character": 92,
+        "metadata": 15380,
+        "items": 15324,
+        "final": 3432,
+        "cumulative": 109880,
+        "overhead": 1612,
+        "metadataDocuments": 9
+      },
+      {
+        "policy": 2,
+        "workouts": 3,
+        "path": "wide-utf8",
+        "character": 47,
+        "metadata": 15018,
+        "items": 9955,
+        "final": 3432,
+        "cumulative": 77742,
+        "overhead": 1612,
+        "metadataDocuments": 9
+      },
+      {
+        "policy": 1,
+        "workouts": 1,
+        "path": "escaped-controls",
+        "character": 128512,
+        "metadata": 15908,
+        "items": 28728,
+        "final": 4992,
+        "cumulative": 188668,
+        "overhead": 2318,
+        "metadataDocuments": 5
+      },
+      {
+        "policy": 1,
+        "workouts": 1,
+        "path": "escaped-controls",
+        "character": 30028,
+        "metadata": 15548,
+        "items": 23240,
+        "final": 4992,
+        "cumulative": 156530,
+        "overhead": 2318,
+        "metadataDocuments": 5
+      },
+      {
+        "policy": 1,
+        "workouts": 1,
+        "path": "escaped-controls",
+        "character": 34,
+        "metadata": 15188,
+        "items": 17752,
+        "final": 4992,
+        "cumulative": 124392,
+        "overhead": 2318,
+        "metadataDocuments": 5
+      },
+      {
+        "policy": 1,
+        "workouts": 1,
+        "path": "escaped-controls",
+        "character": 92,
+        "metadata": 15188,
+        "items": 17752,
+        "final": 4992,
+        "cumulative": 124392,
+        "overhead": 2318,
+        "metadataDocuments": 5
+      },
+      {
+        "policy": 1,
+        "workouts": 1,
+        "path": "escaped-controls",
+        "character": 47,
+        "metadata": 14828,
+        "items": 12264,
+        "final": 4992,
+        "cumulative": 92254,
+        "overhead": 2318,
+        "metadataDocuments": 5
+      },
+      {
+        "policy": 1,
+        "workouts": 1,
+        "path": "wide-utf8",
+        "character": 128512,
+        "metadata": 10916,
+        "items": 26424,
+        "final": 3072,
+        "cumulative": 167932,
+        "overhead": 1550,
+        "metadataDocuments": 5
+      },
+      {
+        "policy": 1,
+        "workouts": 1,
+        "path": "wide-utf8",
+        "character": 30028,
+        "metadata": 10556,
+        "items": 20936,
+        "final": 3072,
+        "cumulative": 135794,
+        "overhead": 1550,
+        "metadataDocuments": 5
+      },
+      {
+        "policy": 1,
+        "workouts": 1,
+        "path": "wide-utf8",
+        "character": 34,
+        "metadata": 10196,
+        "items": 15448,
+        "final": 3072,
+        "cumulative": 103656,
+        "overhead": 1550,
+        "metadataDocuments": 5
+      },
+      {
+        "policy": 1,
+        "workouts": 1,
+        "path": "wide-utf8",
+        "character": 92,
+        "metadata": 10196,
+        "items": 15448,
+        "final": 3072,
+        "cumulative": 103656,
+        "overhead": 1550,
+        "metadataDocuments": 5
+      },
+      {
+        "policy": 1,
+        "workouts": 1,
+        "path": "wide-utf8",
+        "character": 47,
+        "metadata": 9836,
+        "items": 9960,
+        "final": 3072,
+        "cumulative": 71518,
+        "overhead": 1550,
+        "metadataDocuments": 5
+      }
+    ],
+    "deterministicPacketBounds": {
+      "metadata": 50176,
+      "items": 54272,
+      "final": 9216
+    },
+    "deterministicFramingReserve": 5120,
+    "actualLoads": [
+      {
+        "policy": 2,
+        "run": 0,
+        "calls": 8,
+        "graphAuthorityReads": 240,
+        "admissionReads": 8,
+        "admissionWrites": 8,
+        "totalReads": 248,
+        "bytes": 158250,
+        "latencyMillis": 222.9278330000002,
+        "maximumCallMillis": 37.79220899999973
+      },
+      {
+        "policy": 2,
+        "run": 1,
+        "calls": 8,
+        "graphAuthorityReads": 240,
+        "admissionReads": 8,
+        "admissionWrites": 8,
+        "totalReads": 248,
+        "bytes": 158250,
+        "latencyMillis": 187.16229199999998,
+        "maximumCallMillis": 23.4509579999999
+      },
+      {
+        "policy": 2,
+        "run": 2,
+        "calls": 8,
+        "graphAuthorityReads": 240,
+        "admissionReads": 8,
+        "admissionWrites": 8,
+        "totalReads": 248,
+        "bytes": 158250,
+        "latencyMillis": 190.33779099999992,
+        "maximumCallMillis": 23.582957999999962
+      },
+      {
+        "policy": 1,
+        "run": 0,
+        "calls": 8,
+        "graphAuthorityReads": 208,
+        "admissionReads": 8,
+        "admissionWrites": 8,
+        "totalReads": 216,
+        "bytes": 154082,
+        "latencyMillis": 170.379958,
+        "maximumCallMillis": 21.269540999999663
+      },
+      {
+        "policy": 1,
+        "run": 1,
+        "calls": 8,
+        "graphAuthorityReads": 208,
+        "admissionReads": 8,
+        "admissionWrites": 8,
+        "totalReads": 216,
+        "bytes": 154082,
+        "latencyMillis": 164.84795799999938,
+        "maximumCallMillis": 21.420917000000372
+      },
+      {
+        "policy": 1,
+        "run": 2,
+        "calls": 8,
+        "graphAuthorityReads": 208,
+        "admissionReads": 8,
+        "admissionWrites": 8,
+        "totalReads": 216,
+        "bytes": 154082,
+        "latencyMillis": 167.69574999999986,
+        "maximumCallMillis": 23.181749999999738
+      }
+    ],
+    "actualRate": {
+      "limit": 120,
+      "clock": "fixed minute for deterministic budget, real request/expiry/deadline clocks",
+      "before": {
+        "minute": 29913772,
+        "count": 24
+      },
+      "after": {
+        "minute": 29913772,
+        "count": 120
+      },
+      "extraSuccessful": 96,
+      "refusedAfter120": true
+    },
+    "actualRegressions": [
+      {
+        "name": "no-new-client-mediator-grant",
+        "denied": true
+      },
+      {
+        "name": "foreign-trainer-denied",
+        "denied": true
+      },
+      {
+        "name": "membership-loss",
+        "denied": true,
+        "receiverCleared": true
+      },
+      {
+        "name": "client-auth-disabled",
+        "denied": true,
+        "receiverCleared": true
+      },
+      {
+        "name": "changed-final",
+        "denied": true,
+        "receiverCleared": true
+      },
+      {
+        "name": "expiry-between-packets",
+        "denied": true,
+        "receiverCleared": true
+      },
+      {
+        "name": "five-second-deadline",
+        "denied": true,
+        "receiverCleared": true
+      }
+    ],
+    "actualSourceReadObservations": 0,
+    "perRequestSuccessfulMeasurements": [
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 37.79220899999973
+      },
+      {
+        "policy": 2,
+        "kind": "items",
+        "index": 1,
+        "readsIncludingAdmission": 31,
+        "bytes": 24516,
+        "latencyMillis": 28.393165999999837
+      },
+      {
+        "policy": 2,
+        "kind": "items",
+        "index": 2,
+        "readsIncludingAdmission": 31,
+        "bytes": 24048,
+        "latencyMillis": 26.582750000000033
+      },
+      {
+        "policy": 2,
+        "kind": "items",
+        "index": 3,
+        "readsIncludingAdmission": 31,
+        "bytes": 24524,
+        "latencyMillis": 23.486333000000286
+      },
+      {
+        "policy": 2,
+        "kind": "items",
+        "index": 4,
+        "readsIncludingAdmission": 31,
+        "bytes": 24048,
+        "latencyMillis": 23.69800000000032
+      },
+      {
+        "policy": 2,
+        "kind": "items",
+        "index": 5,
+        "readsIncludingAdmission": 31,
+        "bytes": 24208,
+        "latencyMillis": 20.47225000000026
+      },
+      {
+        "policy": 2,
+        "kind": "items",
+        "index": 6,
+        "readsIncludingAdmission": 31,
+        "bytes": 24048,
+        "latencyMillis": 22.14412500000026
+      },
+      {
+        "policy": 2,
+        "kind": "final",
+        "index": 7,
+        "readsIncludingAdmission": 31,
+        "bytes": 2144,
+        "latencyMillis": 22.583709
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 22.150374999999713
+      },
+      {
+        "policy": 2,
+        "kind": "items",
+        "index": 1,
+        "readsIncludingAdmission": 31,
+        "bytes": 24516,
+        "latencyMillis": 21.67929099999992
+      },
+      {
+        "policy": 2,
+        "kind": "items",
+        "index": 2,
+        "readsIncludingAdmission": 31,
+        "bytes": 24048,
+        "latencyMillis": 23.4509579999999
+      },
+      {
+        "policy": 2,
+        "kind": "items",
+        "index": 3,
+        "readsIncludingAdmission": 31,
+        "bytes": 24524,
+        "latencyMillis": 21.885375000000295
+      },
+      {
+        "policy": 2,
+        "kind": "items",
+        "index": 4,
+        "readsIncludingAdmission": 31,
+        "bytes": 24048,
+        "latencyMillis": 22.017166999999972
+      },
+      {
+        "policy": 2,
+        "kind": "items",
+        "index": 5,
+        "readsIncludingAdmission": 31,
+        "bytes": 24208,
+        "latencyMillis": 21.405624999999873
+      },
+      {
+        "policy": 2,
+        "kind": "items",
+        "index": 6,
+        "readsIncludingAdmission": 31,
+        "bytes": 24048,
+        "latencyMillis": 22.55791700000009
+      },
+      {
+        "policy": 2,
+        "kind": "final",
+        "index": 7,
+        "readsIncludingAdmission": 31,
+        "bytes": 2144,
+        "latencyMillis": 20.40387499999997
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 22.137291000000005
+      },
+      {
+        "policy": 2,
+        "kind": "items",
+        "index": 1,
+        "readsIncludingAdmission": 31,
+        "bytes": 24516,
+        "latencyMillis": 21.5954999999999
+      },
+      {
+        "policy": 2,
+        "kind": "items",
+        "index": 2,
+        "readsIncludingAdmission": 31,
+        "bytes": 24048,
+        "latencyMillis": 23.582957999999962
+      },
+      {
+        "policy": 2,
+        "kind": "items",
+        "index": 3,
+        "readsIncludingAdmission": 31,
+        "bytes": 24524,
+        "latencyMillis": 20.658290999999736
+      },
+      {
+        "policy": 2,
+        "kind": "items",
+        "index": 4,
+        "readsIncludingAdmission": 31,
+        "bytes": 24048,
+        "latencyMillis": 21.714792000000216
+      },
+      {
+        "policy": 2,
+        "kind": "items",
+        "index": 5,
+        "readsIncludingAdmission": 31,
+        "bytes": 24208,
+        "latencyMillis": 21.587999999999738
+      },
+      {
+        "policy": 2,
+        "kind": "items",
+        "index": 6,
+        "readsIncludingAdmission": 31,
+        "bytes": 24048,
+        "latencyMillis": 21.6084579999997
+      },
+      {
+        "policy": 2,
+        "kind": "final",
+        "index": 7,
+        "readsIncludingAdmission": 31,
+        "bytes": 2144,
+        "latencyMillis": 22.80120799999986
+      },
+      {
+        "policy": 1,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 27,
+        "bytes": 7580,
+        "latencyMillis": 20.507040999999845
+      },
+      {
+        "policy": 1,
+        "kind": "items",
+        "index": 1,
+        "readsIncludingAdmission": 27,
+        "bytes": 24886,
+        "latencyMillis": 18.79012499999999
+      },
+      {
+        "policy": 1,
+        "kind": "items",
+        "index": 2,
+        "readsIncludingAdmission": 27,
+        "bytes": 24094,
+        "latencyMillis": 19.736083000000235
+      },
+      {
+        "policy": 1,
+        "kind": "items",
+        "index": 3,
+        "readsIncludingAdmission": 27,
+        "bytes": 23934,
+        "latencyMillis": 19.79820800000016
+      },
+      {
+        "policy": 1,
+        "kind": "items",
+        "index": 4,
+        "readsIncludingAdmission": 27,
+        "bytes": 23934,
+        "latencyMillis": 21.269540999999663
+      },
+      {
+        "policy": 1,
+        "kind": "items",
+        "index": 5,
+        "readsIncludingAdmission": 27,
+        "bytes": 23934,
+        "latencyMillis": 20.255041999999776
+      },
+      {
+        "policy": 1,
+        "kind": "items",
+        "index": 6,
+        "readsIncludingAdmission": 27,
+        "bytes": 23934,
+        "latencyMillis": 20.20708300000024
+      },
+      {
+        "policy": 1,
+        "kind": "final",
+        "index": 7,
+        "readsIncludingAdmission": 27,
+        "bytes": 1786,
+        "latencyMillis": 20.290500000000065
+      },
+      {
+        "policy": 1,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 27,
+        "bytes": 7580,
+        "latencyMillis": 19.731249999999818
+      },
+      {
+        "policy": 1,
+        "kind": "items",
+        "index": 1,
+        "readsIncludingAdmission": 27,
+        "bytes": 24886,
+        "latencyMillis": 19.648417000000336
+      },
+      {
+        "policy": 1,
+        "kind": "items",
+        "index": 2,
+        "readsIncludingAdmission": 27,
+        "bytes": 24094,
+        "latencyMillis": 21.420917000000372
+      },
+      {
+        "policy": 1,
+        "kind": "items",
+        "index": 3,
+        "readsIncludingAdmission": 27,
+        "bytes": 23934,
+        "latencyMillis": 19.432415999999648
+      },
+      {
+        "policy": 1,
+        "kind": "items",
+        "index": 4,
+        "readsIncludingAdmission": 27,
+        "bytes": 23934,
+        "latencyMillis": 20.39099999999962
+      },
+      {
+        "policy": 1,
+        "kind": "items",
+        "index": 5,
+        "readsIncludingAdmission": 27,
+        "bytes": 23934,
+        "latencyMillis": 17.508332999999766
+      },
+      {
+        "policy": 1,
+        "kind": "items",
+        "index": 6,
+        "readsIncludingAdmission": 27,
+        "bytes": 23934,
+        "latencyMillis": 17.05658399999993
+      },
+      {
+        "policy": 1,
+        "kind": "final",
+        "index": 7,
+        "readsIncludingAdmission": 27,
+        "bytes": 1786,
+        "latencyMillis": 20.16191600000002
+      },
+      {
+        "policy": 1,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 27,
+        "bytes": 7580,
+        "latencyMillis": 23.181749999999738
+      },
+      {
+        "policy": 1,
+        "kind": "items",
+        "index": 1,
+        "readsIncludingAdmission": 27,
+        "bytes": 24886,
+        "latencyMillis": 21.26337499999954
+      },
+      {
+        "policy": 1,
+        "kind": "items",
+        "index": 2,
+        "readsIncludingAdmission": 27,
+        "bytes": 24094,
+        "latencyMillis": 19.23633300000074
+      },
+      {
+        "policy": 1,
+        "kind": "items",
+        "index": 3,
+        "readsIncludingAdmission": 27,
+        "bytes": 23934,
+        "latencyMillis": 18.80708400000003
+      },
+      {
+        "policy": 1,
+        "kind": "items",
+        "index": 4,
+        "readsIncludingAdmission": 27,
+        "bytes": 23934,
+        "latencyMillis": 19.996416999999383
+      },
+      {
+        "policy": 1,
+        "kind": "items",
+        "index": 5,
+        "readsIncludingAdmission": 27,
+        "bytes": 23934,
+        "latencyMillis": 16.357582999999977
+      },
+      {
+        "policy": 1,
+        "kind": "items",
+        "index": 6,
+        "readsIncludingAdmission": 27,
+        "bytes": 23934,
+        "latencyMillis": 19.087667000000692
+      },
+      {
+        "policy": 1,
+        "kind": "final",
+        "index": 7,
+        "readsIncludingAdmission": 27,
+        "bytes": 1786,
+        "latencyMillis": 19.848291999999674
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 21.935875000000124
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 29.373708999999508
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 21.750332999999955
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 21.947958000000654
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 22.357207999999446
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 24.70575000000099
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 21.354457999999795
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 20.221832999999606
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 20.032333000001017
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 20.37983400000121
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 23.556915999999546
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 21.15058400000089
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 20.69604199999958
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 20.045750000001135
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 21.16362499999923
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 20.137833000000683
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 22.19604199999958
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 20.025916999999026
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 18.7221669999999
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 19.683500000002823
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 20.359542000001966
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 20.687832999999955
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 20.445125000002008
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 23.496375000002445
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 18.74004199999763
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 20.62800000000061
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 21.398708000000624
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 20.81195800000205
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 19.094207999998616
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 20.917292000001908
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 23.413958999997703
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 21.45037499999671
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 19.747749999998632
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 19.763333000002604
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 21.035916000000725
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 18.003333000000566
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 19.631124999999884
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 18.73250000000189
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 19.08599999999933
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 22.29516700000022
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 19.255083000000013
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 20.610833000002458
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 19.5635829999992
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 19.093166999999085
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 19.131625000001804
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 19.3336249999993
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 19.205457999996725
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 17.972334000001865
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 19.812708999997994
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 19.42883399999846
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 18.895166999998764
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 20.651874999999563
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 20.323875000001863
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 18.803625000000466
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 18.476957999999286
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 19.3369160000002
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 20.71062499999971
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 20.854457999997976
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 21.02783400000044
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 27.951583000001847
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 24.524375000000873
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 22.575958000001265
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 33.084209000000556
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 29.544207999999344
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 23.28845900000306
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 21.236582999998063
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 21.050374999998894
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 22.647250000001804
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 21.768874999997934
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 21.460917000000336
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 19.053083999999217
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 20.58245899999747
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 19.817583000000013
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 20.164708000000246
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 21.03045900000143
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 20.57658299999821
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 19.100666999998793
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 19.60041700000147
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 20.342415999999503
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 19.41437500000029
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 20.088874999997643
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 21.020709000000352
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 20.24674999999843
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 19.85741699999926
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 20.48937500000102
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 19.946874999997817
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 19.3873339999991
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 19.837165999997524
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 20.341749999999593
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 21.708875000000262
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 20.491374999997788
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 21.291667000001326
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 21.57224999999744
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 21.246000000002823
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 19.69366600000285
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 17.372957999999926
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 21.639083000001847
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 17.576249999998254
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 19.01141600000119
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 19.18779100000029
+      },
+      {
+        "policy": 2,
+        "kind": "metadata",
+        "index": 0,
+        "readsIncludingAdmission": 31,
+        "bytes": 10714,
+        "latencyMillis": 17.89691699999821
+      }
+    ],
+    "retainedBaseline": {
+      "source": ".firebase/m7-pr2a/read-final/read-measurements.json",
+      "sha256": "05e0bce59159ce0930f0dcc709a17c205c8f1fdfcf87662b2ff8bcdd3a55c523",
+      "date": "2026-11-15",
+      "freshRerun": false,
+      "loads": [
+        {
+          "kind": "cold-after-writer",
+          "calls": 21,
+          "graphAuthorityReads": 630,
+          "admissionReads": 21,
+          "latencyMillis": 522.992084,
+          "maximumCallMillis": 36.98279100000002,
+          "packetBytes": 160205
+        },
+        {
+          "kind": "warm",
+          "calls": 21,
+          "graphAuthorityReads": 630,
+          "admissionReads": 21,
+          "latencyMillis": 451.97466699999995,
+          "maximumCallMillis": 23.57133399999998,
+          "packetBytes": 160205
+        },
+        {
+          "kind": "warm",
+          "calls": 21,
+          "graphAuthorityReads": 630,
+          "admissionReads": 21,
+          "latencyMillis": 459.7734579999999,
+          "maximumCallMillis": 29.515750000000025,
+          "packetBytes": 160205
+        }
+      ],
+      "notControlledABComparison": true,
+      "targetAuthLookupDifferenceDisclosed": true
+    },
+    "networkSensitivityModels": [
+      {
+        "additionalSerialRoundTripMillis": 50,
+        "eightCallAdditionalMillis": 400,
+        "twentyOneCallAdditionalMillis": 1050,
+        "measuredNetworkPerformance": false
+      },
+      {
+        "additionalSerialRoundTripMillis": 100,
+        "eightCallAdditionalMillis": 800,
+        "twentyOneCallAdditionalMillis": 2100,
+        "measuredNetworkPerformance": false
+      },
+      {
+        "additionalSerialRoundTripMillis": 250,
+        "eightCallAdditionalMillis": 2000,
+        "twentyOneCallAdditionalMillis": 5250,
+        "measuredNetworkPerformance": false
+      }
+    ],
+    "verification": {
+      "tests": 15,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0,
+      "newPacketTestCases": 6,
+      "retainedPureContractCases": 9,
+      "fullBackend335NativeSharedAndReleaseNotRerun": true,
+      "nativeSerializationAdmissionStorageInputsUnchanged": true,
+      "newNativeMatrixNecessary": false,
+      "maxNormalFullProgramCallMillis": 37.79220899999973,
+      "injectedDeadlineMillis": 5100,
+      "existingDeadlineMillis": 5000,
+      "deadlineRefusalPassed": true,
+      "productionPerformanceProof": false
+    },
+    "custody": {
+      "independentCreateOnlyCohorts": "first-success and final-success on new retained task supervisor",
+      "noImportsOrResets": true,
+      "noProductCommandsOrRealAttestations": true,
+      "allCompleteExportsReverified": true,
+      "shutdown": {
+        "completeAuthFirestoreStorageExportVerified": true,
+        "exportFiles": 7,
+        "allNewExportManifestsReverified": true,
+        "onlyMatchingTaskSupervisorSignalled": true,
+        "retainedDisksAndDatasetsNotReset": true,
+        "noNativeWork": true
+      },
+      "noNativeDevicesStartedOrStorageInputsChanged": true,
+      "originalAndQuarantinedHistoryPreserved": true
+    },
+    "notes": [
+      "Metadata validator review added valid empty-description/multiline regressions before final verification.",
+      "Nonfatal SDK metadata lookup warning retained.",
+      "No cap/contract failure required smaller packets.",
+      "Cumulative live bytes decreased only 1955 from retained baseline; main reduction is serial calls and repeated graph reads."
+    ],
+    "remainingDecision": "Authorize any later full trainer-read integration and native parser/transport/lifecycle/UI verification separately. Eight-call feasibility does not authorize new command issuance or product replacement.",
+    "localEvidenceFingerprints": {
+      ".firebase/m7-pr2a-eight/starting-files.json": {
+        "sha256": "8326c926a7f2cc829b68dc62e57d3982f13be277fbba1c153a2b525e78af7a8b",
+        "bytes": 2039
+      },
+      ".firebase/m7-pr2a-eight/starting-report.md": {
+        "sha256": "7db1f392d702b929b237bc0e6fc7c1aa088e0f46e6831e4737f66cec9b1b062f",
+        "bytes": 22395
+      },
+      ".firebase/m7-pr2a-eight/starting-verification.json": {
+        "sha256": "4afd8641383a8a3edec1e894f3552370f4da43d69bb199dc859341599812bd88",
+        "bytes": 23458
+      },
+      ".firebase/m7-pr2a-eight/supervisor-started.json": {
+        "sha256": "32602f632d5f4150ff4dcd827ff2337148e02de4e030e9d7d174d9669bd006c5",
+        "bytes": 115
+      },
+      ".firebase/m7-pr2a-eight/supervisor.log": {
+        "sha256": "65eadac0b6500e4b4d29f75181a22ffce158d120801182b960a1fa966aac2746",
+        "bytes": 5476
+      },
+      ".firebase/m7-pr2a-eight/packet-tests-first.log": {
+        "sha256": "1526905c4795a1356863ebe496510ac256e6227bef580223900bdb1a832563f4",
+        "bytes": 1981
+      },
+      ".firebase/m7-pr2a-eight/final-pure.log": {
+        "sha256": "46899124c39f32e44e54e5b281097f84f5812a8295f5662e1d898dc152c5f12a",
+        "bytes": 8517
+      },
+      ".firebase/m7-pr2a-eight/final-pure-r2.log": {
+        "sha256": "25ed1b94b206662fb677cb4671977bc0a740f502584669c51225af80b959eb24",
+        "bytes": 8514
+      },
+      ".firebase/m7-pr2a-eight/live-first.log": {
+        "sha256": "0d1269238995b7516f362a79bc121edc169bbaee36e865e87a71db7e66f0e450",
+        "bytes": 2112
+      },
+      ".firebase/m7-pr2a-eight/live-final.log": {
+        "sha256": "264ca3914e81e50f567fc236b05da7baa09e55063e93542b1b607188712d189e",
+        "bytes": 2275
+      },
+      ".firebase/m7-pr2a-eight/final-pure-r2/packet-sizes.json": {
+        "sha256": "cf262fab5998bfdc4ab4b158c17b649acd8a9aed421a9b48080a4e14f41bd278",
+        "bytes": 10370
+      },
+      ".firebase/m7-pr2a-eight/live-first/read-measurements.json": {
+        "sha256": "bac8dcdf3f205346635fe460d8b373ffcc2b8e4406f557250b3c0fff45f05047",
+        "bytes": 29490
+      },
+      ".firebase/m7-pr2a-eight/live-final/read-measurements.json": {
+        "sha256": "aa1469989de5c6953e3a5d9e6b272b3a913fc898648d0c0e317e5332c6876c13",
+        "bytes": 30505
+      },
+      ".firebase/m7-pr2a-eight/shutdown.json": {
+        "sha256": "11cd6702ed1c1d8014fdbfe4241c681e02f01b13f543a789305b97983eae2a8a",
+        "bytes": 234
+      },
+      ".firebase/m7-pr2a-eight/shutdown-export.sha256.json": {
+        "sha256": "8f5476c7f46dcc5631043226a8c6dd34b886ed114d240277fd94517fa03dc22e",
+        "bytes": 813
+      },
+      ".firebase/m7-pr2a-eight/live-final/before-reads-export.sha256.json": {
+        "sha256": "dfb1783611d7ec411ca1a6cc285de12c609eeed5e48bf002cbab1483b3b4c43a",
+        "bytes": 813
+      },
+      ".firebase/m7-pr2a-eight/live-final/membership-loss-export.sha256.json": {
+        "sha256": "7499691ac3ac3656ac81a29969c283489163c1519ed6d3f82049ec641bf1d909",
+        "bytes": 813
+      },
+      ".firebase/m7-pr2a-eight/live-final/client-auth-disabled-export.sha256.json": {
+        "sha256": "d9056d546d3d85dadd2457e8106aff53b74608cd82e426efe93deae11da2eb79",
+        "bytes": 813
+      },
+      ".firebase/m7-pr2a-eight/live-final/final-export.sha256.json": {
+        "sha256": "572843b154d33b1916ab2f0eacdcc6bac2971867b619b24f3b5b277771caf50a",
+        "bytes": 813
+      },
+      ".firebase/m7-pr2a-eight/live-final/five-second-deadline-export.sha256.json": {
+        "sha256": "d6ca5cd4159eb801081582ec62961868bc27ce4087697f4835f182b5c069a580",
+        "bytes": 813
+      },
+      ".firebase/m7-pr2a-eight/live-final/expiry-between-packets-export.sha256.json": {
+        "sha256": "b0945f83a3f77d75f27de1190c1bed02a9b3f041e8de35e1aabbf54f19def662",
+        "bytes": 813
+      },
+      ".firebase/m7-pr2a-eight/live-final/changed-final-export.sha256.json": {
+        "sha256": "ff22d67142c9ec6bd6c09c77c1df26c76c17984b69bd5699a1005af383b4c5a3",
+        "bytes": 813
+      },
+      ".firebase/m7-pr2a-eight/live-first/before-reads-export.sha256.json": {
+        "sha256": "14a8db43243d17fb52b7ed4ee22755d2190417a729a016ddcb6501e7ac2d5834",
+        "bytes": 813
+      },
+      ".firebase/m7-pr2a-eight/live-first/membership-loss-export.sha256.json": {
+        "sha256": "301a1b624040b047bec4ae082f817148e0137ada3202865ffec101f23f67dd14",
+        "bytes": 813
+      },
+      ".firebase/m7-pr2a-eight/live-first/client-auth-disabled-export.sha256.json": {
+        "sha256": "3f6589c842dc83a7075f57ee8e9cacb2153243672adbff086be6379fd699160b",
+        "bytes": 813
+      },
+      ".firebase/m7-pr2a-eight/live-first/final-export.sha256.json": {
+        "sha256": "a0cb547879e0b4f6b0459c4d0c05280b5e99304d88e0c9f345e3c07acaa60f10",
+        "bytes": 813
+      },
+      ".firebase/m7-pr2a-eight/live-first/expiry-between-packets-export.sha256.json": {
+        "sha256": "a1b2dc4f33bab1d56fadbe561d6bd20e630911f431890e57efe2b65fa81d2a87",
+        "bytes": 813
+      },
+      ".firebase/m7-pr2a-eight/live-first/changed-final-export.sha256.json": {
+        "sha256": "554c761dc670c631f5ca761b05df6763cf5679bea24a78d693f3a85cd1883a4b",
+        "bytes": 813
+      }
+    }
+  },
+  "finalization": {
+    "date": "2026-11-16",
+    "expectedHead": "70254d2495686f04287fd33f34745f0c073dc142",
+    "expectedBranch": "feature/milestone-7-pr2a-plan-feasibility",
+    "expectedUncommittedFiles": 19,
+    "startingFingerprints": {
+      "docs/milestones/evidence/milestone-7-pr2a-source-manifest.sha256": "9078c16624b64d7dc9252e1a25bfa16d946dcc0c707b285e98b6b17726201c89",
+      "docs/milestones/evidence/milestone-7-pr2a-verification.json": "3f3910088400ab85b4ef7d1c97e91a78b000c12f98dc2005a5aa377d5cbd4a5c",
+      "docs/milestones/milestone-7-pr2a-bounds.mjs": "98ad9b6e9c98544ffc666c9c6a0aaf7dcd72f5b1986a80ced238a354245937f4",
+      "docs/milestones/milestone-7-pr2a-report.md": "fb3c67a3878f42b0cff11c0c70bf2233498bf5c959aa1c63bca1f466ef834d50",
+      "firebase/functions/scripts/run-plan-feasibility.mjs": "ece522767559d57989ac3091477f948b48cb4e7e920c88e32c97c59089784ec3",
+      "firebase/functions/scripts/run-plan-packets-feasibility.mjs": "a971fdd3ba59be98d505a779d2f638f583fbfda4184383bec1ba782caeb64b75",
+      "firebase/functions/src/assignment-plan-feasibility.ts": "ef774940f3516740dd3068e47f8f21378fcee96a2fe84fa08ed34a465e21b0a2",
+      "firebase/functions/src/assignment-plan-packets-feasibility.ts": "553d2c46ec55750d36dc03767b575da9904ada5180d0738fbb5d5eb44647ae20",
+      "firebase/functions/test/assignment-plan-contract.test.ts": "7d8d9d87eab3347a2403cf7aa1306c79135ccb66989f180793ec86eb3a65c240",
+      "firebase/functions/test/assignment-plan-fixture.ts": "82df8bd2f054ff19aacb5d734a72dd41e0b1e7ebe952483044b043d1b9db6abf",
+      "firebase/functions/test/assignment-plan-packets-probe.ts": "0889476e615f5009aaaed51ef0aaaf42a9f45785206c89a7a7071ef3a82e6cc3",
+      "firebase/functions/test/assignment-plan-packets.test.ts": "7922556185d0bfda0193a71daddaf7d5057e693f42bdd1327a31123fe67c90af",
+      "firebase/functions/test/assignment-plan-read-probe.ts": "f67ca15f111d96762cb50484f46ff2a0571c4efd0ade8fcbae547deb289555c3",
+      "iosApp/feasibility/PlanStorageMain.swift": "ef10fcd9aa07f330abb1069dcf793b6d69a0ebe47a8780a9785dd3f4f5456f15",
+      "iosApp/feasibility/run-plan-storage.py": "ff02492a5ac66a7a35032930e679ecc261ea7c1bc25c7b62b47dcb1899e51d6e",
+      "shared/src/androidDeviceTest/kotlin/com/delminiusapps/tillfailure/assignments/AndroidPlanSizingTest.kt": "ea24bafb97aad4ddafa8dbe4a8436f6c5407c941d5b2cb842236252ed5a3d77e",
+      "shared/src/androidHostTest/kotlin/com/delminiusapps/tillfailure/assignments/PlanFixtureTest.kt": "ebe99c77184fdd9d51f98b36f767ea1e3fd70d56443473805c492b09461bb0b4",
+      "shared/src/commonMain/kotlin/com/delminiusapps/tillfailure/assignments/PlanFeasibility.kt": "380b84242d661c3a1b459f37282c2e31ef0391a9e1c88c08d21ed6729d3781c1",
+      "shared/src/commonTest/kotlin/com/delminiusapps/tillfailure/assignments/PlanFeasibilityTest.kt": "d471f3bda61ee1abf50e7dcc2d7080d5f454a038f9f33e6a1b02198a8c71752c"
+    },
+    "startingSourceManifestSha256": "9078c16624b64d7dc9252e1a25bfa16d946dcc0c707b285e98b6b17726201c89",
+    "startingReportSha256": "fb3c67a3878f42b0cff11c0c70bf2233498bf5c959aa1c63bca1f466ef834d50",
+    "all78RetainedArtifactFingerprintsVerified": true,
+    "planningCommitPreserved": true,
+    "remoteMainAtStart": "0a1c717b164c46058b9efb1877fc70756a398b5b",
+    "remoteFeatureBranchAndPrAbsentAtStart": true,
+    "eightCallCandidateSelectedForLaterTrainerReadIntegration": true,
+    "authorization": {
+      "oneCommit": "feat(assignments): add bounded full-plan feasibility contracts",
+      "normalPush": true,
+      "onePrTitle": "Milestone 7 PR 2a: full-plan contracts and bounded read feasibility",
+      "codexReviewRequestCount": 1,
+      "productIntegrationOrNewIssuance": false,
+      "mergeHistoryRewriteDeployPublishOrProduction": false
+    },
+    "corrections": [
+      {
+        "files": [
+          "firebase/functions/src/assignment-plan-feasibility.ts",
+          "firebase/functions/test/assignment-plan-contract.test.ts"
+        ],
+        "problem": "Timing helper assumed valid input; malformed schedule policy was classified current",
+        "fix": "Independently validate payload before time classification",
+        "validSerializedBytesChanged": false
+      },
+      {
+        "files": [
+          "firebase/functions/src/assignment-plan-feasibility.ts",
+          "firebase/functions/test/assignment-plan-contract.test.ts"
+        ],
+        "problem": "Hash equality ignored extra undefined decision field",
+        "fix": "Require exact nine-field decision before immutable result comparison",
+        "validSerializedBytesChanged": false
+      },
+      {
+        "files": [
+          "firebase/functions/test/assignment-plan-packets-probe.ts"
+        ],
+        "problem": "Rejected concurrent handler could release another handler measurement slot",
+        "fix": "Only owning handler releases slot; deterministic held request denies two rivals and then finishes",
+        "productProtocolChanged": false
+      }
+    ],
+    "fresh": {
+      "backendFinalSourcePublicationRun": {
+        "tests": 341,
+        "pass": 341,
+        "fail": 0,
+        "skipped": 0
+      },
+      "earlierAffectedContractPacketTests": {
+        "tests": 10,
+        "passed": 10
+      },
+      "ordinaryShared": {
+        "testAndroidHostTest": {
+          "tests": 281,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 2
+        },
+        "iosSimulatorArm64Test": {
+          "tests": 278,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      "optInFixture": {
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "nativeInputEquivalence": {
+        "files": 2521,
+        "byteIdenticalToRetained": true,
+        "nativeRerunRequired": false,
+        "kotlinMeasurements": {
+          "states": 2508,
+          "histories": 65,
+          "pending": 3994,
+          "maximumPlaintext": 36500,
+          "swiftBound": 97517
+        }
+      },
+      "releaseIsolationAudit": {
+        "androidApkSha256": "572df71c7d7e9fa85aa2e7332de571ca84f6baa9e06aef6697892bda5f88b881",
+        "unchangedRetainedArtifact": true,
+        "excluded": [
+          "AndroidPlanSizingTest",
+          "PlanFixtureTest",
+          "PlanFeasibilityTest",
+          "PlanStorageMain",
+          "TF_M7_PR2A",
+          "M7_PR2A_ANDROID_NATIVE",
+          "m7-pr2a-sizing-"
+        ],
+        "swiftStandaloneOutsideProductTarget": true,
+        "freshProductReleaseBuildClaimed": false
+      },
+      "packetBoundArithmetic": {
+        "metadata": 50176,
+        "items": 54272,
+        "final": 9216
+      },
+      "packetMeasuredMaxima": {
+        "metadata": 24168,
+        "items": 28842,
+        "final": 5352,
+        "cumulative": 197964,
+        "overhead": 2380
+      },
+      "packetLoads": [
+        {
+          "policy": 2,
+          "run": 0,
+          "calls": 8,
+          "graphAuthorityReads": 240,
+          "admissionReads": 8,
+          "admissionWrites": 8,
+          "totalReads": 248,
+          "bytes": 158250,
+          "latencyMillis": 331.5486249999999,
+          "maximumCallMillis": 74.57387500000004
+        },
+        {
+          "policy": 2,
+          "run": 1,
+          "calls": 8,
+          "graphAuthorityReads": 240,
+          "admissionReads": 8,
+          "admissionWrites": 8,
+          "totalReads": 248,
+          "bytes": 158250,
+          "latencyMillis": 234.89595800000006,
+          "maximumCallMillis": 29.658542000000125
+        },
+        {
+          "policy": 2,
+          "run": 2,
+          "calls": 8,
+          "graphAuthorityReads": 240,
+          "admissionReads": 8,
+          "admissionWrites": 8,
+          "totalReads": 248,
+          "bytes": 158250,
+          "latencyMillis": 222.05316700000003,
+          "maximumCallMillis": 28.411124999999856
+        },
+        {
+          "policy": 1,
+          "run": 0,
+          "calls": 8,
+          "graphAuthorityReads": 208,
+          "admissionReads": 8,
+          "admissionWrites": 8,
+          "totalReads": 216,
+          "bytes": 154082,
+          "latencyMillis": 199.43162500000017,
+          "maximumCallMillis": 24.739791999999852
+        },
+        {
+          "policy": 1,
+          "run": 1,
+          "calls": 8,
+          "graphAuthorityReads": 208,
+          "admissionReads": 8,
+          "admissionWrites": 8,
+          "totalReads": 216,
+          "bytes": 154082,
+          "latencyMillis": 199.3857079999998,
+          "maximumCallMillis": 29.570459000000028
+        },
+        {
+          "policy": 1,
+          "run": 2,
+          "calls": 8,
+          "graphAuthorityReads": 208,
+          "admissionReads": 8,
+          "admissionWrites": 8,
+          "totalReads": 216,
+          "bytes": 154082,
+          "latencyMillis": 200.478208,
+          "maximumCallMillis": 27.50983300000007
+        }
+      ],
+      "packetRegressions": [
+        {
+          "name": "no-new-client-mediator-grant",
+          "denied": true
+        },
+        {
+          "name": "foreign-trainer-denied",
+          "denied": true
+        },
+        {
+          "name": "membership-loss",
+          "denied": true,
+          "receiverCleared": true
+        },
+        {
+          "name": "client-auth-disabled",
+          "denied": true,
+          "receiverCleared": true
+        },
+        {
+          "name": "changed-final",
+          "denied": true,
+          "receiverCleared": true
+        },
+        {
+          "name": "expiry-between-packets",
+          "denied": true,
+          "receiverCleared": true
+        },
+        {
+          "name": "five-second-deadline",
+          "denied": true,
+          "receiverCleared": true
+        },
+        {
+          "name": "probe-single-flight-ownership",
+          "firstCompleted": true,
+          "concurrentRequestsDenied": true
+        }
+      ],
+      "rate": {
+        "limit": 120,
+        "clock": "fixed minute for deterministic budget, real request/expiry/deadline clocks",
+        "before": {
+          "minute": 29913844,
+          "count": 24
+        },
+        "after": {
+          "minute": 29913844,
+          "count": 120
+        },
+        "extraSuccessful": 96,
+        "refusedAfter120": true
+      },
+      "sourceReads": 0,
+      "productionPerformanceProof": false
+    },
+    "retained": {
+      "nativeSizingMatrixNotRerun": true,
+      "nativeInputsCodeAndEncodingUnchanged": true,
+      "all2521FreshExportFilesByteIdentical": true,
+      "earlierNativeBuildsReleaseArtifactsUiEvidenceKeepOriginalAttribution": true,
+      "inheritedAcceptanceQuarantineCustomAdmissionFindingsRemainOpen": true
+    },
+    "launchFailure": {
+      "action": "first opted-in Gradle launch",
+      "reason": "automatic approval review timed out before process creation",
+      "retryCount": 1,
+      "retryPassed": true,
+      "notAnApplicationOrTestFailure": true
+    },
+    "custody": {
+      "newDisposableFullSuiteRootsNoImports": true,
+      "freshCreateOnlyReadCohort": true,
+      "allFullExportsVerifiedBeforeMatchingSupervisorShutdown": true,
+      "noNativeDevicesOrStorageChanged": true,
+      "originalArtifactsVerifiedUnchanged": true
+    },
+    "localEvidenceFingerprints": {
+      ".firebase/m7-pr2a-finalization/starting-files.json": {
+        "sha256": "625f86f76ad8cf1d6c6c4307ce3c65c7891b2811b3f17d80f79e7ca07ef37b2b",
+        "bytes": 2566
+      },
+      ".firebase/m7-pr2a-finalization/starting-verification.json": {
+        "sha256": "3f3910088400ab85b4ef7d1c97e91a78b000c12f98dc2005a5aa377d5cbd4a5c",
+        "bytes": 80663
+      },
+      ".firebase/m7-pr2a-finalization/starting-report.md": {
+        "sha256": "fb3c67a3878f42b0cff11c0c70bf2233498bf5c959aa1c63bca1f466ef834d50",
+        "bytes": 35777
+      },
+      ".firebase/m7-pr2a-finalization/review-reproduction.json": {
+        "sha256": "9ef4692e1afbdb547c3cbb1284f6304690f4dff3fcaa04539bf85f6d49decf9e",
+        "bytes": 85
+      },
+      ".firebase/m7-pr2a-finalization/commit-bounds.json": {
+        "sha256": "ded0d14d9d4f4e81cec7c9937c40a6b67bc56c52597c758a85bc9f8cea7f4920",
+        "bytes": 651
+      },
+      ".firebase/m7-pr2a-finalization/affected-tests.log": {
+        "sha256": "eacab6ab3f82865525cffc1a03f6adc63bb8781dc4e3b00ae483f0118c3d5299",
+        "bytes": 6230
+      },
+      ".firebase/m7-pr2a-finalization/backend-full.log": {
+        "sha256": "f2580c93203e94898c58d8f85fc5b3da204283bc0dd4140a881d3e3d1e0fc71b",
+        "bytes": 148450
+      },
+      ".firebase/m7-pr2a-finalization/backend-publication.log": {
+        "sha256": "e9bb3a1b16ae828ae8ba65471d0c129d582ad5b93d816955dfb756e4b3fd018b",
+        "bytes": 147441
+      },
+      ".firebase/m7-pr2a-finalization/backend-publication-results.json": {
+        "sha256": "90b2ce319bc2179478bf9637cbdc2cb1fe92fa269b843ed06d7aee1746213741",
+        "bytes": 62
+      },
+      ".firebase/m7-pr2a-finalization/shared-final.log": {
+        "sha256": "30878132d75051381948887034e86ce0422a261f80c54a12756df712b2639f60",
+        "bytes": 7392
+      },
+      ".firebase/m7-pr2a-finalization/shared-final-results.json": {
+        "sha256": "efbc39d7913d106d778ba8686f4675d01550519474038f836c3ba9531da7bda2",
+        "bytes": 210
+      },
+      ".firebase/m7-pr2a-finalization/opt-in-positive.log": {
+        "sha256": "cf62505370d3b28f40c1655052f265fb14bfd497a8f2b93eab74aa99bc605085",
+        "bytes": 3325
+      },
+      ".firebase/m7-pr2a-finalization/opt-in-positive-results.json": {
+        "sha256": "789aa97b7c91450ae00a53c7db973069f6dfd80a54292a06e2b600e9ce3cc5b0",
+        "bytes": 64
+      },
+      ".firebase/m7-pr2a-finalization/native-input-equivalence.json": {
+        "sha256": "cd2b18339d78143c9641bfec0eb39b99e31d323e9791bdd69666005a3a56a687",
+        "bytes": 234
+      },
+      ".firebase/m7-pr2a-finalization/release-isolation.json": {
+        "sha256": "c525086e2e4d9cf09f27b62493b6f0597dc5cc7fe2e220aafebff26552bacc38",
+        "bytes": 413
+      },
+      ".firebase/m7-pr2a-finalization/packet-live.log": {
+        "sha256": "e2e478f0b9f063d02058368c34b6f2edf0d2816e6f0d7d845d9437279ce40dfd",
+        "bytes": 2179
+      },
+      ".firebase/m7-pr2a-finalization/packet-live/read-measurements.json": {
+        "sha256": "7b2842adc3e040dfbd8efb558c43c8bed31b8131028f70c2c7deb6b26eca5213",
+        "bytes": 31150
+      },
+      ".firebase/m7-pr2a-finalization/packet-shutdown.json": {
+        "sha256": "f97c4f97c3dff07100f2861123a259c937580f5c5a111ca4c264d5a496fb913f",
+        "bytes": 229
+      },
+      ".firebase/m7-pr2a-finalization/packet-shutdown-export.sha256.json": {
+        "sha256": "f3a8838270f814a4c06216963006d40dc0fa7cc4fd37321db6dbb07881f4fcce",
+        "bytes": 813
+      },
+      ".firebase/m7-pr2a-finalization/packet-supervisor.log": {
+        "sha256": "5d2142a4e2bfbb63cf12f31a06d848e7857896005d76de43f858c5513e8fad08",
+        "bytes": 4731
+      },
+      ".firebase/m7-pr2a-finalization/packet-regression/packet-sizes.json": {
+        "sha256": "cf262fab5998bfdc4ab4b158c17b649acd8a9aed421a9b48080a4e14f41bd278",
+        "bytes": 10370
+      },
+      ".firebase/m7-pr2a-finalization/final-packet-regression/packet-sizes.json": {
+        "sha256": "cf262fab5998bfdc4ab4b158c17b649acd8a9aed421a9b48080a4e14f41bd278",
+        "bytes": 10370
+      },
+      ".firebase/m7-pr2a-finalization/packet-live/before-reads-export.sha256.json": {
+        "sha256": "bca4bd3c2639663d4924042ca4a28a51b52b12329dacb7e606a786ef669556b4",
+        "bytes": 813
+      },
+      ".firebase/m7-pr2a-finalization/packet-live/changed-final-export.sha256.json": {
+        "sha256": "ee16e4b0eea13cbd7c2d5e8ee382dfe5ba26464169afce69772b7282a4a9f0ae",
+        "bytes": 813
+      },
+      ".firebase/m7-pr2a-finalization/packet-live/client-auth-disabled-export.sha256.json": {
+        "sha256": "33d3ebf6f77ba49285f69da4b41431d3e4e2120548ef68f8810074fe3dc0bfa5",
+        "bytes": 813
+      },
+      ".firebase/m7-pr2a-finalization/packet-live/expiry-between-packets-export.sha256.json": {
+        "sha256": "a03e3d2db94b517a54615547c7c8004dd487fd19571b5176d52dc236cc33d736",
+        "bytes": 813
+      },
+      ".firebase/m7-pr2a-finalization/packet-live/final-export.sha256.json": {
+        "sha256": "73f9912aac7b30ecd3dcf1dc9f53435ce0d81a5b98f41e33cd77972a820082fb",
+        "bytes": 813
+      },
+      ".firebase/m7-pr2a-finalization/packet-live/five-second-deadline-export.sha256.json": {
+        "sha256": "88473368b6414cc68d5ac59f06de5aea7c2eed7ef6366d3d7167389925abc989",
+        "bytes": 813
+      },
+      ".firebase/m7-pr2a-finalization/packet-live/membership-loss-export.sha256.json": {
+        "sha256": "89ee8b706c0db21f6b470dc7e73a0fafb44b203357c3d09e3b9797d7806201f4",
+        "bytes": 813
+      },
+      ".firebase/m7-pr2a-finalization/packet-live/single-flight-export.sha256.json": {
+        "sha256": "e89e3a19bf4088ee46bd2b6481094ac86b5034510b49e7638e8af50ebeb43a70",
+        "bytes": 813
+      }
+    }
+  }
+}
