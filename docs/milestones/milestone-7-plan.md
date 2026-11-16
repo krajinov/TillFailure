@@ -1,6 +1,6 @@
 # Milestone 7 plan: program assignment
 
-Status: **M7-D1–D9 approved; M7-D10 authorized for PR 1a contract/feasibility only on 2026-11-13. PR 1b separately authorized on 2026-11-14; issuance remains subject to technical/native gates.**
+Status as of **2026-11-15**: **M7-D1–D9 approved for the bounded first slice; PR 1a merged through #20 and separately authorized PR 1b merged through #21 at `0a1c717`. Synthetic single-workout Assign is enabled; Publish stays disabled. M7 acceptance remains qualified. Next: PR 2 full bounded program/horizon, documentation proposal only.** The original baseline and dated approval/handoff entries below retain their historical scope. Current [PR 2 plan and pending R1–R7 decisions](milestone-7-pr2-plan.md) supersede no prior evidence or approval.
 Reviewed **2026-11-12**, Europe/Sarajevo. Baseline **`de8d7256a587d8548b3512ac1ffca25fa7fa9c19`**, branch **`docs/milestone-7-plan`**.
 
 ## Canonical scope and inspected baseline
@@ -199,3 +199,14 @@ Josip separately authorized bounded online assignment and client readback, imple
 ## PR 1b finalization authorization (2026-11-14)
 
 Josip separately authorized bounded final review and necessary in-scope corrections from HEAD `3146c7621111ee872a102c2e66f0162a4a9a3357` on `feature/milestone-7-pr1b-program-assignment`, appropriate verification, one implementation commit (`feat(assignments): add protected program assignment and client readback`), normal push and a review PR against main. This supersedes the earlier uncommitted/no-push/no-PR handoff only for this PR 1b publication. No merge, deployment, dependency upgrade, history rewrite, later lifecycle, offline/production or Publish enablement is authorized. The [final-review record](milestone-7-pr1b-report.md#finalization-review-and-publication-authorization) preserves fresh-versus-retained verification and remaining gates.
+
+## PR 1b merge and next-slice planning (2026-11-15)
+
+[PR #21](https://github.com/krajinov/TillFailure/pull/21) is verified merged at `0a1c717b164c46058b9efb1877fc70756a398b5b`, including the separately authorized [P2 trainer server-time expiry correction](milestone-7-pr1b-report.md#pr-21-p2-correction-trainer-server-time-expiry). The initial clean checkout was switched to main and updated with `git pull --ff-only`; clean main/merge ancestry were verified before creating `codex/docs-milestone-7-pr2-plan`. Historical PR 1a/1b not-yet-authorized/uncommitted/publication wording above describes its dated step, not current merge status.
+
+Proceed with documentation for the already ordered **M7 PR 2 — full bounded program/horizon**. The [bounded proposal](milestone-7-pr2-plan.md) recommends the complete current M6 version (1–3 nonempty workouts, <=12 total items), exactly one explicit UTC occurrence per workout within the existing 24-hour preparation window, common expiry 24 hours after the last occurrence, and an atomically created revision-1 finite horizon with a distinct protected command contract. R1–R6 require product/security/engineering approval; R7 separately authorizes implementation and fixture/native verification. No recurrence, rolling expansion, existing-horizon edit, PR 3 lifecycle/withdrawal or M8 execution is implied.
+
+No code, Rules/indexes/dependencies, fixtures or native stores are changed by planning. All five documentation changes remain uncommitted/unstaged. Publish remains disabled. The [PR 1b report](milestone-7-pr1b-report.md) keeps original recovery/admission/UI evidence distinct from later read-guard/P2 bytes and focused probes; M2–M6/PR 1a/1b acceptance gaps, original and quarantined histories, unknown outcomes and the unresolved custom-admission bound remain intact. No runtime tests, reset suites, push, PR, deploy or production enablement occurs here.
+
+
+M7 PR 2 approval (2026-11-15): Josip approved [R1–R6 exactly and R7 only for isolated PR 2a contracts/feasibility](milestone-7-pr2-plan.md#r1r6-approval-and-pr-2a-prerequisite-authorization-2026-11-15). Commit only the five reviewed planning documents, then create `feature/milestone-7-pr2a-plan-feasibility`; prerequisite implementation stays uncommitted/unstaged. Full integration/new issuance, Rules/indexes/dependencies/native encoding/cap changes, Publish/production and push/PR remain unauthorized. Preserve all original/quarantined history and evidence attribution.
